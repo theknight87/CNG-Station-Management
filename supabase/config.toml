@@ -1,0 +1,20 @@
+# Supabase CLI configuration — CNG Station Management System
+#
+# This file links the repository to THIS project's own Supabase project and to
+# nothing else. The project reference below is a NON-SECRET identifier (it is
+# part of the public API hostname). No key, password or token belongs in this
+# file or anywhere else in the repository.
+#
+#   Organization : CNG Station Management  (hlzsgygfczzdubcvmkjh)
+#   Project      : cng-station-management  (ypkggegquetvpsflkaxg)
+#   Region       : eu-central-1
+#
+# Isolation rule (CLAUDE.md §2): never repoint this at another project. The
+# Coding System project must never appear here.
+
+project_id = "ypkggegquetvpsflkaxg"
+
+[db]
+# Matches the hosted instance (Postgres 17) so local `supabase start` behaves
+# the same way. The migration baseline was additionally verified on PG16.
+major_version = 17

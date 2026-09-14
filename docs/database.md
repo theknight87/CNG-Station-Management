@@ -8,9 +8,10 @@ no connection to any existing project, no imported data.
 
 | | |
 | --- | --- |
-| Migrations | `supabase/migrations/0001`–`0016` |
-| Scenario tests | `supabase/tests/schema_scenarios.sql` — **63 assertions, all passing** |
-| Tables | 27 (all with RLS enabled) |
+| Migrations | `supabase/migrations/0001`–`0017` |
+| Local scenario tests | `supabase/tests/schema_scenarios.sql` — **63 assertions, all passing** |
+| Hosted assertions | **43 assertions, all passing** (see §0) |
+| Tables | 27 (all with RLS enabled and forced) |
 | Views | 8 |
 
 Related: [`architecture.md`](./architecture.md) · [`decisions.md`](./decisions.md) ·
@@ -18,73 +19,172 @@ Related: [`architecture.md`](./architecture.md) · [`decisions.md`](./decisions.
 
 ---
 
-## 0. Hosted environment status — Prompt 4
+## 0. Hosted Supabase environment — Prompt 4
 
-**Status: BLOCKED — awaiting a manual dashboard action. No hosted resource has been created or
-modified.**
+**Status: PASS WITH DOCUMENTED DEFERRALS.** All 17 migrations are applied to a dedicated,
+isolated Supabase project. No production data imported.
 
-| Item | Value |
+### Project identity (non-secret identifiers only)
+
+| Field | Value |
 | --- | --- |
-| Supabase Organization | **not yet created** |
-| Supabase Project | **not yet created** |
-| Project reference | — |
-| Region | — |
-| Migrations applied to a hosted database | **none** |
+| Purpose | CNG Station Management System — equipment, maintenance calendar and SRV compliance |
+| Supabase Organization | **CNG Station Management** (`hlzsgygfczzdubcvmkjh`) — created for this project alone |
+| Supabase Project | **cng-station-management** (`ypkggegquetvpsflkaxg`) |
+| Project reference | `ypkggegquetvpsflkaxg` |
+| API URL | `https://ypkggegquetvpsflkaxg.supabase.co` |
+| Database host | `db.ypkggegquetvpsflkaxg.supabase.co` |
+| Region | `eu-central-1` (Frankfurt — closest offered region to Egypt) |
+| Postgres | 17.6.1.166 |
+| Created | 2026-09-14 |
+| Repository | `theknight87/CNG-Station-Management` |
+| Local link | `supabase/config.toml` → `project_id = "ypkggegquetvpsflkaxg"` |
 
-### Pre-flight safety check (2026-09-14) — all nine points pass
+No database password, service-role key, JWT secret, publishable key or access token is recorded
+here or anywhere in the repository. **No API key was even retrieved during this phase** — none is
+needed until the Clerk/Supabase integration in Prompt 5.
 
-| # | Check | Result |
-| --- | --- | --- |
-| 1 | Working directory | `/home/user/CNG-Station-Management` |
-| 2 | Git remote | `theknight87/CNG-Station-Management`, branch `claude/stoic-noether-tu4jpm` |
-| 3 | Supabase CLI link | **not linked** — no `supabase/.temp`, no `project-ref`, no `config.toml` |
-| 4 | Stale project references | none. The only matches are the placeholder `VITE_SUPABASE_URL=` in `.env.example` and the two code references that read it. No project ref, host or connection string exists anywhere in the repository |
-| 5 | Automatic reuse | impossible — nothing to reuse from |
-| 6 | `.env` files | none present (only `.env.example`, placeholders) |
-| 7 | Migrations | 16 present, correctly ordered `0001`–`0016` |
-| 8 | Baseline re-verified | clean rebuild from zero: 27 tables, 27 with RLS, **63/63 assertions pass** |
-| 9 | Isolation | **no Coding System resource was read, written, linked or contacted** |
+### Isolation verification
 
-### Blocker: no dedicated Organization can be created programmatically
+- The reconnected Supabase connector is scoped so that **only** the `CNG Station Management`
+  organization is visible. The Coding System project (`sp-coding-system`) is not reachable from
+  this session at all — isolation is enforced by the credential, not merely by convention.
+- Before the first write the target was confirmed empty: **0 tables, 0 migrations**.
+- Nothing belonging to Coding System was read, written, linked, migrated or deployed.
 
-The Supabase account contains exactly **one** organization:
+### Migration result
 
-| Organization | ID | Plan | Contents |
+All 17 migrations applied in order, each recorded in Supabase's migration history.
+
+| Check | Hosted | Local PG16 | Match |
 | --- | --- | --- | --- |
-| `theknight87` | `zmfivitbfpthxnjtcdlr` | free | `sp-coding-system` (**the Coding System project — out of bounds**) |
+| Application tables | 27 | 27 | yes |
+| Tables with RLS enabled **and forced** | 27 / 27 | 27 / 27 | yes |
+| RLS policies | 0 (deliberate) | 0 | yes |
+| Views | 8 | 8 | yes |
+| Enum types | 25 | 25 | yes |
+| Application functions | 9 | 9 | yes |
+| CHECK constraints | 52 | 52 | yes |
+| Foreign keys (composite) | 104 (23) | 104 (23) | yes |
+| Indexes | 141 | 141 | yes |
 
-That organization holds the Coding System project, so under the isolation rule it cannot host
-this project. Creating a new organization is **not available through the Supabase Management API
-or MCP tooling** — there is no create-organization operation; organizations can only be created
-from the Supabase dashboard by the account owner.
+**Byte-level schema equivalence proved.** Because the migrations had to be re-transmitted through
+the management API rather than pushed from the files, five independent MD5 signatures were
+computed on both the hosted database and the local PostgreSQL 16 baseline — over column
+definitions, every constraint definition, every index definition, every enum label in order, and
+every view definition. **All five matched exactly**, confirming no transcription drift. The
+Arabic-folding `translate()` argument in `cng_normalize_name()` was additionally verified by
+comparing `md5(cng_normalize_name('ابنوب اسيوط'))` on both sides (`0bde728e…`, identical).
 
-Per the isolation rule, no existing organization is substituted, and no project was created.
+### Supabase-managed vs application objects
 
-### Minimal action required from the owner
+The hosted `public` schema contains one object that is **not ours**: `rls_auto_enable()`, a
+SECURITY DEFINER function backing Supabase's `ensure_rls` event trigger, which auto-enables RLS on
+newly created tables. It is Supabase platform infrastructure, not application code, and is
+excluded from the application counts above (hosted shows 10 functions in `public`; 9 are ours).
+Supabase's own `auth`, `storage`, `realtime`, `vault` and `extensions` schemas are likewise not
+application schemas and are not counted.
 
-1. Open <https://supabase.com/dashboard/org/_/new> (or Dashboard → organization switcher →
-   **New organization**).
-2. Name it **`CNG Station Management`**.
-3. Confirm creation, then tell this session to continue.
+### Hosted assertion results — 43 assertions, 43 passed, 0 failed
 
-Nothing else is needed: project creation, region selection, linking, migration and verification
-are all automatable from there.
+Run as two transactional suites, each deliberately terminated with a `RAISE EXCEPTION` so the
+entire suite **rolls back atomically** — hosted verification cannot leave residue by construction.
 
-### Region recommendation (for when the organization exists)
-
-Closest available Supabase regions to Egypt, from the currently offered set:
-
-| Region | Location | Note |
+| Group | Assertions | Covers |
 | --- | --- | --- |
-| **`eu-central-1`** | Frankfurt | **recommended** — lowest latency to Egypt of the available regions |
-| `eu-west-3` | Paris | slightly further |
-| `eu-south-*` | Milan/Spain | **not offered** by the current tooling |
-| `ap-south-1` | Mumbai | further east, higher latency |
+| A — hierarchy & resolved SRV | 4 | resolved compressor SRV accepted; **cross-unit parent rejected** (composite FK); two parents rejected; resolve without attribution rejected |
+| B — `needs_station_mapping` | 8 | NULL station allowed in the correct state; **unit rejected**; **equipment parent rejected**; raw station name required; other states still require a station; visible in Global SRV Management as *Needs Station Mapping*; **absent from the Unit view**; due status computed with no station at all |
+| C — lifecycle states | 5 | `needs_unit_mapping`, `needs_equipment_mapping`, cross-station unit rejected, `conflict` preserved and never in a Unit tab, Unit tab = resolved + needs_equipment only |
+| D — transitions & hierarchy | 6 | station→unit→equipment→resolved; jump to resolved rejected; audit row written; unit region must match station region; station with dependents cannot be hard-deleted (RESTRICT) |
+| E — date precision | 6 | year-only kept raw with NULL date; NULL Days Left + `unknown` status; exact-precision-without-date rejected; **real date labelled `year_only` rejected** (no silent 1 January); invalid date yields no Days Left while `source_status_raw` survives; exact date computes Days Left and overdue |
+| F — identifiers | 5 | leading zeros preserved in TEXT; `SS-4R3A` → `part_number` with serial NULL; **`SS-9X1B` (same shape, unconfirmed) NOT reclassified**; ordinary serial untouched; raw cell + file/sheet/row provenance intact |
+| G — owner-confirmed alias | 4 | `ابنوب` resolves to `ابنوب اسيوط`; **`ابو القمصان`, `ابو تيج- اسيوط`, `الادبيه - السويس` do NOT resolve**; longer containing name does not resolve; confirmed alias without a station rejected |
+| H — gas detector | 2 | `not_installed` creates no detector row; absence visible with `detector_id NULL` |
+| I — vessels & hoses | 3 | vessel preserved with unknown unit and flagged; hose preserved with unknown unit, no dispenser, PSI kept unconverted; dispenser rejected while unit unknown |
 
-There is no Middle East or African region in the available set. Note that `sp-coding-system` also
-sits in `eu-central-1`; **a shared region is not a shared resource** — it is a datacentre
-location, and the projects remain entirely separate. If you prefer to avoid even that
-coincidence, `eu-west-3` is the next best choice at a modest latency cost.
+17 of the 43 are **rejection tests** that prove the database refuses invalid writes, rather than
+merely accepting valid ones.
+
+### Data state
+
+| Category | Rows |
+| --- | --- |
+| All 23 operational tables | **0** |
+| `regions` (reference) | 6 — East, West, Canal, Delta, Alex, Upper |
+| `alert_rules` (reference) | 30 — 5 subjects × 6 thresholds |
+| `owner_confirmed_station_aliases` | 1 — `ابنوب` = `ابنوب اسيوط` |
+| `owner_confirmed_part_numbers` | 1 — `SS-4R3A` |
+
+No Excel workbook was imported. No sample or fabricated operational data exists. Repair Kits
+remain out of scope and are not represented anywhere in the schema.
+
+**Test-data cleanup verified:** every operational table was counted after the suites and all
+returned 0. Both suites rolled back atomically, so nothing required manual deletion. All fixture
+identifiers additionally carried a `7e57`/`TESTDATA` marker so any residue would have been
+unmistakable.
+
+### Advisor findings
+
+| Advisor | Level | Count | Classification |
+| --- | --- | --- | --- |
+| `anon_security_definer_function_executable` | WARN | 1 | **FIXED NOW** — see below |
+| `authenticated_security_definer_function_executable` | WARN | 1 | **FIXED NOW** — see below |
+| `rls_enabled_no_policy` | INFO | 27 | **Intentional; deferred to Prompt 5** — deny-by-default is the design |
+| `unindexed_foreign_keys` | INFO | 72 | **Deferred to Prompt 22** — measured on an empty database; most are bookkeeping FKs (`archived_by`, `resolved_by`, `import_batch_id`) that are never join drivers, and the composite hierarchy FKs are partially covered by existing partial indexes. Adding 72 speculative indexes now would contradict the "no speculative indexes" rule and slow every write |
+| `unused_index` | INFO | 83 | **Not applicable** — the database has served no queries yet. Dropping these would be wrong |
+
+**Fixed during this phase (migration `0017_platform_hardening.sql`).** Supabase's
+`rls_auto_enable()` shipped with default privileges, leaving `PUBLIC` — and therefore the `anon`
+and `authenticated` API roles — holding EXECUTE on a SECURITY DEFINER function reachable at
+`/rest/v1/rpc/`. Practical exploitability was essentially nil (it returns `event_trigger`, which
+PostgreSQL refuses to invoke outside an event-trigger context), but an API-reachable SECURITY
+DEFINER function should not be callable by unauthenticated roles regardless. EXECUTE was revoked
+from `PUBLIC`, `anon` and `authenticated`. Verified afterwards that **both roles lost EXECUTE and
+the `ensure_rls` event trigger still auto-enables RLS** on newly created tables. The migration is
+guarded by an existence check, so it is a no-op on plain PostgreSQL and the local rebuild still
+passes 63/63. Re-running the security advisor afterwards returned **only** the 27 intentional
+INFO items.
+
+### Function security review
+
+All nine application functions are **`SECURITY INVOKER`** with an explicitly pinned
+`SET search_path = pg_catalog, public`. **No `SECURITY DEFINER` function was created**, and none
+was needed — nothing in this schema requires elevated execution, and none is used to sidestep RLS.
+
+All eight views are `WITH (security_invoker = true)`, so they cannot bypass base-table RLS.
+
+### API exposure
+
+`anon` and `authenticated` hold **no table privileges whatsoever** — not SELECT, INSERT, UPDATE or
+DELETE — on any application table or view, verified with `has_table_privilege`. Combined with
+RLS-enabled-and-forced on all 27 tables, the API surface is closed by two independent mechanisms.
+Prompt 5 must grant deliberately and narrowly rather than assume a default-open baseline.
+
+Internal/admin structures (`import_batches`, `import_issues`, `asset_mapping_audit`, `audit_logs`,
+`owner_confirmed_*`, `app_users`, `user_region_access`) live in `public` and are therefore within
+the exposed API schema, though currently unreachable. **Revisit in Prompt 5:** either restrict
+them by policy to admin/manager roles, or move them to a non-exposed schema.
+
+### Not created in this phase, by instruction
+
+| Item | State |
+| --- | --- |
+| Storage buckets | **0** — none created. Certificate/document upload is a later phase; an unsecured bucket now would be worse than none |
+| Edge Functions | **0** — `supabase/functions/` untouched. Notification and Clerk-webhook functions belong to later prompts |
+| Cron jobs | **none scheduled.** `pg_cron` is *available* on this project but **not installed**; the notification schedule belongs to the Alert/Notification phase |
+| Extensions installed | `pg_stat_statements`, `pgcrypto`, `plpgsql`, `supabase_vault`, `uuid-ossp` (Supabase defaults). `gen_random_uuid()` resolves natively on PG17 |
+| Clerk integration / RLS policies | deferred to Prompt 5 |
+
+### RLS status — accurate statement
+
+RLS is **enabled and forced on all 27 application tables, with zero policies**, which in
+PostgreSQL means deny-all for every non-superuser role. Combined with the absence of table grants,
+nothing is reachable through the API today.
+
+**This is not yet production-grade authorization.** It is a safe closed default. Role-based,
+region-scoped policies, the Clerk→Supabase JWT integration, `app_users` provisioning and
+authenticated authorization tests are all Prompt 5 work. No broad temporary policy
+(e.g. "authenticated can do everything") was created at any point, and none must be.
 
 ---
 
@@ -108,6 +208,7 @@ coincidence, `eu-west-3` is the next best choice at a modest latency cost.
 | `0014_mapping_lifecycle_enums.sql` | adds `needs_station_mapping` and `owner_confirmed` enum values (separate file: PostgreSQL will not let a new enum value be *used* until the adding transaction commits) |
 | `0015_srv_station_mapping.sql` | nullable `station_id`; five-state lifecycle CHECK; raw source station evidence; `owner_confirmed_station_aliases`; `owner_confirmed_part_numbers`; their lookup functions; RLS for both |
 | `0016_views_station_mapping.sql` | SRV views rebuilt for the lifecycle; adds `v_srv_mapping_queue` |
+| `0017_platform_hardening.sql` | revokes EXECUTE on Supabase's `rls_auto_enable()` from PUBLIC/anon/authenticated; guarded so it is a no-op off-Supabase |
 
 Ordering matters: `import_batches` precedes the asset tables so provenance is a real FK, and
 `app_users` precedes everything that records an actor. Two FKs on `stations`/`units` are added
@@ -578,18 +679,26 @@ psql -d cng_check -f supabase/tests/schema_scenarios.sql     # rolls back; leave
 
 ---
 
-## 13. What cannot be verified without a hosted Supabase project
+## 13. Verification status after Prompt 4
 
-| Item | Why it needs the real project |
+Resolved by Prompt 4:
+
+| Item | Result |
 | --- | --- |
-| **RLS policy behaviour** | Policies are not written yet, and the `anon`/`authenticated`/`service_role` roles and `request.jwt.claims` GUC are Supabase-provided. `cng_current_app_user_id()` is untested against a real Clerk JWT. |
-| **Clerk ↔ Supabase JWT integration** | The JWT template, audience and signing configuration exist only in the hosted projects. The critical test — an unauthenticated client reads **zero** rows from every table — needs both. |
-| **`gen_random_uuid()` provenance** | Available natively in PG 13+ here; on Supabase it may come from `pgcrypto`. Confirm the extension set on the real project. |
-| **`pg_cron` scheduling** | The extension is not installed locally. Cron syntax and the Edge Function invocation path are untested. |
-| **Performance at real volume** | Verified on an empty database. The 2 662-row SRV table and the union views need `EXPLAIN ANALYZE` against imported data, especially `v_vessel_management` (UNION ALL over two tables) and `v_data_quality_queue` (7-way UNION ALL). |
-| **Supabase Advisors** | The security/performance linters run only against a hosted project. |
-| **Timezone data** | `Africa/Cairo` resolves correctly locally; confirm the hosted instance agrees, including any future DST rule change. |
-| **Generated-column behaviour under PostgREST** | `stations.normalized_name` and `units.normalized_name` are `GENERATED ALWAYS … STORED`; confirm PostgREST exposes them read-only as expected. |
+| **`gen_random_uuid()` provenance** | Resolves natively on PG17; `pgcrypto` is also installed. Confirmed working — every table defaults on it. |
+| **Supabase Advisors** | Run. Two WARN findings fixed; the rest classified (§0). |
+| **Timezone data** | `cng_business_date()` returned the expected Africa/Cairo date on the hosted instance, matching local. |
+| **Schema fidelity on PG17** | Every migration applied unchanged; no PG16→PG17 compatibility issue arose. Five MD5 signatures matched local byte-for-byte. |
+
+Still outstanding:
+
+| Item | Needs |
+| --- | --- |
+| **RLS policy behaviour** | Prompt 5. Policies do not exist yet; `cng_current_app_user_id()` is untested against a real Clerk JWT. |
+| **Clerk ↔ Supabase JWT integration** | Prompt 5. The critical test — an *authenticated* client reads only its permitted rows, and an unauthenticated one reads **zero** — needs the Clerk application wired up. |
+| **`pg_cron` scheduling** | Alert/Notification phase. The extension is available on this project but not installed, and no job is scheduled. |
+| **Performance at real volume** | Prompt 22. Verified on an empty database; the 2 662-row SRV table and the union views need `EXPLAIN ANALYZE` against imported data, especially `v_vessel_management` (UNION ALL) and `v_data_quality_queue` (7-way UNION ALL). The 72 unindexed-FK advisories should be re-judged then. |
+| **Generated-column behaviour under PostgREST** | Prompt 5, once any grant exists. `stations.normalized_name` and `units.normalized_name` are `GENERATED ALWAYS … STORED`. |
 
 ---
 
