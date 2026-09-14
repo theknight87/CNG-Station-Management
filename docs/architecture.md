@@ -99,52 +99,180 @@ region (id, code, name)
 
 `job_number` is nullable on `station` and `unit` (data principle #4).
 
-### Safety Relief Valves — the polymorphic-parent decision
+### Safety Relief Valves — parentage and mapping status
 
-An SRV belongs to exactly one of: compressor, storage vessel, dispenser. Three options were
-considered:
+An SRV ultimately belongs to exactly one of: compressor, storage vessel, dispenser. Three
+options were considered for modelling that parent:
 
 | Option | Verdict |
 | --- | --- |
-| **A.** Three nullable FK columns + `CHECK` that exactly one is non-null | **Chosen** |
+| **A.** Three nullable FK columns, constrained by `mapping_status` | **Chosen** |
 | B. Untyped `(parent_type, parent_id)` pair | Rejected — no referential integrity |
-| C. Separate `srv_compressor` / `srv_vessel` / `srv_dispenser` tables | Rejected — triples every query and every policy; aggregate views become a 3-way UNION |
+| C. Separate `srv_compressor` / `srv_vessel` / `srv_dispenser` tables | Rejected — triples every query and every policy; aggregate views become a 3-way UNION; unresolved records have no home at all |
 
 Option A keeps **one SRV table** (satisfying "do not duplicate SRV records"), keeps real
-foreign keys, and makes the exactly-one-parent rule a database constraint rather than an
+foreign keys, and lets the exactly-one-parent rule be a database constraint rather than an
 application convention.
 
+#### Why parentage is not unconditionally strict
+
+A strict "exactly one equipment parent, always" constraint is correct for fully resolved
+records but **cannot represent historical imported data**, where the source often proves the
+Station and no more. Under a strict constraint such a row could only be rejected (violating
+principles #9 and #10) or given a fabricated parent (violating principles #1 and #8). Both are
+unacceptable, so the constraint is made **conditional on an explicit mapping status** — the
+record states how far the evidence goes, and the database enforces the shape that status
+implies.
+
 ```
-safety_relief_valve (
-  id,
-  compressor_id      NULL REFERENCES compressor,
-  storage_vessel_id  NULL REFERENCES storage_vessel,
-  dispenser_id       NULL REFERENCES dispenser,
-  tag_number TEXT, serial_number TEXT NULL, set_pressure NUMERIC NULL,
-  last_test_date DATE NULL, next_due_date DATE NULL,
-  CHECK (num_nonnulls(compressor_id, storage_vessel_id, dispenser_id) = 1)
+installed_srv (
+  id                 UUID PRIMARY KEY,
+
+  station_id         UUID NOT NULL REFERENCES station(id),
+  unit_id            UUID NULL,
+  compressor_id      UUID NULL,
+  storage_vessel_id  UUID NULL,
+  dispenser_id       UUID NULL,
+
+  mapping_status     srv_mapping_status NOT NULL,   -- resolved | needs_unit_mapping
+                                                    -- | needs_equipment_mapping | conflict
+  mapping_note       TEXT NULL,        -- why it is unresolved / what the conflict is
+
+  tag_number         TEXT NULL,
+  serial_number      TEXT NULL,        -- TEXT, nullable (principles #5, #11)
+  set_pressure       NUMERIC NULL,
+  set_pressure_unit  TEXT NULL,
+  last_test_date     DATE NULL,
+  next_due_date      DATE NULL,        -- Days Left derived from this, never stored
+
+  source_raw         JSONB NULL,
+  import_batch_id    UUID NULL,
+  needs_review       BOOLEAN NOT NULL DEFAULT FALSE,
+  review_reason      TEXT NULL
 )
 ```
 
-There is **no** `unit_id` or `station_id` on the SRV row. Location is derived — that is what
-prevents an SRV from ever becoming an independent station asset, and what guarantees the
-Unit tab and the global module read the same truth.
+`station_id` is `NOT NULL`: a row is only created once the Station is confidently identified.
+Source rows that do not even prove a Station are **not** forced into this table — they land in
+the import staging/review queue (§ *Unmappable source rows* below) so that nothing is discarded
+and nothing is guessed.
 
-### Derived location view
+#### Constraint 1 — shape must match mapping status
+
+```sql
+CHECK (
+  CASE mapping_status
+    WHEN 'resolved' THEN
+      unit_id IS NOT NULL
+      AND num_nonnulls(compressor_id, storage_vessel_id, dispenser_id) = 1
+    WHEN 'needs_unit_mapping' THEN
+      unit_id IS NULL
+      AND num_nonnulls(compressor_id, storage_vessel_id, dispenser_id) = 0
+    WHEN 'needs_equipment_mapping' THEN
+      unit_id IS NOT NULL
+      AND num_nonnulls(compressor_id, storage_vessel_id, dispenser_id) = 0
+    WHEN 'conflict' THEN
+      num_nonnulls(compressor_id, storage_vessel_id, dispenser_id) <= 1
+  END
+)
+```
+
+This makes every unresolved state **explicit and self-describing**: a NULL parent is never
+ambiguous, because the status says whether it means "not yet mapped" or "evidence disputed".
+It is impossible to have a half-mapped record that silently reads as resolved, and impossible
+for a resolved record to lack a parent.
+
+`conflict` is deliberately the permissive branch — it holds a row whose sources disagree,
+including one where a provisional parent was recorded before the disagreement surfaced. It is
+never treated as mapped by any view.
+
+#### Constraint 2 — a resolved parent must belong to the stated Unit and Station
+
+A plain FK proves the parent exists, not that it sits in the right Unit. Enforced
+declaratively with **composite foreign keys** rather than triggers:
+
+```sql
+-- supporting uniqueness on the parents (id is already unique; these make the pairs referenceable)
+ALTER TABLE unit            ADD UNIQUE (id, station_id);
+ALTER TABLE compressor      ADD UNIQUE (id, unit_id);
+ALTER TABLE storage_vessel  ADD UNIQUE (id, unit_id);
+ALTER TABLE dispenser       ADD UNIQUE (id, unit_id);
+
+-- on installed_srv
+FOREIGN KEY (unit_id, station_id)          REFERENCES unit(id, station_id),
+FOREIGN KEY (compressor_id, unit_id)       REFERENCES compressor(id, unit_id),
+FOREIGN KEY (storage_vessel_id, unit_id)   REFERENCES storage_vessel(id, unit_id),
+FOREIGN KEY (dispenser_id, unit_id)        REFERENCES dispenser(id, unit_id)
+```
+
+Under the default `MATCH SIMPLE` semantics a composite FK is **not checked when any of its
+columns is NULL**. That is exactly the behaviour required here:
+
+- Parent set (which, by Constraint 1, means `unit_id` is also set) → the pair is checked, so the
+  equipment provably belongs to that Unit, and the Unit provably belongs to that Station. The
+  chain `SRV → equipment → unit → station` is therefore consistent by construction.
+- Parent NULL → the equipment FK is dormant, costing nothing.
+- `unit_id` NULL → the unit/station FK is dormant; `station_id` is still guarded by its own
+  single-column FK.
+
+So the full strictness applies precisely to resolved records, and no trigger is needed. A later
+attempt to move a Unit to another Station, or equipment to another Unit, cannot orphan a
+resolved SRV — the composite FK rejects it.
+
+#### Derived location and Days Left
 
 ```sql
 CREATE VIEW srv_full AS
-SELECT s.*, u.id AS unit_id, st.id AS station_id, r.id AS region_id,
-       (s.next_due_date - CURRENT_DATE) AS days_left
-FROM safety_relief_valve s
-JOIN <parent resolution> ... JOIN unit u JOIN station st JOIN region r;
+SELECT s.*,
+       COALESCE(c.unit_id, v.unit_id, d.unit_id, s.unit_id) AS effective_unit_id,
+       st.region_id,
+       CASE WHEN s.next_due_date IS NOT NULL
+            THEN s.next_due_date - CURRENT_DATE END          AS days_left,
+       (s.mapping_status <> 'resolved')                      AS needs_mapping
+FROM installed_srv s
+JOIN station st          ON st.id = s.station_id
+LEFT JOIN compressor c   ON c.id  = s.compressor_id
+LEFT JOIN storage_vessel v ON v.id = s.storage_vessel_id
+LEFT JOIN dispenser d    ON d.id  = s.dispenser_id;
 ```
 
-`days_left` is computed here and nowhere else (principles #12, #13). `NULL` next-due-date
-yields `NULL` days left — never `0`, never "overdue".
+`days_left` is computed here and nowhere else (principles #12, #13); a NULL due date yields
+NULL — never `0`, never "overdue".
 
-The same pattern gives `vessel_full`, `gas_detector_full`, `hose_full` for the other global
-modules. **All four global modules are views; none of them owns records.**
+Note that `station_id` and `unit_id` on the row are **not a second source of truth competing
+with the parent**: for resolved records the composite FKs force them to agree with the parent
+chain, so they are a constrained denormalization, not a divergent copy. For unresolved records
+they are the only location evidence that exists.
+
+#### Consumers
+
+| Surface | Filter |
+| --- | --- |
+| Unit → SRVs tab | `unit_id = :unitId AND mapping_status IN ('resolved','needs_equipment_mapping')` — **Unit mapping confirmed only** |
+| Station SRV rollup | `station_id = :stationId` (all statuses, unresolved flagged) |
+| Global SRV Management | all rows; resolved and unresolved, with a *Needs Mapping* badge and a status filter |
+| Admin → Data Quality | `mapping_status <> 'resolved'` plus `needs_review = true`, as a work queue |
+
+One table, one row per SRV, different filters. Both SRV surfaces render the same table
+component over `srv_full`.
+
+#### Unmappable source rows
+
+A source row that does not prove even a Station is still never discarded (principle #10). It is
+retained in the import staging table with its `source_raw`, its batch/file/row provenance, and
+a review reason, and it is surfaced in Admin → Data Quality. It is promoted into
+`installed_srv` only when a human confirms its Station.
+
+#### Resolution workflow
+
+Mapping is completed by a human in Admin → Data Quality, or from the SRV record itself:
+`needs_unit_mapping` → assign Unit → `needs_equipment_mapping` → assign parent equipment →
+`resolved`. Each transition is audited with who and when, and `source_raw` remains untouched
+so the original evidence stays inspectable. Nothing auto-promotes.
+
+The same pattern (owning table + aggregate view) gives `vessel_full`, `gas_detector_full`, and
+`hose_full` for the other global modules. **All four global modules are views; none of them
+owns records.**
 
 ### Hoses
 
@@ -192,6 +320,7 @@ Two cross-cutting concerns, applied to every imported table:
 /manage/hoses
 /admin/users
 /admin/import
+/admin/data-quality                unresolved mappings + flagged rows
 ```
 
 `/units/:unitId/srvs` and `/manage/srvs` render the **same table component** against the
@@ -283,8 +412,9 @@ and first deploy of an empty shell. New Supabase organization and project create
 application created and wired; protected routes working. `.env.example` written.
 
 **Phase 2 — Core schema and RLS**
-Migrations for `region`, `station`, `unit`, the five equipment types, `safety_relief_valve`
-(with the exactly-one-parent constraint), `hose`, `app_user`. Scope helper functions and RLS
+Migrations for `region`, `station`, `unit`, the five equipment types, `installed_srv`
+(with its status-conditional parent constraint and composite foreign keys), `hose`,
+`app_user`. Scope helper functions and RLS
 policies on every table. Canonical region seed. Generated TypeScript types.
 
 **Phase 3 — Hierarchy browsing**
@@ -292,8 +422,10 @@ Region → Station → Unit navigation, Unit equipment tabs, read-only. Derived 
 including dynamic `days_left`. Empty and NULL states rendered as genuinely empty.
 
 **Phase 4 — SRV model and the two views**
-Unit SRVs tab and global SRV Management, both over `srv_full` with one shared table
-component. Filtering, sorting, due-status colouring, CSV export.
+`installed_srv` with its status-conditional `CHECK` and composite foreign keys; the
+`srv_mapping_status` enum; `srv_full`. Unit SRVs tab (Unit-confirmed records only) and global
+SRV Management (all statuses, *Needs Mapping* badge and filter), both over `srv_full` with one
+shared table component. Filtering, sorting, due-status colouring, CSV export.
 
 **Phase 5 — Remaining global modules**
 Vessels, Gas Detector, Hoses management on the same pattern.
@@ -304,8 +436,8 @@ principles (nullable job number, nullable serial, TEXT identifiers). Audit trail
 
 **Phase 7 — Data import**
 Importers under `scripts/import/` with a mandatory dry-run report: rows read, rows mapped,
-rows flagged `needs_review` with reason, values normalized and by which rule. `source_raw`
-populated. Nothing is imported until a dry-run is reviewed. Admin import UI last.
+rows flagged `needs_review` with reason, rows landing in each `mapping_status`, and values
+normalized and by which rule. `source_raw` populated. Nothing is imported until a dry-run is reviewed. Admin import UI last.
 
 **Phase 8 — Notifications**
 `notification_log`, Edge Functions for due-date scanning, Resend email, Web Push with this
@@ -324,8 +456,10 @@ runbook in `docs/operations.md`.
 | A1 | **Clerk↔Supabase JWT integration** is the single point of failure for all authorization; template or key misconfiguration silently degrades to anonymous access | Critical | Deny-by-default policies (no anonymous grants at all); an integration test that asserts an unauthenticated client reads **zero** rows from every table |
 | A2 | **RLS policy complexity** — scope resolves through 3–4 joins for SRVs; a wrong policy over-exposes or blocks legitimate access | High | Centralize in `SECURITY DEFINER` helper functions; document each policy in `docs/rls-policies.md`; test matrix of role × scope × table |
 | A3 | **RLS performance** — deep scope joins evaluated per row on large aggregate views | Medium | Index every FK; wrap scope lookup in a `STABLE` function so the planner caches it; measure the global SRV view early with realistic row counts |
-| A4 | **View-vs-source divergence** — someone "fixes" the global SRV module by adding a table or a `unit_id` column, quietly duplicating records | High | Structural: no `unit_id` on SRV; both surfaces render one component over one view; stated as a rule in CLAUDE.md |
-| A5 | **Polymorphic SRV parent** makes generic joins awkward and invites a `parent_type` shortcut later | Medium | `CHECK` constraint plus a resolution view that hides the branching from all callers |
+| A4 | **View-vs-source divergence** — someone "fixes" the global SRV module by adding a second table, quietly duplicating records | High | Structural: one `installed_srv` table; both surfaces render one component over `srv_full`; stated as a rule in CLAUDE.md |
+| A5 | **Polymorphic SRV parent** makes generic joins awkward and invites a `parent_type` shortcut later | Medium | Status-conditional `CHECK` plus `srv_full`, which hides the branching from all callers |
+| A5b | **Unresolved SRVs become permanent** — the mapping queue is never worked, and `station_id`/`unit_id` drift into being treated as the real parentage | High | `mapping_status` surfaced on every SRV row and counted on the dashboard; Admin → Data Quality as a standing work queue; composite FKs keep the denormalized columns consistent with the parent for every resolved row |
+| A5c | **A Unit or equipment record is re-parented** (Unit moved to another Station), orphaning a resolved SRV's location columns | Medium | Composite foreign keys reject the move rather than allowing silent inconsistency |
 | A6 | **Schema-as-public-API** — client talks straight to PostgREST, so renames are breaking | Medium | All access through `src/lib/data/*`; regenerate types on every migration; additive migrations only |
 | A7 | **Derived Days Left recomputed on every read**; also timezone-dependent | Medium | Compute in one view with an explicit date basis; decide and document the reference timezone once |
 | A8 | **Edge Function notification duplication or silent failure** — cron retries or an unhandled Resend error can double-send or drop alerts | Medium | `notification_log` with a uniqueness key per (item, threshold, day); failures logged and surfaced in an admin view, not swallowed |
@@ -348,7 +482,8 @@ runbook in `docs/operations.md`.
 | D6 | **Missing serial number** discards an otherwise good asset row | Medium | Serial nullable; row imported and flagged, never rejected (principle #5) |
 | D7 | **Date parsing ambiguity** — `03/04/2025` is two different dates; Excel serial numbers vs text dates; mixed formats within one column | High | Detect format per column, not per cell; refuse to import a column whose format is ambiguous and escalate; preserve the raw string in `source_raw` |
 | D8 | **Duplicate source rows** (same SRV listed in a station sheet and an SRV register) create duplicate records | High | Deterministic dedupe key (parent + tag/serial) where available; where absent, import both and flag as suspected duplicates for human resolution — never silently merge |
-| D9 | **An SRV row that names a Unit but not its parent equipment** — tempting to attach it to the Unit and break the hierarchy rule | High | The `CHECK` constraint makes it impossible; such rows import with `needs_review = true` and no parent assignment pending resolution |
+| D9 | **An SRV row that names a Station or Unit but not its parent equipment** — tempting to attach it to the Unit (breaking the hierarchy rule) or to reject it (losing the record) | High | Neither: it imports with `mapping_status = 'needs_unit_mapping'` or `'needs_equipment_mapping'`, keeps whatever location the source proves, and is excluded from Unit SRV tabs until the Unit is confirmed. The status-conditional `CHECK` makes a silently half-mapped row impossible |
+| D9b | **Sources disagree on an SRV's parent** (two sheets place the same tag on different equipment) | High | `mapping_status = 'conflict'` with `mapping_note`; both readings preserved in `source_raw`; never auto-resolved by precedence or recency |
 | D10 | **Blank vs "N/A" vs "-" vs `0`** — placeholder text imported as real data | Medium | Explicit placeholder list normalized to `NULL`; `0` for a pressure or a date is **never** treated as a placeholder without evidence (principles #1, #14) |
 | D11 | **Merged cells / multi-row headers / trailing total rows** in source spreadsheets shift every column | High | Header detection asserted explicitly per file; dry-run prints the detected header row and a sample mapping for human confirmation before any write |
 | D12 | **Unit-of-measure inconsistency** (bar vs psi, mm vs inch) in pressure and size columns | Medium | Store the value and its source unit; convert only in the display layer, and only when the source unit is stated — never infer |
@@ -366,3 +501,5 @@ runbook in `docs/operations.md`.
 4. Reference timezone for due-date arithmetic (Africa/Cairo assumed unless stated).
 5. Does a Hose attach only to Dispensers, or also to other equipment in the source data?
 6. Retention: is historical inspection data being imported, or only current status?
+7. Who owns the mapping queue, and is there a target for clearing `needs_unit_mapping` /
+   `needs_equipment_mapping` backlogs?

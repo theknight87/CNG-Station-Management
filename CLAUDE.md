@@ -88,12 +88,51 @@ station assets. An SRV may belong to a **Compressor**, a **Storage Vessel**, or 
 Rules:
 
 - An SRV **must not** appear in the physical hierarchy as a standalone asset under a Unit
-  or Station.
-- Every SRV has exactly one parent equipment record; its Unit/Station/Region are **derived**
-  from that parent, never stored redundantly as the source of truth.
+  or Station. The UI hierarchy is and remains
+  `Region → Station → Unit → Equipment → SRV`.
+- A **resolved** SRV has exactly one parent equipment record, and that parent must belong to
+  the Unit and Station recorded on the SRV.
 - The **Unit → SRVs tab** and the **global SRV Management module** are *views* over the same
   source records.
 - **Never duplicate SRV records** to make a view easier to build. One SRV = one row.
+
+### Unresolved imported SRVs (mapping status)
+
+Historical source data sometimes proves an SRV's **Station** but not its Unit, and sometimes
+proves the Unit but not which Compressor, Vessel, or Dispenser it sits on. Such records are
+**preserved, not rejected and not guessed** (data principles #1, #8, #9, #10).
+
+The installed-SRV record therefore carries:
+
+| Column | Nullability |
+| --- | --- |
+| `station_id` | **required** — set only when the Station is confidently identified |
+| `unit_id` | nullable |
+| `compressor_id` | nullable |
+| `storage_vessel_id` | nullable |
+| `dispenser_id` | nullable |
+| `mapping_status` | required |
+
+`mapping_status` values:
+
+| Status | Meaning | Shape |
+| --- | --- | --- |
+| `resolved` | fully mapped | Unit set; exactly one equipment parent set |
+| `needs_unit_mapping` | Station proven, Unit not | Unit NULL; no equipment parent |
+| `needs_equipment_mapping` | Station and Unit proven, parent equipment not | Unit set; no equipment parent |
+| `conflict` | source evidence disagrees | held for human resolution |
+
+Unresolved records:
+
+- **remain stored, searchable, and visible in Global SRV Management**, labelled *Needs Mapping*
+- appear in **Admin → Data Quality**
+- are **never automatically assigned** to a Unit or to equipment
+- **do not appear in any Unit's SRV tab** — that tab queries only `unit_id`-confirmed records
+
+This accommodation exists solely to preserve incomplete historical source data until mapping
+is resolved. It does **not** make an SRV an independent station asset: an unresolved record is
+explicitly marked as unmapped, is excluded from the physical hierarchy views, and is expected
+to become `resolved`.
 
 The same principle applies to the other aggregate modules (Vessels, Gas Detectors, Hoses):
 they are read and management views over hierarchy-owned records and must not alter the hierarchy.
