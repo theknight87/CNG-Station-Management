@@ -18,6 +18,76 @@ Related: [`architecture.md`](./architecture.md) · [`decisions.md`](./decisions.
 
 ---
 
+## 0. Hosted environment status — Prompt 4
+
+**Status: BLOCKED — awaiting a manual dashboard action. No hosted resource has been created or
+modified.**
+
+| Item | Value |
+| --- | --- |
+| Supabase Organization | **not yet created** |
+| Supabase Project | **not yet created** |
+| Project reference | — |
+| Region | — |
+| Migrations applied to a hosted database | **none** |
+
+### Pre-flight safety check (2026-09-14) — all nine points pass
+
+| # | Check | Result |
+| --- | --- | --- |
+| 1 | Working directory | `/home/user/CNG-Station-Management` |
+| 2 | Git remote | `theknight87/CNG-Station-Management`, branch `claude/stoic-noether-tu4jpm` |
+| 3 | Supabase CLI link | **not linked** — no `supabase/.temp`, no `project-ref`, no `config.toml` |
+| 4 | Stale project references | none. The only matches are the placeholder `VITE_SUPABASE_URL=` in `.env.example` and the two code references that read it. No project ref, host or connection string exists anywhere in the repository |
+| 5 | Automatic reuse | impossible — nothing to reuse from |
+| 6 | `.env` files | none present (only `.env.example`, placeholders) |
+| 7 | Migrations | 16 present, correctly ordered `0001`–`0016` |
+| 8 | Baseline re-verified | clean rebuild from zero: 27 tables, 27 with RLS, **63/63 assertions pass** |
+| 9 | Isolation | **no Coding System resource was read, written, linked or contacted** |
+
+### Blocker: no dedicated Organization can be created programmatically
+
+The Supabase account contains exactly **one** organization:
+
+| Organization | ID | Plan | Contents |
+| --- | --- | --- | --- |
+| `theknight87` | `zmfivitbfpthxnjtcdlr` | free | `sp-coding-system` (**the Coding System project — out of bounds**) |
+
+That organization holds the Coding System project, so under the isolation rule it cannot host
+this project. Creating a new organization is **not available through the Supabase Management API
+or MCP tooling** — there is no create-organization operation; organizations can only be created
+from the Supabase dashboard by the account owner.
+
+Per the isolation rule, no existing organization is substituted, and no project was created.
+
+### Minimal action required from the owner
+
+1. Open <https://supabase.com/dashboard/org/_/new> (or Dashboard → organization switcher →
+   **New organization**).
+2. Name it **`CNG Station Management`**.
+3. Confirm creation, then tell this session to continue.
+
+Nothing else is needed: project creation, region selection, linking, migration and verification
+are all automatable from there.
+
+### Region recommendation (for when the organization exists)
+
+Closest available Supabase regions to Egypt, from the currently offered set:
+
+| Region | Location | Note |
+| --- | --- | --- |
+| **`eu-central-1`** | Frankfurt | **recommended** — lowest latency to Egypt of the available regions |
+| `eu-west-3` | Paris | slightly further |
+| `eu-south-*` | Milan/Spain | **not offered** by the current tooling |
+| `ap-south-1` | Mumbai | further east, higher latency |
+
+There is no Middle East or African region in the available set. Note that `sp-coding-system` also
+sits in `eu-central-1`; **a shared region is not a shared resource** — it is a datacentre
+location, and the projects remain entirely separate. If you prefer to avoid even that
+coincidence, `eu-west-3` is the next best choice at a modest latency cost.
+
+---
+
 ## 1. Migration files
 
 | File | Contents |
