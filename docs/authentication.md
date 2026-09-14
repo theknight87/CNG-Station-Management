@@ -349,6 +349,28 @@ happens in-app under RLS, and **ordinary authentication never assigns admin**.
 
 ---
 
+### Executed — 2026-09-14
+
+The bootstrap has been performed once, with the owner's explicit approval, against
+`user_3JKeiCQiDee4nJSegPpzfqeuywe` (app_users id `31d59e99-70cb-4155-bb91-8f813a70f37b`):
+`role` viewer -> admin, `is_active` false -> true. Exactly one row, enforced by a
+`GET DIAGNOSTICS ... ROW_COUNT` guard that would have aborted the transaction on any other count.
+No `user_region_access` row was created, because `cng_can_read_region()` returns true for `admin`
+without one.
+
+Verified afterwards through the real RLS path (role `authenticated`, `request.jwt.claims.sub` set
+to that Clerk id): `cng_current_role()` resolves to `admin`, all **six** Regions are visible
+(East, West, Canal, Delta, Alex, Upper), and `cng_can_access_unmapped_srv()` is true.
+
+**Audit evidence.** The architecture already supports recording this honestly — `audit_logs.actor_id`
+is nullable and `actor_label` is free text — so one `user_role_changed` row was written inside the
+same transaction, carrying the full before/after JSON. `actor_id` is **NULL**, because no
+application user performed it, and `actor_label` says exactly what did:
+*out-of-band database bootstrap (no application actor)*. No actor was invented and no application
+identity was claimed. This is the only row in `audit_logs`.
+
+---
+
 ## 10. Test strategy — and what each kind of test actually proves
 
 Two categories, deliberately not conflated.
