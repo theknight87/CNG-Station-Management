@@ -10,6 +10,8 @@
  * 2. Every request must carry a valid Svix signature; missing or invalid -> 401.
  * 3. Runs server-side with the service-role key, which bypasses RLS. That is
  *    why it does as little as possible and why the key never reaches a browser.
+ *    Its SQL privileges are narrowed to app_users alone (migration 0023): it
+ *    cannot write `role`, cannot grant region access, and cannot delete.
  * 4. IDENTITY SYNC AND AUTHORIZATION ARE SEPARATE CONCERNS. It may write email
  *    and name, and may create an account in a non-privileged pending state. It
  *    must NEVER write `role` and never re-activate an account, so no Clerk
@@ -49,6 +51,20 @@ function primaryEmail(data: ClerkUserEvent['data']): string | null {
 function fullName(data: ClerkUserEvent['data']): string | null {
   const name = [data.first_name, data.last_name].filter(Boolean).join(' ').trim()
   return name.length > 0 ? name : null
+}
+
+/** Diagnostics for the log only. The response body stays deliberately opaque. */
+function describeError(err: unknown): Record<string, string> {
+  if (err && typeof err === 'object') {
+    const e = err as { message?: unknown; code?: unknown; details?: unknown; hint?: unknown }
+    const out: Record<string, string> = {}
+    if (typeof e.message === 'string') out.message = e.message
+    if (typeof e.code === 'string') out.code = e.code
+    if (typeof e.details === 'string') out.details = e.details
+    if (typeof e.hint === 'string') out.hint = e.hint
+    if (Object.keys(out).length > 0) return out
+  }
+  return { message: String(err) }
 }
 
 Deno.serve(async (req: Request) => {
@@ -164,11 +180,15 @@ Deno.serve(async (req: Request) => {
         break
     }
   } catch (err) {
+    // A PostgrestError is a plain object, not an Error, so `instanceof Error`
+    // reported every database failure as "unknown" and hid the real cause.
+    // Postgres error text is server-side diagnostics (a privilege denial names
+    // a table, never a value) and never contains a key or a token.
     console.error(JSON.stringify({
       event: 'clerk_webhook_error',
       type: event.type,
       svix_id: svixId,
-      message: err instanceof Error ? err.message : 'unknown',
+      ...describeError(err),
     }))
     return new Response(JSON.stringify({ error: 'processing failed' }), { status: 500 })
   }

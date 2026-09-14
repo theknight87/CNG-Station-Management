@@ -495,5 +495,42 @@ BEGIN
   RESET ROLE;
 END $$;
 
+-- ===========================================================================
+-- 10. SERVICE ROLE (the Clerk user-sync webhook)
+-- ===========================================================================
+-- The webhook runs as `service_role`, which has BYPASSRLS on hosted Supabase.
+-- RLS therefore protects nothing against it and the GRANT layer is the ONLY
+-- thing standing between a leaked service-role key and the database. These
+-- assertions test that layer directly, which is why they do not use
+-- pg_temp.become (that helper sets a JWT claim, which service_role ignores).
+DO $$
+BEGIN
+  SET LOCAL ROLE service_role;
+
+  BEGIN
+    UPDATE app_users SET role = 'admin' WHERE clerk_user_id = 'clerk_view_east';
+    PERFORM pg_temp.ok(false, 'SR-1 service_role must NOT be able to write role');
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM pg_temp.ok(true, 'SR-1 service_role cannot write role -- no UPDATE(role) grant');
+  END;
+
+  BEGIN
+    INSERT INTO user_region_access (app_user_id, region_id)
+    SELECT id, (SELECT id FROM regions LIMIT 1) FROM app_users WHERE clerk_user_id = 'clerk_view_east';
+    PERFORM pg_temp.ok(false, 'SR-2 service_role must NOT be able to grant region access');
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM pg_temp.ok(true, 'SR-2 service_role cannot grant region access');
+  END;
+
+  BEGIN
+    DELETE FROM app_users WHERE clerk_user_id = 'clerk_view_east';
+    PERFORM pg_temp.ok(false, 'SR-3 service_role must NOT be able to delete an account');
+  EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM pg_temp.ok(true, 'SR-3 service_role cannot delete an account -- no hard deletes');
+  END;
+
+  RESET ROLE;
+END $$;
+
 DO $$ BEGIN RAISE EXCEPTION 'RLS_SUITE_ROLLBACK'; END $$;
 ROLLBACK;

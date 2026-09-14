@@ -242,6 +242,34 @@ an unsigned body — until the owner sets the signing secret and registers the e
 | `user.updated` | updates **only** `email` and `full_name` |
 | `user.deleted` | sets `is_active = false`. **Never deletes** — audit and mapping history reference `app_users` with `ON DELETE RESTRICT`, and that history must outlive the account |
 
+### Incident: the first live delivery failed with HTTP 500
+
+Clerk delivered `user.created` (svix id `msg_3JKe...`) three times on
+2026-09-14 ~19:31 UTC; every attempt returned 500 `{"error":"processing failed"}`.
+
+Root cause, from the project's own logs: `POST /rest/v1/app_users` returned **403** and
+PostgreSQL logged **`permission denied for table app_users`** for `service_role`. Migration
+0019 rebuilt the privilege layer from a REVOKE baseline and granted `authenticated` exactly what
+it needs; nothing ever granted `service_role` anything. `service_role` has BYPASSRLS, so RLS was
+never the blocker — the GRANT layer was, working exactly as designed.
+
+Notably the failure happened *after* signature verification, which is positive evidence that
+`CLERK_WEBHOOK_SIGNING_SECRET`, `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are all present
+and that the signing secret matches Clerk's: a missing secret returns 503 and a bad signature
+returns 401.
+
+Fixed by migration **0023**, which grants `service_role` only what the webhook needs, column by
+column, on `app_users` alone — deliberately *not* Supabase's usual blanket
+`GRANT ALL ... TO service_role`. After 0023 `service_role` still cannot write `role`, cannot
+touch any other table, and cannot delete. Assertions **SR-1/2/3** lock this in.
+
+A second, smaller defect was fixed at the same time: `err instanceof Error` reported every
+database failure as `"unknown"`, because a `PostgrestError` is a plain object. The handler now
+logs `message`/`code`/`details`/`hint`. The HTTP response body stays opaque.
+
+0023 also changes `app_users.is_active` to default **false**. It previously defaulted to true, so
+any INSERT that omitted the column would have created a live account.
+
 Security properties:
 
 - **Signature verified** with Svix (Clerk's official mechanism) before the body is trusted.
