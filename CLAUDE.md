@@ -346,6 +346,10 @@ history**. `source_raw` is never altered by a mapping decision.
 
 ## 10. Security rules (durable)
 
+*Status: implemented and verified end to end in a real browser on 2026-09-14 (Prompt 5). The
+temporary routes `/sign-in`, `/sign-up` and `/auth-test` are retained for acceptance testing and
+must be removed before production — see `docs/authentication.md` §11.*
+
 These hold for every future phase.
 
 - **The database is the authorization authority.** Clerk establishes identity; roles, region

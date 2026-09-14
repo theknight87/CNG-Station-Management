@@ -30,7 +30,12 @@ import { VesselsManagementPage } from '@/pages/VesselsManagementPage'
  * only by filter.
  */
 export const router = createBrowserRouter([
-  // Temporary Prompt-5 authentication routes. They sit OUTSIDE AuthGate:
+  // ===================================================================
+  // TEMPORARY — Prompt 5 authentication test routes. REMOVE BEFORE PRODUCTION.
+  // Kept deliberately for acceptance testing; removal checklist in
+  // docs/authentication.md §11.
+  // ===================================================================
+  // They sit OUTSIDE AuthGate:
   // sign-in must be reachable while signed out, and the test page must be
   // reachable while the account is still inactive — which is exactly the state
   // a first sign-in produces. Neither grants anything; the database decides.

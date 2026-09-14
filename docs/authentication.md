@@ -9,6 +9,9 @@ Related: [`database.md`](./database.md) · [`architecture.md`](./architecture.md
 
 ---
 
+> **Status: Prompt 5 COMPLETE — 2026-09-14.** Verified end to end in a real browser with a
+> genuine Clerk-issued session token (§10). Remaining items in §13 are non-blocking and tracked.
+
 ## 1. Integration method — current, not deprecated
 
 This project uses **Supabase Third-Party Auth with Clerk**, the current officially supported
@@ -392,18 +395,48 @@ self-escalation rejection, audit immutability and personal-data isolation.
 **They do not prove the Clerk → Supabase token exchange.** A synthetic claim is not a Clerk
 signature.
 
-### End-to-end tests — **not performed, and not performable from this session**
+### End-to-end tests — **PASSED 2026-09-14, in a real browser**
 
-A real end-to-end test needs a browser session against Clerk and an HTTPS call to the Supabase
-project. Both hosts are blocked by this environment's organization egress policy (403 on
-CONNECT):
+Performed by the owner, because this environment cannot: Clerk and the Supabase API are both
+blocked by its organization egress policy (403 on CONNECT), so no session in this repository can
+reach them. The test ran against `/auth-test` with a genuine Clerk-issued session token:
 
-- `ypkggegquetvpsflkaxg.supabase.co`
-- `api.supabase.com`
-- `joint-lion-2271.clerk.accounts.dev`
-- `clerk.joint-lion-2271.clerk.accounts.dev`
+| Observed | Result |
+| --- | --- |
+| Clerk session token obtained | yes |
+| Clerk user id | matches the webhook-synchronized `app_users` row |
+| Application role | `admin` |
+| `is_active` | `true` |
+| `user_region_access` grants | **none** |
+| Regions visible under RLS | **East, West, Canal, Delta, Alex, Upper** |
+| JWT errors | none |
 
-Per the owner's instruction, no end-to-end claim is made. See §13 for what the owner must run.
+This is the complete real path: Clerk authentication -> Clerk-issued session token -> Supabase
+Third-Party Auth verification -> PostgreSQL -> `app_users` authorization -> RLS -> Admin access to
+all six Regions. It is the claim the database suites deliberately could not make, because a
+synthetic `request.jwt.claims` is not a Clerk signature.
+
+**Six Regions with zero region grants is the architecture working, not a gap.**
+`cng_can_read_region()` short-circuits to true for `admin` and `manager`; `user_region_access` is
+how `engineer` and `viewer` are scoped. An admin with grant rows would have been the anomaly.
+
+#### The one defect this test surfaced
+
+The first browser run returned `JWT not yet valid` on the `regions` query while `app_users`
+succeeded 3 ms earlier. The hosted edge logs showed the probe running twice (React StrictMode) —
+six requests in ~450 ms, one 401 among them, and the same request succeeding 240 ms later.
+Root cause in application code: `useSupabaseClient` rebuilt the client inside
+`useMemo(..., [session])`, so a new client — an independent token path — appeared per session
+object and per StrictMode mount. Six concurrent `accessToken` callbacks across multiple clients is
+what let one request carry a just-minted token while its sibling carried the previous one.
+
+Fixed by making the client a singleton that reads the **current** session at request time.
+Nothing was weakened: no JWT validation disabled, no RLS change, no anonymous access, no retry or
+delay, no `service_role` in the browser. `CLIENT-1..5` pin it permanently.
+
+Because clock skew could not be measured from this environment, it was never asserted: `/auth-test`
+now reports `iat`/`nbf`/`exp` as deltas against the Supabase server clock and states a verdict. It
+reads only those three claims and never renders, logs or stores the token (`TIMING-1`).
 
 ---
 
@@ -442,19 +475,30 @@ sign-out use Clerk's components.
 This is **UX only**. Hiding a screen is not security; the database refuses unauthorized reads and
 writes regardless of what is rendered. The professional interface begins in Prompt 7.
 
+### TEMPORARY routes — remove before production
+
+`/sign-in`, `/sign-up` and `/auth-test` exist only to perform and repeat the real authentication
+test. They are **kept on purpose** for later acceptance testing, and every one of their source
+files says TEMPORARY at the top.
+
+They sit **outside `AuthGate`** by design: sign-in must work while signed out, and `/auth-test`
+must be reachable while an account is still inactive — the state a first sign-in produces.
+Reachability grants nothing. Every value the page shows is what RLS chose to return for that
+caller, and an inactive account sees only its own `app_users` row.
+
+Removal checklist for the production cut: delete `src/features/auth/SignInPage.tsx`,
+`SignUpPage.tsx`, `AuthTestPage.tsx`, their exports in `src/features/auth/index.ts`, and the three
+route entries at the top of `src/routes.tsx`. Nothing else depends on them. Keep
+`src/lib/auth/tokenTiming.ts` only if the diagnostic is still wanted.
+
 ---
 
 ## 13. Known deferrals
 
 | Item | Phase | Why |
 | --- | --- | --- |
-| `VITE_CLERK_PUBLISHABLE_KEY` in `.env.local` | **blocked on owner** | Clerk hosts are egress-blocked; the key must be pasted from the Clerk dashboard |
-| Visual confirmation of the Third-Party Auth entry | **blocked on owner** | GoTrue runtime config is unreachable from this session (§10a) |
-| First real Clerk sign-in | **blocked on owner** | needs a browser against Clerk |
-| `CLERK_WEBHOOK_SIGNING_SECRET` Edge Function secret + endpoint registration in Clerk | **blocked on owner** | the deployed function fails closed until both are done |
-| First admin bootstrap | after sign-in | needs the owner's verified Clerk user id |
-| End-to-end Clerk → Supabase → RLS tests | after all of the above | cannot be honestly claimed before then |
-| Moving authz helpers to a non-exposed schema | Prompt 22 | removes RPC exposure of the two DEFINER helpers |
+| Moving authz helpers to a non-exposed schema | Prompt 22 | Supabase's linter WARNs that `cng_current_role()` and `cng_has_region_grant()` are callable by `authenticated` via `/rest/v1/rpc/`. Not exploitable: neither takes a user-supplied identity, both answer only about the caller — so a caller learns their own role and their own grant, which they may already read. Tracked, not blocking |
+| Removing `/sign-in`, `/sign-up` and `/auth-test` | before production | temporary Prompt-5 routes, kept deliberately for acceptance testing (§11) |
 | Manager access to the user directory | business decision | currently manager has none, per "limit to actual operational need" |
 | Manager managing region access | business decision | currently admin only |
 | Notification delivery (Resend, VAPID, cron) | later phases | out of scope here |

@@ -692,8 +692,20 @@ cng-station-management/
 
 Each phase ends in a deployable state.
 
-**Phase 0 — Documentation and decisions** *(this phase)*
-CLAUDE.md, architecture, file structure, risks. No code. **← stopping point**
+### Status
+
+| Phase / Prompt | State |
+| --- | --- |
+| Prompt 0 — documentation and decisions | **complete** |
+| Scaffold — Vite/React/TS, Tailwind, shadcn/ui, router, `.env.example` | **complete** |
+| Source analysis (read-only) — data dictionary, import mapping, quality report | **complete** |
+| Prompt 3 — database schema as local migrations | **complete** |
+| Prompt 4 — dedicated Supabase environment, migrations applied | **complete** |
+| **Prompt 5 — Clerk authentication + RLS and region authorization** | **COMPLETE, verified end to end in a real browser 2026-09-14** (`docs/authentication.md` §10) |
+| Prompt 6 onward | not started |
+
+**Phase 0 — Documentation and decisions**
+CLAUDE.md, architecture, file structure, risks. No code.
 
 **Phase 1 — Foundation**
 Vite/React/TS scaffold, Tailwind + shadcn/ui, React Router shell, Cloudflare Pages project
