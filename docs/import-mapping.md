@@ -96,9 +96,12 @@ unit-level naming, so one row does not equal one Station. Each row resolves thro
 | No match, region is Canal / Alex / Upper | create the **Station only**, `job_number = NULL`; **no Unit is invented** (decision D7). Unit-scoped attributes attach at Station level with `mapping_status = 'needs_unit_mapping'` |
 | No match, region is East / West / Delta | as above, flagged `not_found_in_assets_database` — 12 such rows |
 
-> **Amended by the Prompt 3 brief (§5).** Rule D1/D2 output is inserted as **`proposed`** only.
-> A governorate suffix is never stripped to force a match unless a **confirmed** alias exists, so
-> no rule auto-resolves a station. The rules narrow the review queue; a human still confirms.
+> **Owner-confirmed rulings apply first, and only for enumerated values.**
+> `cng_owner_confirmed_canonical()` is consulted before anything else: an exact match in
+> `owner_confirmed_station_aliases` (currently the single pair `ابنوب` = `ابنوب اسيوط`) resolves
+> the station and auto-confirms its alias. **Every other name — including every other
+> governorate-suffixed name — is only ever PROPOSED**, and a human confirms it. No suffix
+> stripping, pattern or similarity rule exists.
 
 **Decisions D1 and D2 apply first.** A trailing governorate qualifier is stripped
 (`ابنوب اسيوط` → `ابنوب`), and `<base> <n>` is read as Unit *n* of Station `<base>`
@@ -221,7 +224,7 @@ carries only `Stage` (1 805) or `Storage` (857). Therefore:
 | --- | --- | --- | --- |
 | Station resolves to a station with exactly one unit | `needs_equipment_mapping` | set | NULL |
 | Station resolves only to a station with multiple units | `needs_unit_mapping` | NULL | NULL |
-| Station name unmatched | *(not promoted)* → import staging + Data Quality queue | — | — |
+| **Station name unmatched** | **`needs_station_mapping` — the SRV is still imported** into `installed_relief_valves` with `station_id NULL`, its raw source station name, region, `Location`, `source_raw` and file/sheet/row provenance. An `unmatched_station` issue is raised in `import_issues` alongside it, never instead of it. | NULL | NULL |
 
 **No SRV row is auto-assigned to a compressor, vessel or dispenser.** `Location = 'Stage'`
 narrows the parent kind to *compressor* and `Location = 'Storage'` to *storage vessel*, and that
@@ -332,7 +335,8 @@ precedence never overwrites a human resolution on re-import.
 | Read the raw cell; cast to TEXT with **no numeric formatting** | all serials, job numbers, part numbers, warehouse codes |
 | **Never** pad a missing leading zero | 958 SRV / 452 vessel / 1 170 warehouse int-typed serials |
 | **Never** strip decimal-looking characters | the 3 float-typed gas-detector serials (`1803.02075`) and 41 float part numbers |
-| **Never** auto-relocate a part number | Amended by the Prompt 3 brief (§18): `SS-4R3A` (48 rows) stays in `serial_number`/`serial_number_raw` exactly as found, with `needs_review = true` and reason `suspected_part_number_in_serial_column`. Relocating it to `part_number` is a human action, not an import step. **These rows are still not duplicate serials** — the duplicate counts must be recomputed. |
+| Owner-confirmed part numbers only | `SS-4R3A` (48 rows) is an **owner-confirmed** part number: `cng_classify_identifier()` stores it in `part_number` with `serial_number = NULL` and `serial_status = 'not_yet_assigned'`, keeping the raw cell in `serial_number_raw` and `source_raw` with full provenance. **These rows are not duplicate serials** — the duplicate counts must be recomputed. |
+| **Never** reclassify anything else | Any value not listed in `owner_confirmed_part_numbers` stays a serial, however much it looks like a part number. Shape is not evidence. |
 | **Never** "correct" any other wrong-looking value | preserve raw, flag `suspected_part_number_in_serial_column`, await a decision |
 | **Never** treat repeats as duplicates without evidence | 38 duplicate SRV serials / 224 rows; 94 vessel serials — reported as candidates only |
 

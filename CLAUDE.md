@@ -110,7 +110,7 @@ The installed-SRV record therefore carries:
 
 | Column | Nullability |
 | --- | --- |
-| `station_id` | required *once the Station is confirmed* — see `station_match_status` below |
+| `station_id` | **nullable** — NULL while the canonical Station is unconfirmed |
 | `unit_id` | nullable |
 | `compressor_id` | nullable |
 | `storage_vessel_id` | nullable |
@@ -118,14 +118,23 @@ The installed-SRV record therefore carries:
 | `expected_parent_kind` | nullable — **resolution hint only** |
 | `mapping_status` | required |
 
-`mapping_status` values:
+`mapping_status` values — the lifecycle runs
+`needs_station_mapping → needs_unit_mapping → needs_equipment_mapping → resolved`,
+with `conflict` as an evidence-preserving side state:
 
 | Status | Meaning | Shape |
 | --- | --- | --- |
-| `resolved` | fully mapped | Unit set; exactly one equipment parent set |
-| `needs_unit_mapping` | Station proven, Unit not | Unit NULL; no equipment parent |
-| `needs_equipment_mapping` | Station and Unit proven, parent equipment not | Unit set; no equipment parent |
+| `needs_station_mapping` | canonical Station not yet confirmed | Station NULL; Unit NULL; no equipment parent; raw source Station name **required** |
+| `needs_unit_mapping` | Station proven, Unit not | Station set; Unit NULL; no equipment parent |
+| `needs_equipment_mapping` | Station and Unit proven, parent equipment not | Station + Unit set; no equipment parent |
+| `resolved` | fully mapped | Station + Unit set; exactly one equipment parent |
 | `conflict` | source evidence disagrees | held for human resolution |
+
+**An SRV whose Station is unconfirmed is still an installed SRV.** It lives in
+`installed_relief_valves`, keeps its raw source Station name, Region, `Location` and full
+file/sheet/row provenance, appears in Global SRV Management labelled *Needs Station Mapping*,
+and is never shown in a Unit SRV tab. `import_issues` records the *unmatched_station issue*;
+it is never the only place the asset exists.
 
 #### `expected_parent_kind` is a hint, never a foreign key
 
@@ -275,17 +284,24 @@ the same `station_id NOT NULL` / `unit_id NULL` / `mapping_status` shape already
 SRVs, and are resolved through the same Data Quality workflow. A Station with no Units is a
 valid record, not an incomplete one (principle #19).
 
-### Deterministic identity rules
+### Owner-confirmed data rules
 
-Two rules are confirmed by the project owner and may create aliases automatically. Each records
-its provenance on every alias so the whole set can be audited or reversed:
+Only equivalences the system owner has **explicitly confirmed** may bypass manual review, and
+only for the exact values listed. These live as rows in `owner_confirmed_station_aliases` and
+`owner_confirmed_part_numbers`, so the full set of owner rulings is always listable by `SELECT`,
+auditable, and reversible. **There is no pattern, regex, suffix or similarity rule anywhere.**
 
-| Rule | Decision | Behaviour |
+| Confirmed ruling | Effect | Explicitly NOT authorized |
 | --- | --- | --- |
-| Trailing governorate qualifier is decorative (`ابنوب اسيوط` = `ابنوب`) | D1 | strip and match; applied only when the remainder resolves to **exactly one** Station in the Region, otherwise proposed for review |
-| `<base> <n>` is Unit *n* of Station `<base>` (`الخمائل 1` = Unit 1 of `الخمائل`) | D2 | applied only when `<base>` resolves to **exactly one** Station, otherwise proposed for review |
+| `ابنوب` = `ابنوب اسيوط` (same physical Station) | this exact pair resolves without review; the original source name is kept in provenance and `source_raw` | **generic governorate-suffix stripping.** `ابو القمصان`, `ابو تيج- اسيوط`, `الادبيه - السويس` and every other suffixed name still require human confirmation |
+| `SS-4R3A` is a Part Number, not a Serial | in the affected SRV serial column it normalizes into `part_number`, `serial_number` becomes NULL where no genuine serial exists, and the raw cell plus file/sheet/row provenance is preserved | moving **any other** serial-looking or part-number-looking value. Shape is not evidence |
 
-Ambiguity never triggers a rule — it produces a proposal and an import issue.
+`<base> <n>` is Unit *n* of Station `<base>` (decision D2, e.g. `الخمائل` has Units `الخمائل 1`
+and `الخمائل 2`) remains the owner's ruling on unit naming; it may **propose** an alias, and a
+human confirms it.
+
+Anything not on an owner-confirmed list produces a **proposal** and an import issue — never a
+resolution.
 
 ### Alias tables, not runtime fuzzy matching
 

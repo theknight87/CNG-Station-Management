@@ -8,13 +8,10 @@ no connection to any existing project, no imported data.
 
 | | |
 | --- | --- |
-| Migrations | `supabase/migrations/0001`–`0013` |
-| Scenario tests | `supabase/tests/schema_scenarios.sql` — **37 assertions, all passing** |
-| Tables | 25 | 
-| Views | 7 |
-| CHECK constraints | 50 |
-| Foreign keys | 103 (23 composite) |
-| Indexes | 134 |
+| Migrations | `supabase/migrations/0001`–`0016` |
+| Scenario tests | `supabase/tests/schema_scenarios.sql` — **63 assertions, all passing** |
+| Tables | 27 (all with RLS enabled) |
+| Views | 8 |
 
 Related: [`architecture.md`](./architecture.md) · [`decisions.md`](./decisions.md) ·
 [`import-mapping.md`](./import-mapping.md) · [`data-quality-report.md`](./data-quality-report.md)
@@ -38,6 +35,9 @@ Related: [`architecture.md`](./architecture.md) · [`decisions.md`](./decisions.
 | `0011_management_views.sql` | the seven management views |
 | `0012_rls_enable.sql` | RLS enabled + forced on every table, deny-by-default |
 | `0013_seed_reference_data.sql` | six regions; 30 default alert rules |
+| `0014_mapping_lifecycle_enums.sql` | adds `needs_station_mapping` and `owner_confirmed` enum values (separate file: PostgreSQL will not let a new enum value be *used* until the adding transaction commits) |
+| `0015_srv_station_mapping.sql` | nullable `station_id`; five-state lifecycle CHECK; raw source station evidence; `owner_confirmed_station_aliases`; `owner_confirmed_part_numbers`; their lookup functions; RLS for both |
+| `0016_views_station_mapping.sql` | SRV views rebuilt for the lifecycle; adds `v_srv_mapping_queue` |
 
 Ordering matters: `import_batches` precedes the asset tables so provenance is a real FK, and
 `app_users` precedes everything that records an actor. Two FKs on `stations`/`units` are added
@@ -157,20 +157,29 @@ Verified: `A2` (cross-unit compressor rejected), `C2` (cross-station unit reject
 ```sql
 CONSTRAINT irv_status_shape_ck CHECK (
   CASE mapping_status
-    WHEN 'resolved' THEN
-      unit_id IS NOT NULL
-      AND num_nonnulls(compressor_id, storage_vessel_id, dispenser_id) = 1
+    WHEN 'needs_station_mapping' THEN
+      station_id IS NULL AND unit_id IS NULL
+      AND num_nonnulls(compressor_id, storage_vessel_id, dispenser_id) = 0
     WHEN 'needs_unit_mapping' THEN
-      unit_id IS NULL
+      station_id IS NOT NULL AND unit_id IS NULL
       AND num_nonnulls(compressor_id, storage_vessel_id, dispenser_id) = 0
     WHEN 'needs_equipment_mapping' THEN
-      unit_id IS NOT NULL
+      station_id IS NOT NULL AND unit_id IS NOT NULL
       AND num_nonnulls(compressor_id, storage_vessel_id, dispenser_id) = 0
+    WHEN 'resolved' THEN
+      station_id IS NOT NULL AND unit_id IS NOT NULL
+      AND num_nonnulls(compressor_id, storage_vessel_id, dispenser_id) = 1
     WHEN 'conflict' THEN
       num_nonnulls(compressor_id, storage_vessel_id, dispenser_id) <= 1
   END
 )
 ```
+
+Each state names exactly what must be present *and* what must be absent, so the lifecycle can
+only advance in order: a row cannot claim a Unit before its Station, or a parent before its Unit.
+A companion constraint, `irv_unmatched_station_evidence_ck`, requires
+`source_station_name_raw` whenever the status is `needs_station_mapping` — a station-less SRV can
+never be anonymous.
 
 Every unresolved state is self-describing: a NULL parent is never ambiguous, because the status
 says whether it means "not yet mapped" or "evidence disputed". A half-mapped row can never read
@@ -227,6 +236,51 @@ A biconditional, so it catches both failure directions: claiming exact precision
 - **No unique constraint on `units.job_number`.** Four job numbers appear on two units each.
 
 ---
+
+## 5b. Owner-confirmed data rules
+
+Two equivalences were explicitly confirmed by the system owner. They are the **only** things in
+the system that may bypass human review, and both are stored as **data, not code** — one row per
+confirmed value — so "what has the owner actually ruled on?" is answerable with a `SELECT`, and
+any ruling can be listed, audited and reversed.
+
+### `owner_confirmed_station_aliases`
+
+| Column | Purpose |
+| --- | --- |
+| `source_name_raw` / `canonical_name_raw` | the exact pair, verbatim |
+| `*_normalized` | generated via `cng_normalize_name()`, for exact lookup only |
+| `region_code` | NULL = applies in any region |
+| `confirmed_by_label`, `confirmed_on`, `note` | provenance of the ruling |
+
+Seeded with one row: **`ابنوب` = `ابنوب اسيوط`**.
+
+`cng_owner_confirmed_canonical(name, region)` is an **exact normalized match**. It is the entire
+mechanism by which an alias may skip review; there is no other path.
+
+> **This does not authorize generic governorate-suffix stripping.** There is no suffix rule, no
+> regex, no similarity threshold anywhere in the schema. `ابو القمصان`, `ابو تيج- اسيوط` and
+> `الادبيه - السويس` still return NULL and still require human confirmation — proved by assertion
+> **L2**. A longer name that merely *contains* a confirmed one also returns NULL (**L3**).
+
+The original source spelling is preserved regardless, in `source_station_name_raw` and
+`source_raw` on the asset, and in `station_aliases.source_name_raw`.
+
+### `owner_confirmed_part_numbers`
+
+Seeded with one row: **`SS-4R3A`**, scoped to `installed_relief_valve`.
+
+`cng_classify_identifier(raw, asset_type)` returns the `(serial_number, part_number)` pair to
+store:
+
+| Input | `serial_number` | `part_number` |
+| --- | --- | --- |
+| `SS-4R3A` (confirmed) | `NULL` | `SS-4R3A` |
+| `0003262609` | `0003262609` | `NULL` |
+| `SS-9X1B` (similar shape, unconfirmed) | `SS-9X1B` | `NULL` |
+
+Shape is never evidence: only the enumerated value is reclassified (**M1–M3**). The raw cell
+stays in `serial_number_raw` and in `source_raw`, with file/sheet/row provenance (**M4**).
 
 ## 6. Deletion behaviour
 
@@ -298,11 +352,35 @@ visible as source evidence, never converted into a date or a computed compliance
 
 | Source situation | Where it lives | Status |
 | --- | --- | --- |
+| **Station name not confirmable** | **`installed_relief_valves`** (the asset) **and** `import_issues` (the issue) | `needs_station_mapping`, `station_id NULL`, raw source station name required |
 | Station confirmed, unit unknown | the asset table | `needs_unit_mapping`, `unit_id NULL` |
 | Station + unit confirmed, SRV parent unknown | `installed_relief_valves` | `needs_equipment_mapping` |
 | Sources disagree | the asset table | `conflict` — never treated as resolved |
-| **Station name not confirmable** | `import_issues` with full `source_raw` | held until a human confirms; never promoted on a guess |
 | Detector explicitly absent | `gas_detector_presence` | `not_installed` — **no** `gas_detectors` row |
+
+**An unmatched station no longer keeps an SRV out of the asset table.** `station_id` is nullable
+and the lifecycle starts at `needs_station_mapping`. The asset belongs in
+`installed_relief_valves`; the `unmatched_station` issue belongs in `import_issues`; both exist
+(assertion **N8**). The SRV keeps its raw source station name, source region, `Location`,
+`source_raw` and file/sheet/row provenance, and shows in Global SRV Management as
+**Needs Station Mapping** with the source's own spelling — no Station is fabricated (**N1**,
+**N6**).
+
+### Lifecycle
+
+```
+needs_station_mapping --confirm station--> needs_unit_mapping
+                      --confirm unit-----> needs_equipment_mapping
+                      --confirm equipment-> resolved
+                          (conflict: evidence-preserving side state)
+```
+
+Each transition is recorded in `asset_mapping_audit` with actor and timestamp (**P2**). The CHECK
+constraint makes skipping a stage impossible: `resolved` without a unit or parent is rejected
+(**P3**), and `needs_equipment_mapping` without a confirmed unit is rejected (**P4**). The full
+path completes and the SRV then appears in the Unit tab, where it previously did not (**P5**,
+**P6**). `v_srv_mapping_queue` orders the work station-first, since nothing below can proceed
+until the station is confirmed (**P7**).
 
 Expected outcome for the 2 662 installed SRVs: **`resolved` = 0.** The source proves a station
 and a `Stage`/`Storage` hint, never a unit or a specific parent.
@@ -326,10 +404,12 @@ inspection, recovery tank inspection, gas detector calibration, hose hydrotest �
 default thresholds (60/30/15/7/due today/overdue). 30 rules are seeded. Adding an asset type later
 needs rows, not a schema change.
 
-**An unresolved SRV is alertable.** Alerting requires three things: the asset exists, its station
-is confirmed, and it has an exact next due date. None requires unit or equipment mapping.
-`alerts.unit_id` is nullable and `alerts.needs_mapping` tells the recipient the location is not
-yet pinned (verified `K`, `K2`).
+**An unresolved SRV is alertable, at every lifecycle stage.** Alerting requires only that the
+asset exists and has an exact next due date — **not** a confirmed station, unit or equipment.
+`alerts.station_id` and `alerts.unit_id` are both nullable; `alerts.needs_mapping` and
+`alerts.needs_station_mapping` tell the recipient what is unpinned, and
+`alerts.source_station_name_raw` names the place using the source's own spelling rather than
+fabricating a Station (verified `K`, `K2`, `O1`, `O2`).
 
 Two unique constraints carry the anti-duplication story: `alerts_dedupe_uq` stops a cron re-run
 producing a second alert for the same asset/threshold/due date (`K3`), and `notif_delivery_uq`
@@ -389,11 +469,11 @@ purpose, then discarded. **No hosted resource was contacted.**
 
 | Check | Result |
 | --- | --- |
-| All 13 migrations apply in order to an empty database | **pass** |
-| Clean rebuild from scratch (fresh database, migrations in filename order) | **pass** |
-| Scenario suite `schema_scenarios.sql` | **37/37 assertions pass** |
-| Seed correctness | 6 regions, 30 alert rules |
-| RLS coverage | 25 of 25 tables have `rowsecurity = true` |
+| All 16 migrations apply in order to an empty database | **pass** |
+| Clean rebuild from zero (fresh database, migrations in filename order) | **pass** |
+| Scenario suite `schema_scenarios.sql` | **63/63 assertions pass** |
+| Seed correctness | 6 regions, 30 alert rules, 1 owner-confirmed alias, 1 owner-confirmed part number |
+| RLS coverage | 27 of 27 tables have `rowsecurity = true`, asserted by test `X10` |
 | Derived functions | `cng_days_left`, `cng_due_status`, `cng_date_display` return expected values incl. NULL cases |
 
 ### Scenario coverage (prompt §35)
@@ -411,7 +491,12 @@ purpose, then discarded. **No hosted resource was contacted.**
 | I | Serial `0003262609` | I | pass — 10 characters, leading zeros intact |
 | J | `SS-4R3A` in the serial column | J, J2 | pass — preserved, duplicated rows both kept, both queued for review |
 | K | Unresolved SRV with an exact due date | K, K2, K3 | pass — alertable with `unit_id NULL`; duplicates rejected |
-| X | Cross-cutting | X1–X9 | pass — unit tab contents, alias discipline, region coherence, delete protection, no unit fallback |
+| X | Cross-cutting | X1–X10 | pass — unit tab contents, alias discipline, region coherence, delete protection, no unit fallback, RLS coverage |
+| L | Owner-confirmed station alias | L1–L4 | pass — `ابنوب` resolves; **other suffixed names do not**; no substring matching |
+| M | `SS-4R3A` classification | M1–M4 | pass — stored as `part_number` with `serial_number` NULL, raw + provenance intact; similar-looking values untouched |
+| N | `needs_station_mapping` | N1–N8 | pass — NULL station allowed; unit/equipment FKs rejected; raw name required; visible globally; absent from unit tabs; asset and issue both stored |
+| O | Due tracking without mapping | O1, O2 | pass — Days Left and status computed with no station; alert carries the raw name |
+| P | Lifecycle transitions | P1–P7 | pass — station→unit→equipment→resolved; invalid jumps rejected; every transition audited |
 
 To re-run:
 
@@ -440,29 +525,24 @@ psql -d cng_check -f supabase/tests/schema_scenarios.sql     # rolls back; leave
 
 ## 14. Deviations and open points
 
-**Two instructions in the Prompt 3 brief conflict with earlier decisions D1 and D4. The brief is
-newer, so the brief wins; both are implemented its way, and both are flagged here because they
-reverse something previously agreed.**
+**Resolved.** Earlier drafts treated two items as open conflicts between the Prompt 3 brief and
+decisions D1/D4. The system owner has since confirmed both as authoritative business rules, and
+the schema now implements them — narrowly, as enumerated data rather than as general rules:
 
-1. **Governorate suffixes (brief §5 vs decision D1).** D1 made suffix-stripping a deterministic
-   rule that auto-confirms aliases. The brief says not to strip suffixes to force a match unless a
-   confirmed alias exists. Implemented the brief's way: the rule may only insert **`proposed`**
-   aliases, recorded with `alias_source = 'rule:governorate_suffix'`, and a human confirms them.
-   The safety property is now stronger; the cost is manual confirmation of roughly 100 names.
+1. **`ابنوب` = `ابنوب اسيوط`** is an owner-confirmed Station alias that bypasses review, seeded in
+   `owner_confirmed_station_aliases`. **Generic governorate-suffix stripping is not implemented and
+   is not authorized**; no suffix, pattern or similarity rule exists anywhere in the schema
+   (asserted by L2/L3).
 
-2. **`SS-4R3A` relocation (brief §18 vs decision D4).** D4 said to move the value into
-   `part_number`. The brief says not to move it automatically. Implemented the brief's way: the
-   value stays in `serial_number`/`serial_number_raw`, `needs_review` is set with reason
-   `suspected_part_number_in_serial_column`, and relocation becomes a human action. `serial_status`
-   from D4 is retained for the eventual `not_yet_assigned` state.
+2. **`SS-4R3A` is a Part Number**, seeded in `owner_confirmed_part_numbers`. It normalizes into
+   `part_number` with `serial_number` NULL, raw cell and provenance preserved. No other
+   serial-looking or part-number-looking value is moved (asserted by M3).
 
-**Also worth flagging:**
+3. **`installed_relief_valves.station_id` is now nullable**, with `needs_station_mapping` opening
+   the lifecycle. An SRV whose station is unconfirmed is a real SRV record, not an import issue
+   alone.
 
-- `installed_relief_valves.station_id` is `NOT NULL`. A row is promoted only once its station is
-  confirmed; rows whose station cannot be confirmed stay in `import_issues` with their full
-  `source_raw`. Nothing is discarded, but these rows are not yet queryable as SRVs. If you would
-  rather see them in SRV Management immediately, `station_id` would need to become nullable with a
-  `station_match_status` column — a schema change worth deciding before import.
+**Still worth flagging:**
 - `alerts`, `asset_mapping_audit` and `import_issues` reference assets polymorphically without
   FKs. Mitigated by `RESTRICT` + soft delete on every asset table.
 - Three questions remain open from the data analysis: the hose coverage gap for five regions,

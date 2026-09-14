@@ -483,8 +483,21 @@ Four things changed or firmed up once the migrations were written and tested:
    date" and "a real date labelled year_only". The second direction is what structurally prevents
    a bare `2021` from becoming a fabricated `2021-01-01`.
 
-Two brief-level instructions in Prompt 3 also reversed parts of decisions D1 and D4; both are
-implemented as the brief specifies and recorded in [`database.md`](./database.md) §14.
+Three further corrections were then confirmed by the system owner and are implemented:
+
+5. **The SRV lifecycle opens with `needs_station_mapping`** and `station_id` is nullable. An SRV
+   whose canonical Station is unconfirmed remains an installed SRV record carrying its raw source
+   station name, region, `Location` and provenance — visible in Global SRV Management, absent from
+   Unit tabs, and still due-date tracked. `import_issues` holds the *issue*, never the asset alone.
+6. **Owner-confirmed equivalences are enumerated data, not rules.**
+   `owner_confirmed_station_aliases` (seeded: `ابنوب` = `ابنوب اسيوط`) and
+   `owner_confirmed_part_numbers` (seeded: `SS-4R3A`) are the only things that bypass human
+   review, and only for those exact values. **No governorate-suffix, pattern or similarity rule
+   exists in the schema.**
+7. **Alerts no longer require a Station.** `alerts.station_id` is nullable and
+   `source_station_name_raw` names the place from the source's own spelling.
+
+See [`database.md`](./database.md) §5b and §8.
 
 ### Manufacturer aliases (decision D5)
 

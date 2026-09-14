@@ -400,5 +400,275 @@ SELECT pg_temp.assert(
     WHERE asset_type = 'installed_relief_valve'
       AND station_id = 'aaaaaaaa-0000-0000-0000-000000000001'),
   'X9: unresolved SRVs reachable from the Data Quality queue by station');
+-- Guard: every table in the schema must have RLS enabled. This fails loudly if
+-- a future migration adds a table and forgets — the exact gap that let
+-- owner_confirmed_* ship without RLS on the first attempt.
+SELECT pg_temp.assert(
+  NOT EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND NOT rowsecurity),
+  'X10: every table has RLS enabled');
+
+-- ===========================================================================
+-- Scenario L — owner-confirmed station alias (corrections §1 and §6.1–6.2)
+-- ===========================================================================
+
+-- L1: the owner-confirmed pair resolves.
+SELECT pg_temp.assert(
+  cng_owner_confirmed_canonical('ابنوب') = 'ابنوب اسيوط',
+  'L1: ابنوب resolves to canonical ابنوب اسيوط through the owner-confirmed alias');
+
+-- L2: THE CRITICAL NEGATIVE. Confirming one pair must NOT make governorate-suffix
+-- stripping valid in general. These names differ from a canonical name only by a
+-- governorate qualifier and must NOT resolve, because the owner has not ruled on
+-- them.
+SELECT pg_temp.assert(
+  cng_owner_confirmed_canonical('ابو القمصان') IS NULL
+  AND cng_owner_confirmed_canonical('ابو تيج- اسيوط') IS NULL
+  AND cng_owner_confirmed_canonical('الادبيه - السويس') IS NULL,
+  'L2: other governorate-suffixed names do NOT resolve — no generic suffix stripping');
+
+-- L3: the lookup is exact, not a prefix or substring match.
+SELECT pg_temp.assert(
+  cng_owner_confirmed_canonical('ابنوب اسيوط الجديدة') IS NULL,
+  'L3: a longer name containing the confirmed one does not resolve');
+
+-- L4: a confirmed alias may be recorded against a canonical station and used to
+-- resolve, with its owner provenance retained.
+INSERT INTO stations (id, region_id, station_name)
+SELECT 'aaaaaaaa-0000-0000-0000-0000000000a1', region_east, 'ابنوب اسيوط' FROM ids;
+INSERT INTO station_aliases
+  (region_id, station_id, source_name_raw, source_name_normalized, source_file,
+   alias_status, alias_source, confirmed_by, confirmed_at, notes)
+SELECT region_east, 'aaaaaaaa-0000-0000-0000-0000000000a1', 'ابنوب',
+       cng_normalize_name('ابنوب'), 'Warehouse Relief Data.xlsx',
+       'confirmed', 'owner_confirmed',
+       '11111111-1111-1111-1111-111111111111', now(),
+       'Owner-confirmed pair; not a general suffix rule'
+FROM ids;
+SELECT pg_temp.assert(
+  (SELECT count(*) = 1 FROM station_aliases a
+     JOIN stations st ON st.id = a.station_id
+    WHERE a.source_name_raw = 'ابنوب' AND a.alias_status = 'confirmed'
+      AND a.alias_source = 'owner_confirmed' AND st.station_name = 'ابنوب اسيوط'),
+  'L4: owner-confirmed alias stored as confirmed, pointing at the canonical station');
+
+-- ===========================================================================
+-- Scenario M — SS-4R3A normalizes to part_number (corrections §2 and §6.3)
+-- ===========================================================================
+
+-- M1: the classifier puts the confirmed value in part_number, not serial_number.
+SELECT pg_temp.assert(
+  (SELECT part_number FROM cng_classify_identifier('SS-4R3A', 'installed_relief_valve')) = 'SS-4R3A'
+  AND (SELECT serial_number FROM cng_classify_identifier('SS-4R3A', 'installed_relief_valve')) IS NULL,
+  'M1: SS-4R3A classified as part_number with serial_number NULL');
+
+-- M2: an ordinary serial is untouched — no shape-based guessing.
+SELECT pg_temp.assert(
+  (SELECT serial_number FROM cng_classify_identifier('0003262609', 'installed_relief_valve')) = '0003262609'
+  AND (SELECT part_number FROM cng_classify_identifier('0003262609', 'installed_relief_valve')) IS NULL,
+  'M2: an unlisted value stays a serial number');
+
+-- M3: another part-number-LOOKING value is NOT reclassified.
+SELECT pg_temp.assert(
+  (SELECT serial_number FROM cng_classify_identifier('SS-9X1B', 'installed_relief_valve')) = 'SS-9X1B'
+  AND (SELECT part_number FROM cng_classify_identifier('SS-9X1B', 'installed_relief_valve')) IS NULL,
+  'M3: a similar-looking unconfirmed value is NOT moved to part_number');
+
+-- M4: an imported row stores the classification while keeping raw evidence.
+INSERT INTO installed_relief_valves
+  (id, station_id, region_id, mapping_status, serial_number, part_number,
+   serial_number_raw, serial_status, source_file, source_sheet, source_row, source_raw, needs_review)
+SELECT 'ffffffff-0000-0000-0000-00000000ea01', 'aaaaaaaa-0000-0000-0000-000000000001', region_east,
+       'needs_unit_mapping',
+       (SELECT serial_number FROM cng_classify_identifier('SS-4R3A', 'installed_relief_valve')),
+       (SELECT part_number   FROM cng_classify_identifier('SS-4R3A', 'installed_relief_valve')),
+       'SS-4R3A', 'not_yet_assigned',
+       'Warehouse Relief Data.xlsx', 'رصيد المحطات', 1234,
+       jsonb_build_object('Serial Number', 'SS-4R3A', 'Set Pressure', '330 BAR'),
+       true
+FROM ids;
+SELECT pg_temp.assert(
+  (SELECT serial_number IS NULL AND part_number = 'SS-4R3A'
+          AND serial_number_raw = 'SS-4R3A'
+          AND source_raw ->> 'Serial Number' = 'SS-4R3A'
+          AND source_file = 'Warehouse Relief Data.xlsx' AND source_row = 1234
+          AND serial_status = 'not_yet_assigned'
+     FROM installed_relief_valves WHERE id = 'ffffffff-0000-0000-0000-00000000ea01'),
+  'M4: stored as part_number, serial NULL, raw cell and file/sheet/row provenance preserved');
+
+-- ===========================================================================
+-- Scenario N — needs_station_mapping (corrections §3 and §6.4–6.7)
+-- ===========================================================================
+
+-- N1: an SRV with no confirmed station is still an installed SRV record.
+INSERT INTO installed_relief_valves
+  (id, station_id, region_id, mapping_status, source_station_name_raw, source_region_raw,
+   location_raw, expected_parent_kind, serial_number,
+   next_calibration_raw, next_calibration_date, next_calibration_precision,
+   source_file, source_sheet, source_row, source_raw)
+SELECT 'ffffffff-0000-0000-0000-00000000eb01', NULL, region_east,
+       'needs_station_mapping', 'الخمائل 1', 'East', 'Storage', 'storage_vessel', 'TEST-SRV-N',
+       to_char(cng_business_date() + 10, 'YYYY-MM-DD'), cng_business_date() + 10, 'exact_date',
+       'Warehouse Relief Data.xlsx', 'رصيد المحطات', 4321,
+       jsonb_build_object('Station', 'الخمائل 1', 'Area', 'East')
+FROM ids;
+SELECT pg_temp.assert(
+  (SELECT station_id IS NULL AND unit_id IS NULL
+          AND num_nonnulls(compressor_id, storage_vessel_id, dispenser_id) = 0
+          AND source_station_name_raw = 'الخمائل 1'
+          AND source_raw ->> 'Station' = 'الخمائل 1'
+     FROM installed_relief_valves WHERE id = 'ffffffff-0000-0000-0000-00000000eb01'),
+  'N1: SRV stored with NULL station as needs_station_mapping, raw station name preserved');
+
+-- N2: needs_station_mapping may not carry a unit.
+SELECT pg_temp.assert_rejected($ins$
+  INSERT INTO installed_relief_valves
+    (station_id, region_id, unit_id, mapping_status, source_station_name_raw)
+  SELECT NULL, region_east, 'bbbbbbbb-0000-0000-0000-000000000001',
+         'needs_station_mapping', 'X' FROM ids;
+$ins$, 'N2: needs_station_mapping with a unit rejected');
+
+-- N3: needs_station_mapping may not carry an equipment parent.
+SELECT pg_temp.assert_rejected($ins$
+  INSERT INTO installed_relief_valves
+    (station_id, region_id, compressor_id, mapping_status, source_station_name_raw)
+  SELECT NULL, region_east, 'cccccccc-0000-0000-0000-000000000001',
+         'needs_station_mapping', 'X' FROM ids;
+$ins$, 'N3: needs_station_mapping with an equipment parent rejected');
+
+-- N4: a station-less SRV must still say where the source placed it.
+SELECT pg_temp.assert_rejected($ins$
+  INSERT INTO installed_relief_valves (station_id, region_id, mapping_status)
+  SELECT NULL, region_east, 'needs_station_mapping' FROM ids;
+$ins$, 'N4: needs_station_mapping without the raw source station name rejected');
+
+-- N5: every other state still requires a confirmed station.
+SELECT pg_temp.assert_rejected($ins$
+  INSERT INTO installed_relief_valves (station_id, region_id, mapping_status, source_station_name_raw)
+  SELECT NULL, region_east, 'needs_unit_mapping', 'X' FROM ids;
+$ins$, 'N5: needs_unit_mapping with a NULL station rejected');
+
+-- N6: it IS visible in Global SRV Management, showing the raw name and label.
+SELECT pg_temp.assert(
+  (SELECT station_display = 'الخمائل 1' AND needs_station_mapping
+          AND mapping_label = 'Needs Station Mapping' AND station_name IS NULL
+     FROM v_installed_srv_management WHERE id = 'ffffffff-0000-0000-0000-00000000eb01'),
+  'N6: visible in Global SRV Management as "Needs Station Mapping" with the raw source name');
+
+-- N7: it is NOT in any Unit SRV view.
+SELECT pg_temp.assert(
+  (SELECT count(*) = 0 FROM v_unit_srvs WHERE id = 'ffffffff-0000-0000-0000-00000000eb01'),
+  'N7: never appears in a Unit SRV tab');
+
+-- N8: the asset lives in installed_relief_valves; the ISSUE lives in
+-- import_issues. Both exist; import_issues is not the only home.
+INSERT INTO import_batches (id, source_file, source_sheet, status, rows_read)
+VALUES ('cafe0000-0000-0000-0000-000000000001', 'Warehouse Relief Data.xlsx', 'رصيد المحطات', 'dry_run', 1);
+INSERT INTO import_issues
+  (import_batch_id, source_file, source_sheet, source_row, source_value,
+   entity_type, entity_id, region_id, issue_type, severity, detail)
+SELECT 'cafe0000-0000-0000-0000-000000000001', 'Warehouse Relief Data.xlsx', 'رصيد المحطات', 4321,
+       'الخمائل 1', 'installed_relief_valve', 'ffffffff-0000-0000-0000-00000000eb01',
+       region_east, 'unmatched_station', 'warning',
+       'Station name has no confirmed alias' FROM ids;
+SELECT pg_temp.assert(
+  (SELECT count(*) = 1 FROM installed_relief_valves WHERE id = 'ffffffff-0000-0000-0000-00000000eb01')
+  AND (SELECT count(*) = 1 FROM import_issues
+        WHERE entity_id = 'ffffffff-0000-0000-0000-00000000eb01' AND issue_type = 'unmatched_station'),
+  'N8: asset in installed_relief_valves AND issue in import_issues — not issue-only storage');
+
+-- ===========================================================================
+-- Scenario O — due tracking without mapping (corrections §4, §6.8)
+-- ===========================================================================
+SELECT pg_temp.assert(
+  (SELECT days_left = 10 AND due_status = 'due_15'
+     FROM v_installed_srv_management WHERE id = 'ffffffff-0000-0000-0000-00000000eb01'),
+  'O1: exact due date still calculates Days Left and status with NO station mapping');
+
+-- O2: an alert can be raised for it, naming the raw station and flagging the gap.
+INSERT INTO alerts (alert_rule_id, subject, threshold, asset_type, asset_id,
+                    region_id, station_id, unit_id, source_station_name_raw,
+                    due_date, days_left, needs_mapping, needs_station_mapping)
+SELECT (SELECT id FROM alert_rules WHERE subject = 'srv_calibration' AND threshold = 'due_15'),
+       'srv_calibration', 'due_15', 'installed_relief_valve',
+       'ffffffff-0000-0000-0000-00000000eb01', region_east, NULL, NULL, 'الخمائل 1',
+       cng_business_date() + 10, 10, true, true
+FROM ids;
+SELECT pg_temp.assert(
+  (SELECT station_id IS NULL AND source_station_name_raw = 'الخمائل 1' AND needs_station_mapping
+     FROM alerts WHERE asset_id = 'ffffffff-0000-0000-0000-00000000eb01'),
+  'O2: alert raised with NULL station, carrying the raw source name — no Station fabricated');
+
+-- ===========================================================================
+-- Scenario P — lifecycle transitions (corrections §5, §6.9–6.10)
+-- ===========================================================================
+
+-- P1: confirming the station moves the row to needs_unit_mapping.
+UPDATE installed_relief_valves
+   SET station_id = 'aaaaaaaa-0000-0000-0000-0000000000a1',
+       mapping_status = 'needs_unit_mapping',
+       station_alias_id = (SELECT id FROM station_aliases WHERE source_name_raw = 'ابنوب')
+ WHERE id = 'ffffffff-0000-0000-0000-00000000eb01';
+SELECT pg_temp.assert(
+  (SELECT mapping_status = 'needs_unit_mapping' AND station_id IS NOT NULL
+          AND unit_id IS NULL AND source_station_name_raw = 'الخمائل 1'
+     FROM installed_relief_valves WHERE id = 'ffffffff-0000-0000-0000-00000000eb01'),
+  'P1: station confirmed -> needs_unit_mapping; raw source name still preserved');
+
+-- P2: every transition is auditable.
+INSERT INTO asset_mapping_audit
+  (asset_type, asset_id, previous_station_id, new_station_id,
+   previous_mapping_status, new_mapping_status, changed_by, reason)
+VALUES ('installed_relief_valve', 'ffffffff-0000-0000-0000-00000000eb01',
+        NULL, 'aaaaaaaa-0000-0000-0000-0000000000a1',
+        'needs_station_mapping', 'needs_unit_mapping',
+        '11111111-1111-1111-1111-111111111111', 'Owner-confirmed alias applied');
+SELECT pg_temp.assert(
+  (SELECT count(*) = 1 FROM asset_mapping_audit
+    WHERE asset_id = 'ffffffff-0000-0000-0000-00000000eb01'
+      AND previous_mapping_status = 'needs_station_mapping'
+      AND new_mapping_status = 'needs_unit_mapping' AND changed_by IS NOT NULL),
+  'P2: the station-confirmation transition is recorded in asset_mapping_audit');
+
+-- P3: an invalid transition is still rejected — jumping to resolved without a
+-- unit or a parent.
+SELECT pg_temp.assert_rejected($upd$
+  UPDATE installed_relief_valves SET mapping_status = 'resolved'
+   WHERE id = 'ffffffff-0000-0000-0000-00000000eb01';
+$upd$, 'P3: needs_unit_mapping -> resolved without unit/parent rejected');
+
+-- P4: and skipping straight from station-confirmed to an equipment parent
+-- without a unit is rejected.
+SELECT pg_temp.assert_rejected($upd$
+  UPDATE installed_relief_valves
+     SET mapping_status = 'needs_equipment_mapping'
+   WHERE id = 'ffffffff-0000-0000-0000-00000000eb01';
+$upd$, 'P4: needs_equipment_mapping without a confirmed unit rejected');
+
+-- P5: the full happy path completes — unit then equipment then resolved.
+UPDATE installed_relief_valves
+   SET station_id = 'aaaaaaaa-0000-0000-0000-000000000001',
+       unit_id = 'bbbbbbbb-0000-0000-0000-000000000001',
+       mapping_status = 'needs_equipment_mapping'
+ WHERE id = 'ffffffff-0000-0000-0000-00000000eb01';
+UPDATE installed_relief_valves
+   SET storage_vessel_id = 'dddddddd-0000-0000-0000-000000000001',
+       mapping_status = 'resolved',
+       resolved_by = '11111111-1111-1111-1111-111111111111',
+       resolved_at = now()
+ WHERE id = 'ffffffff-0000-0000-0000-00000000eb01';
+SELECT pg_temp.assert(
+  (SELECT mapping_status = 'resolved' AND storage_vessel_id IS NOT NULL AND resolved_by IS NOT NULL
+     FROM installed_relief_valves WHERE id = 'ffffffff-0000-0000-0000-00000000eb01'),
+  'P5: full lifecycle station -> unit -> equipment -> resolved completes');
+
+-- P6: and it now appears in the Unit SRV tab, where before it did not.
+SELECT pg_temp.assert(
+  (SELECT count(*) = 1 FROM v_unit_srvs WHERE id = 'ffffffff-0000-0000-0000-00000000eb01'),
+  'P6: once resolved, the SRV appears in the Unit SRV tab');
+
+-- P7: the mapping queue orders station work ahead of unit and equipment work.
+SELECT pg_temp.assert(
+  (SELECT min(queue_order) FROM v_srv_mapping_queue) >= 1,
+  'P7: SRV mapping queue is populated and ordered by lifecycle stage');
 
 ROLLBACK;
