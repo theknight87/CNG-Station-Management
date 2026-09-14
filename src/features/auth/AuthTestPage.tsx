@@ -5,6 +5,13 @@ import { SignedIn, SignedOut, SignOutButton, useSession, useUser } from '@clerk/
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useSupabaseClient } from '@/lib/supabase/client'
+import { readSupabaseConfig } from '@/lib/supabase/config'
+import {
+  compareToServer,
+  readSupabaseServerDate,
+  readTokenTiming,
+  type SkewReport,
+} from '@/lib/auth/tokenTiming'
 
 /**
  * TEMPORARY Prompt-5 authentication test page.
@@ -45,6 +52,7 @@ interface Probe {
   visibleRegions: { code: string; name: string }[] | null
   visibleRegionsError: string | null
   tokenPresent: boolean
+  skew: SkewReport | null
   loading: boolean
 }
 
@@ -56,6 +64,7 @@ const EMPTY: Probe = {
   visibleRegions: null,
   visibleRegionsError: null,
   tokenPresent: false,
+  skew: null,
   loading: true,
 }
 
@@ -86,8 +95,15 @@ function SignedInProbe() {
         return
       }
 
-      // Presence only. The token itself is never rendered, logged or stored.
+      // Presence and TIMING only. The token itself is never rendered, logged
+      // or stored: only its iat/nbf/exp, compared against the Supabase clock,
+      // which is what a "JWT not yet valid" rejection actually turns on.
       const token = await session.getToken()
+      const config = readSupabaseConfig()
+      const serverDate = config
+        ? await readSupabaseServerDate(config.url, config.publishableKey)
+        : null
+      const skew = compareToServer(readTokenTiming(token), serverDate)
 
       const [appUserRes, grantsRes, regionsRes] = await Promise.all([
         supabase.from('app_users').select('id, clerk_user_id, role, is_active, email, full_name').maybeSingle(),
@@ -99,6 +115,7 @@ function SignedInProbe() {
       setProbe({
         loading: false,
         tokenPresent: Boolean(token),
+        skew,
         appUser: (appUserRes.data as AppUserRow | null) ?? null,
         appUserError: appUserRes.error?.message ?? null,
         grants: (grantsRes.data as unknown as RegionGrant[] | null) ?? null,
@@ -133,6 +150,39 @@ function SignedInProbe() {
           <Row label="Clerk User ID" value={user?.id ?? '—'} />
           <Row label="Primary email" value={user?.primaryEmailAddress?.emailAddress ?? '—'} />
           <Row label="Session token obtained" value={probe.tokenPresent ? 'yes' : 'no'} />
+        </section>
+
+        <section>
+          <h2 className="mb-2 text-sm font-semibold">Token timing vs the Supabase clock</h2>
+          {!probe.skew && <Row label="Status" value={probe.loading ? 'loading…' : 'unavailable'} />}
+          {probe.skew && (
+            <>
+              <Row
+                label="nbf − server"
+                value={
+                  probe.skew.nbfMinusServer === null
+                    ? 'no nbf claim'
+                    : `${probe.skew.nbfMinusServer}s${probe.skew.nbfMinusServer > 0 ? '  ← in the future' : ''}`
+                }
+              />
+              <Row
+                label="iat − server"
+                value={
+                  probe.skew.iatMinusServer === null
+                    ? 'no iat claim'
+                    : `${probe.skew.iatMinusServer}s${probe.skew.iatMinusServer > 0 ? '  ← in the future' : ''}`
+                }
+              />
+              <Row label="exp − server" value={probe.skew.expMinusServer === null ? '—' : `${probe.skew.expMinusServer}s`} />
+              <Row label="browser − server" value={`${probe.skew.browserMinusServer}s`} />
+              <Row
+                label="Verdict"
+                value={probe.skew.notYetValid
+                  ? 'token is ahead of the Supabase clock — clock skew IS the cause'
+                  : 'token is within the Supabase clock — skew is NOT the cause'}
+              />
+            </>
+          )}
         </section>
 
         <section>
