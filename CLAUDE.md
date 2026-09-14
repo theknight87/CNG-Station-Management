@@ -153,7 +153,9 @@ relationship the source does not prove:
 - **Never** infer a Dispenser SRV. **No dispenser SRV is proven by any current source.**
 - **Never** auto-apply a bulk mapping rule from name similarity or `Location`.
 
-Equipment parentage is set by an explicit human decision, recorded with who and when.
+Equipment parentage is set by an explicit human decision, recorded with who and when
+(decision D3 — manual/bulk mapping in the application, or a later source that names the parent
+for that specific SRV; **default distribution is permanently forbidden**).
 
 Unresolved records:
 
@@ -215,6 +217,13 @@ introduce new ownership and do not change parentage.
 19. **Missing data never makes an entity invalid.** A Region, Station, Unit or asset with NULL
     fields is a complete record with unknown attributes — it is created, displayed and tracked
     normally. Nothing is marked "incomplete" and nothing is blocked because a field is unknown.
+20. **A missing identifier may be a fact, not a gap.** Where an asset type has no serial assigned
+    yet (decision D4), `serial_status = 'not_yet_assigned'` records that explicitly — distinct
+    from `unknown`, where the source says nothing either way. Serials are never generated
+    automatically.
+21. **Source status text is kept, not converted.** Values such as `منتهي`/`منتهية` ("expired") in
+    a date column are preserved in `source_status_raw` and shown beside the missing date
+    (decision D6). They never become a date, and never a computed compliance status.
 
 ### Canonical Regions
 
@@ -259,6 +268,25 @@ The canonical Station/Unit model is **reconciled across all sources**:
 - Where no source states the structure (Canal, Alex, Upper), a Station is created with the Units
   the evidence supports and flagged for review — never with invented Units.
 
+**No default Unit, ever (decision D7).** If a Station's Unit is unknown, `unit_id` is `NULL`. A
+Unit named after its Station is never created just to have somewhere to attach assets. Because
+compressors, dispensers, vessels, recovery tanks and gas detectors are Unit-scoped, they carry
+the same `station_id NOT NULL` / `unit_id NULL` / `mapping_status` shape already defined for
+SRVs, and are resolved through the same Data Quality workflow. A Station with no Units is a
+valid record, not an incomplete one (principle #19).
+
+### Deterministic identity rules
+
+Two rules are confirmed by the project owner and may create aliases automatically. Each records
+its provenance on every alias so the whole set can be audited or reversed:
+
+| Rule | Decision | Behaviour |
+| --- | --- | --- |
+| Trailing governorate qualifier is decorative (`ابنوب اسيوط` = `ابنوب`) | D1 | strip and match; applied only when the remainder resolves to **exactly one** Station in the Region, otherwise proposed for review |
+| `<base> <n>` is Unit *n* of Station `<base>` (`الخمائل 1` = Unit 1 of `الخمائل`) | D2 | applied only when `<base>` resolves to **exactly one** Station, otherwise proposed for review |
+
+Ambiguity never triggers a rule — it produces a proposal and an import issue.
+
 ### Alias tables, not runtime fuzzy matching
 
 `station_aliases` — and `unit_aliases` where analysis shows it is needed — map a raw source name
@@ -284,6 +312,18 @@ assign confirmed parent equipment; mark resolved.
 **Bulk mapping** is supported where an engineer explicitly confirms that the selected records
 share the same Unit/equipment context. It always requires explicit human confirmation of the
 specific selection, and is never applied automatically from name similarity or `Location`.
+
+### Who may map (decision D8)
+
+| Role | Mapping rights |
+| --- | --- |
+| `admin` | anywhere |
+| `regional_manager` | anywhere |
+| `station_engineer` | **only within their authorized Regions** |
+| `viewer` | none |
+
+Region scope is enforced in **RLS**, not only in the UI. A bulk action never silently skips
+records outside the actor's scope — it reports them.
 
 Every mapping change — single or bulk — records who made it and when, and is retained as **audit
 history**. `source_raw` is never altered by a mapping decision.

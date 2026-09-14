@@ -26,6 +26,9 @@ first importer runs.
 | Repeats ≠ duplicates (#16) | Duplicate candidates are reported, never merged or dropped. |
 | No global authority (#18) | Precedence is per field (§10). Undeclared conflicts are retained and flagged, not silently won by one file. |
 | Missing ≠ incomplete (#19) | NULL fields never block creation and never mark an entity incomplete. |
+| No default Unit (D7) | Unknown Unit → `unit_id NULL` + `needs_unit_mapping`. A Unit is never invented to hold assets. |
+| Serial status (D4) | `assigned` / `not_yet_assigned` / `unknown`. Serials are never generated. |
+| Status words (D6) | `منتهي`/`منتهية` in a date column → `source_status_raw`, date `invalid`. |
 | Pressure | Stored as `(raw TEXT, min NUMERIC NULL, max NUMERIC NULL, unit TEXT NULL)`. Never converted. |
 
 ### Region normalization (deterministic, all values covered)
@@ -89,8 +92,15 @@ unit-level naming, so one row does not equal one Station. Each row resolves thro
 | Normalizer matches exactly one existing **unit** | write a **proposed** alias; **attach nothing yet**; queue for confirmation |
 | Normalizer matches exactly one existing **station** with a single unit | proposed alias to that unit; queue for confirmation |
 | Normalizer matches several candidates | proposed aliases for each candidate, `import_issue = 'ambiguous_station_identity'`; **no attachment** |
-| No match, region is Canal / Alex / Upper | create Station + one Unit of the same name, `job_number = NULL`, flag `unit_structure_unknown_no_assets_source`, and record a confirmed alias for the name that created it |
+| Rule D1/D2 fires unambiguously | alias created with its `alias_source`; Station (and Unit, for D2) resolved or created as the rule proves |
+| No match, region is Canal / Alex / Upper | create the **Station only**, `job_number = NULL`; **no Unit is invented** (decision D7). Unit-scoped attributes attach at Station level with `mapping_status = 'needs_unit_mapping'` |
 | No match, region is East / West / Delta | as above, flagged `not_found_in_assets_database` — 12 such rows |
+
+**Decisions D1 and D2 apply first.** A trailing governorate qualifier is stripped
+(`ابنوب اسيوط` → `ابنوب`), and `<base> <n>` is read as Unit *n* of Station `<base>`
+(`الخمائل 1` → Unit 1 of `الخمائل`, which has two Units). Each rule fires only when its target
+resolves to exactly one Station in the Region; otherwise it proposes and raises an import issue.
+Both record `alias_source`, so every rule-created alias is auditable and reversible as a set.
 
 A **proposed** alias never attaches data and never creates an entity. Only a **confirmed** alias
 resolves. This is what keeps the ~100–156 unmatched names per file (quality report §2) from
@@ -318,7 +328,8 @@ precedence never overwrites a human resolution on re-import.
 | Read the raw cell; cast to TEXT with **no numeric formatting** | all serials, job numbers, part numbers, warehouse codes |
 | **Never** pad a missing leading zero | 958 SRV / 452 vessel / 1 170 warehouse int-typed serials |
 | **Never** strip decimal-looking characters | the 3 float-typed gas-detector serials (`1803.02075`) and 41 float part numbers |
-| **Never** "correct" a wrong-looking value | `SS-4R3A` (a part number in a serial column, 48 rows) — preserve raw, flag `suspected_part_number_in_serial_column` |
+| Relocate a **confirmed** part number | `SS-4R3A` (48 rows) is confirmed a part number (D4): `serial_raw` keeps it verbatim, `part_number` receives it, `serial_number = NULL`, `serial_status = 'not_yet_assigned'`. **These rows are not duplicate serials** — the duplicate counts must be recomputed. |
+| **Never** "correct" any other wrong-looking value | preserve raw, flag `suspected_part_number_in_serial_column`, await a decision |
 | **Never** treat repeats as duplicates without evidence | 38 duplicate SRV serials / 224 rows; 94 vessel serials — reported as candidates only |
 
 A lost leading zero is **not recoverable** from the source and is not guessed. The dry-run
@@ -351,7 +362,9 @@ Import ends with unresolved records, by design. They are worked in Admin → Dat
 | SRV unit mapping | installed SRVs at multi-Unit Stations |
 | SRV equipment mapping | installed SRVs at single-Unit Stations |
 | Station alias confirmation | proposed aliases from every file |
-| Duplicate candidates | 71 SRV key-groups (142 rows), 94 vessel serials, 8 dispenser serials |
+| Unit mapping | Unit-scoped assets in Stations with no known Unit structure (Canal/Alex/Upper) — gates the SRV queue there |
+| Serial assignment | SRVs with `serial_status = 'not_yet_assigned'` awaiting their future unique serial (D4) |
+| Duplicate candidates | recomputed after D4 removes the part-number clusters from the serial duplicates |
 | Invalid / year-only dates | 332 year-only cells plus the invalid set |
 | Flagged identifiers | `SS-4R3A`-type values, placeholder serials |
 | Missing serials | 149 gas detectors, 120 SRVs, 67 vessels |

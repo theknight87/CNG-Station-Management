@@ -305,8 +305,11 @@ failure aborts the run rather than writing corrupted serials.
 | Storage / hoses / gas detectors | — | — | — | 0 | 0 |
 
 Worst SRV offenders: `SS-4R3A` on **48 rows**, `0003262609` on 34, `0003173616` on 32.
-`SS-4R3A` is a Swagelok-style **part number**, not a unique serial — the column mixes two
-different kinds of identifier. Dispenser duplicates are mostly placeholders (`-` ×6, `N/A` ×2),
+
+> **Resolved by decision D4** (`decisions.md`): `SS-4R3A` is confirmed a **part number**, and this
+> SRV type has no unique serial assigned yet. Those 48 rows move to `part_number` with
+> `serial_status = 'not_yet_assigned'` and **leave the duplicate-serial set**. The duplicate
+> counts in this table are therefore pre-decision figures and must be recomputed at import. Dispenser duplicates are mostly placeholders (`-` ×6, `N/A` ×2),
 which become NULL rather than duplicates.
 
 The warehouse sheet is the one clean identifier space in the dataset: 2 187 distinct serials in
@@ -393,20 +396,27 @@ and Upper import in full from files 1, 3, 4 and 5 with `job_number = NULL`.
 
 Ordered by how much they unblock.
 
-1. **Governorate suffixes** — is `ابنوب` the same site as `ابنوب اسيوط`? A yes makes a
-   suffix-stripping rule deterministic and clears much of §2.
-2. **Numbered station names** — is `الخمائل 1` a *unit* of `الخمائل`, or a separate station?
-   This decides whether ~111 relief-valve station names resolve to units or need new stations.
-3. **SRV parent equipment** — no source names it. How should an engineer resolve 2 662 valves:
-   by a further source file, a site survey, or a rule (e.g. "Storage SRVs distribute evenly
-   across a unit's vessels")? A rule would be a fabrication unless it is physically true.
-4. **`SS-4R3A` and similar** — confirm these are part numbers occupying the serial column, so
-   they can be moved rather than treated as duplicate serials.
-5. **Manufacturer aliases** — confirm `NPSAC`/`NPAC`, `Worthington`/`Worthing`,
-   `Anderson`/`Tyco Anderson` so a curated alias table can be built.
-6. **456 overdue vessel certificates (41 %)** — genuinely lapsed, or recalibrated without record?
-7. **`16/8/3033`** — intended `2033` or `2023`?
-8. **Canal / Alex / Upper unit structure** — do any of these stations have multiple units? If so
-   the one-unit-per-station assumption needs correcting before SRVs are mapped.
+> **Most of these are now answered — see [`decisions.md`](./decisions.md).** Items 1–8 map to
+> decisions D1–D8. Item 9 remains open.
+
+1. ~~**Governorate suffixes**~~ — **answered (D1):** decorative; suffix-stripping is deterministic
+   under a single-match guard.
+2. ~~**Numbered station names**~~ — **answered (D2):** `الخمائل` is a Station with two Units,
+   `الخمائل 1` and `الخمائل 2`. `<base> <n>` denotes Unit *n*.
+3. ~~**SRV parent equipment**~~ — **answered (D3):** manual/bulk mapping in the application, or a
+   later source that names the parent. Default distribution is permanently forbidden.
+4. ~~**`SS-4R3A`**~~ — **answered (D4):** a part number; this SRV type has no unique serial yet.
+   `serial_status = 'not_yet_assigned'` until serials are issued.
+5. ~~**Manufacturer aliases**~~ — **answered (D5):** `NPSAC`/`NPAC` and
+   `Worthington`/`Worthing` are typo pairs; `Anderson`/`Tyco Anderson` are **different**.
+6. ~~**`منتهي`/`منتهية`**~~ — **answered (D6):** kept as `source_status_raw`, never converted to
+   a date or a compliance status.
+6b. **456 overdue vessel certificates (41 %)** — genuinely lapsed, or recalibrated without record?
+   Still open as an operational question; recompute after import (see D-effects).
+7. ~~**Canal / Alex / Upper unit structure**~~ — **answered (D7):** no one-unit-per-station
+   fallback. Unknown Unit stays NULL; the pattern generalizes to all Unit-scoped assets.
+7b. **`16/8/3033`** — intended `2033` or `2023`? Still open.
+8. ~~**Mapping ownership**~~ — **answered (D8):** Admin and Manager map anywhere; Engineer maps
+   only within authorized Regions; every change audited, scope enforced in RLS.
 9. **Hose coverage** — are hoses genuinely absent for five regions, or is the source partial?
    `Station data base.xlsx` reports hose *counts* for many stations with no matching records.

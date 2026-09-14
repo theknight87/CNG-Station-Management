@@ -147,6 +147,11 @@ installed_srv (
 
   tag_number         TEXT NULL,
   serial_number      TEXT NULL,        -- TEXT, nullable (principles #5, #11)
+  serial_status      serial_status NOT NULL DEFAULT 'unknown',
+                                       -- assigned | not_yet_assigned | unknown  (decision D4)
+  serial_raw         TEXT NULL,        -- verbatim, even when it is really a part number
+  part_number        TEXT NULL,        -- e.g. 'SS-4R3A' relocated here by D4
+  source_status_raw  TEXT NULL,        -- e.g. 'منتهية' from a date column (decision D6)
   set_pressure       NUMERIC NULL,
   set_pressure_unit  TEXT NULL,
   last_test_date       DATE NULL,
@@ -355,6 +360,11 @@ asset_mapping_audit (
 )
 ```
 
+**Who may map (decision D8).** `admin` and `regional_manager` may map anywhere;
+`station_engineer` may map **only within their authorized Regions**; `viewer` not at all. This is
+enforced in **RLS** on the mapping columns, not only in the UI — an out-of-scope `UPDATE` fails at
+the database. A bulk action never silently skips out-of-scope records; it reports them.
+
 Audit rows are append-only and never touch `source_raw`: the original evidence and the human
 decision are separately inspectable, so a wrong mapping can be traced and reversed.
 
@@ -399,6 +409,68 @@ This means a station name can be spelled four ways across four files and still r
 canonical Station — with every spelling preserved and every link traceable to the person who
 confirmed it.
 
+#### Deterministic identity rules (decisions D1, D2)
+
+Two owner-confirmed rules may create aliases without human review, each recorded with its
+provenance in `station_alias.alias_source`:
+
+| `alias_source` | Rule | Guard |
+| --- | --- | --- |
+| `rule:governorate_suffix` | strip a trailing governorate qualifier (`ابنوب اسيوط` → `ابنوب`) | applied only when the remainder resolves to **exactly one** Station in that Region |
+| `rule:numbered_unit` | `<base> <n>` is Unit *n* of Station `<base>` (`الخمائل 1` → Unit 1 of `الخمائل`) | applied only when `<base>` resolves to **exactly one** Station |
+
+Ambiguity never fires a rule: it produces a proposal plus an import issue. Because provenance is
+stored per alias, every rule-created alias can be listed, audited, and reversed as a set if the
+rule is later found wrong — which is the property that makes automating them acceptable at all.
+
+`alias_source` values: `rule:governorate_suffix` · `rule:numbered_unit` · `human` ·
+`import_exact_match`.
+
+### The unit-unknown pattern (decision D7)
+
+**There is no default single Unit.** Where a source proves a Station but not a Unit, `unit_id`
+stays `NULL` — a Unit named after its Station is never invented to give assets somewhere to live.
+
+This generalizes the SRV mapping model to **every Unit-scoped asset**: compressors, dispensers,
+storage vessels, recovery tanks and gas detectors. Each carries:
+
+```
+station_id      UUID NOT NULL REFERENCES station(id),
+unit_id         UUID NULL,
+mapping_status  asset_mapping_status NOT NULL,   -- resolved | needs_unit_mapping | conflict
+FOREIGN KEY (unit_id, station_id) REFERENCES unit(id, station_id)   -- dormant while unit_id NULL
+CHECK (mapping_status <> 'resolved' OR unit_id IS NOT NULL)
+```
+
+The same composite-FK trick applies: while `unit_id` is NULL the pair constraint is dormant; once
+set, the Unit must provably belong to the stated Station.
+
+Consequences, stated plainly:
+
+- Stations in Canal, Alex and Upper may import with **zero Units** and assets attached at Station
+  level pending mapping. That is a valid state, not an incomplete one (principle #19).
+- Those assets appear in their global management module flagged *Needs Mapping*, and are excluded
+  from Unit tabs until resolved — identical handling to SRVs.
+- An SRV whose Station has no Units cannot progress past `needs_unit_mapping` until the Unit
+  structure itself is established. The Unit queue therefore gates the SRV queue in those regions,
+  and should be worked first.
+- Where decision D2 proves a Unit from a numbered name, the Unit **is** created. D7 forbids the
+  invented default, not an evidenced Unit.
+
+### Manufacturer aliases (decision D5)
+
+A curated `manufacturer_alias` table maps confirmed variants to a canonical name;
+`manufacturer_raw` is retained on every record.
+
+| Raw values | Decision |
+| --- | --- |
+| `NPSAC` / `NPAC` | same — typo |
+| `Worthington Cylinders` / `Worthing Cylinders` | same — typo |
+| `Anderson` / `Tyco Anderson` | **different manufacturers — never merged** |
+
+No further merges are inferred from string similarity. `Anderson`/`Tyco Anderson` is the standing
+counter-example: visual similarity is not identity, so each pair needs its own decision.
+
 ### Field-level source precedence
 
 No workbook is globally authoritative. Precedence is declared **per field**, only where the
@@ -433,6 +505,11 @@ CREATE TYPE date_precision AS ENUM ('exact_date', 'year_only', 'unknown', 'inval
 | `year_only` | **NULL** | `2021` (int), `'2022'` (text) | **no** |
 | `unknown` | NULL | empty cell | no |
 | `invalid` | NULL | `منتهية`, `209/2021`, `16/8/3033`, `______` | no |
+
+Where the invalid value is a **status word** rather than a broken date (`منتهي`, `منتهية` —
+"expired"), it is additionally stored in `source_status_raw` and displayed beside the missing date
+as *"source marked: منتهية"* (decision D6). It is **not** counted as Overdue: the source says the
+item had lapsed at some unknown time, which is not the same as a due date that has passed.
 
 Only `exact_date` participates in **Days Left, Due Today, the 7/15/30/60-day alerts, and Overdue
 status**. Everything else renders its raw source value with an explicit label (*"Year only —
