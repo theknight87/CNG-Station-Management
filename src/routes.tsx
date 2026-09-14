@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 
 import { AppLayout } from '@/components/layout/AppLayout'
+import { AuthGate, AuthTestPage, SignInPage, SignUpPage } from '@/features/auth'
 import { AdminPage } from '@/pages/AdminPage'
 import { AlertsPage } from '@/pages/AlertsPage'
 import { CompressorsPage } from '@/pages/CompressorsPage'
@@ -29,9 +30,21 @@ import { VesselsManagementPage } from '@/pages/VesselsManagementPage'
  * only by filter.
  */
 export const router = createBrowserRouter([
+  // Temporary Prompt-5 authentication routes. They sit OUTSIDE AuthGate:
+  // sign-in must be reachable while signed out, and the test page must be
+  // reachable while the account is still inactive — which is exactly the state
+  // a first sign-in produces. Neither grants anything; the database decides.
+  { path: '/sign-in/*', element: <SignInPage /> },
+  { path: '/sign-up/*', element: <SignUpPage /> },
+  { path: '/auth-test', element: <AuthTestPage /> },
+
   {
     path: '/',
-    element: <AppLayout />,
+    element: (
+      <AuthGate>
+        <AppLayout />
+      </AuthGate>
+    ),
     children: [
       { index: true, element: <DashboardPage /> },
 
