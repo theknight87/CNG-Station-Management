@@ -8,9 +8,11 @@ no connection to any existing project, no imported data.
 
 | | |
 | --- | --- |
-| Migrations | `supabase/migrations/0001`–`0017` |
+| Migrations | `supabase/migrations/0001`–`0022` |
 | Local scenario tests | `supabase/tests/schema_scenarios.sql` — **63 assertions, all passing** |
-| Hosted assertions | **43 assertions, all passing** (see §0) |
+| Hosted assertions | **49 schema + 49 authorization**, all passing (see §0) |
+| Authorization tests | `supabase/tests/rls_authorization.sql` — **87 local assertions**, all passing |
+| RLS policies | 61 across 27 tables |
 | Tables | 27 (all with RLS enabled and forced) |
 | Views | 8 |
 
@@ -188,6 +190,44 @@ authenticated authorization tests are all Prompt 5 work. No broad temporary poli
 
 ---
 
+## 0b. Authorization state — Prompt 5
+
+Full detail in [`authentication.md`](./authentication.md). Summary of the database side:
+
+| Item | State |
+| --- | --- |
+| RLS policies | **61** across 27 tables (was 0) |
+| Tables with RLS enabled and forced | 27 / 27 |
+| `anon` table privileges | **0** — and no function EXECUTE |
+| `authenticated` privileges | explicit per table; column-level where partial |
+| DELETE grants | only `user_region_access` and a user's own notification rows |
+| Authorization helpers | 9 (7 INVOKER, 2 DEFINER for RLS recursion only) |
+| Local authorization assertions | **87 passed / 0 failed** |
+| Hosted authorization assertions | **49 passed / 0 failed** |
+| Security advisor findings | 27 INFO → **2 WARN, accepted with reasons** (see below) |
+
+Policy and grant definitions were compared between hosted and local by MD5 over every policy
+(`tablename, policyname, cmd, roles, USING, WITH CHECK`) and every table- and column-level grant
+to `anon`/`authenticated`. **Both hashes matched exactly**, so the hosted authorization model is
+byte-identical to the one the 87-assertion local suite exercises.
+
+### Advisor result after Prompt 5
+
+| Finding | Level | Count | Disposition |
+| --- | --- | --- | --- |
+| `rls_enabled_no_policy` | INFO | 27 → **0** | resolved: 60 policies added, plus `alert_rules` in 0022 |
+| `authenticated_security_definer_function_executable` | WARN | 2 | **accepted** — `cng_current_role()` and `cng_has_region_grant()`. EXECUTE cannot be revoked: PostgreSQL checks it while evaluating an RLS policy, so revoking would break every policy. They take no identity argument and disclose only the caller's own role/grant. Hardening option (move to a non-exposed schema) recorded for Prompt 22 |
+| `unindexed_foreign_keys`, `unused_index` | INFO | — | unchanged; still deferred to Prompt 22 with real data |
+
+### Accurate statement about `anon`
+
+`anon` holds **no table privileges and no function EXECUTE**. It does retain schema `USAGE`,
+because `PUBLIC` holds that by default and revoking it from `anon` alone does not remove it.
+Schema usage conveys no access to any object, and the hosted tests confirm `anon` cannot read
+stations, SRVs, users, regions or audit data, nor execute an authorization helper.
+
+---
+
 ## 1. Migration files
 
 | File | Contents |
@@ -209,6 +249,11 @@ authenticated authorization tests are all Prompt 5 work. No broad temporary poli
 | `0015_srv_station_mapping.sql` | nullable `station_id`; five-state lifecycle CHECK; raw source station evidence; `owner_confirmed_station_aliases`; `owner_confirmed_part_numbers`; their lookup functions; RLS for both |
 | `0016_views_station_mapping.sql` | SRV views rebuilt for the lifecycle; adds `v_srv_mapping_queue` |
 | `0017_platform_hardening.sql` | revokes EXECUTE on Supabase's `rls_auto_enable()` from PUBLIC/anon/authenticated; guarded so it is a no-op off-Supabase |
+| `0018_authz_helpers.sql` | creates the `anon`/`authenticated` roles when absent (so a from-zero local rebuild matches Supabase), then the authorization helpers and their EXECUTE grants |
+| `0019_grants.sql` | closed-by-default SQL privileges: `anon` gets nothing; `authenticated` gets only what is needed, with column-level grants where a role updates part of a row |
+| `0020_rls_policies.sql` | 60 RLS policies; every UPDATE carries both `USING` and `WITH CHECK` |
+| `0021_authz_indexes.sql` | one composite index for the region-grant probe every policy performs |
+| `0022_alert_rules_read.sql` | makes alert-threshold readability an explicit decision rather than an implicit deny |
 
 Ordering matters: `import_batches` precedes the asset tables so provenance is a real FK, and
 `app_users` precedes everything that records an actor. Two FKs on `stations`/`units` are added

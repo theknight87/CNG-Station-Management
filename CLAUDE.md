@@ -343,3 +343,31 @@ records outside the actor's scope — it reports them.
 
 Every mapping change — single or bulk — records who made it and when, and is retained as **audit
 history**. `source_raw` is never altered by a mapping decision.
+
+## 10. Security rules (durable)
+
+These hold for every future phase.
+
+- **The database is the authorization authority.** Clerk establishes identity; roles, region
+  access and every row decision live in PostgreSQL and are enforced by RLS. A frontend check is
+  UX, never security. Hiding a button is not protection.
+- **Closed by default.** `anon` receives no privileges. `authenticated` receives only the specific
+  privileges a feature needs, table by table, with column-level grants where a role should write
+  only part of a row. Never issue blanket grants such as `GRANT ALL ... TO authenticated`.
+- **Every UPDATE policy carries both `USING` and `WITH CHECK`.** Without the second half an
+  allowed row can be edited into a forbidden region.
+- **Raw source text is never an authorization boundary.** `source_station_name_raw`,
+  unconfirmed `region_id` on an unmapped record, and fuzzy matches are evidence, not permission.
+  An SRV awaiting station confirmation is admin/manager only.
+- **Authorization is never synchronized from Clerk.** No webhook, profile edit or Clerk metadata
+  value may set `role`, `is_active` or region access. Identity sync and authorization management
+  are separate concerns.
+- **Signing up grants nothing.** New accounts are created inactive with the least-privileged role;
+  an administrator must activate them. Never "first user becomes admin", never infer privilege
+  from an email domain.
+- **No hard deletes.** Operational, import, mapping and audit records are archived, never removed.
+  Audit tables are append-only and their actor column cannot be forged.
+- **`SECURITY DEFINER` only where genuinely required**, with a pinned `search_path`, no
+  user-supplied identity parameter, and EXECUTE granted to `authenticated` only.
+- **Use the current Clerk-Supabase third-party auth integration.** The deprecated JWT-template
+  approach must not be reintroduced, and this project's JWT secret is never shared with Clerk.

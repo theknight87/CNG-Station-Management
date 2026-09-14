@@ -55,3 +55,16 @@ export function hasConfirmedUnitMapping(status: SrvMappingStatus): boolean {
 export function needsMapping(status: SrvMappingStatus): boolean {
   return status !== 'resolved'
 }
+
+/**
+ * Application roles. Authorization is enforced in the database (RLS); these
+ * values exist so the UI can *describe* what the user may do, never to decide it.
+ */
+export type AppRole = 'admin' | 'manager' | 'engineer' | 'viewer'
+
+export const APP_ROLES: readonly AppRole[] = ['admin', 'manager', 'engineer', 'viewer'] as const
+
+/** Roles whose authority is company-wide rather than region-scoped. */
+export function isCompanyWideRole(role: AppRole): boolean {
+  return role === 'admin' || role === 'manager'
+}

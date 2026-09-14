@@ -2,12 +2,11 @@
  * Clerk configuration for THIS project only.
  *
  * Application: "CNG Station Management". No other Clerk instance, JWT template,
- * or key is reused (CLAUDE.md, §2).
+ * or key is reused (CLAUDE.md §2).
  *
- * Only the publishable key is read here. The Clerk secret key is a server-side
- * secret and must never appear in the client bundle or in this repository.
- *
- * The ClerkProvider is wired in a later phase.
+ * Only the PUBLISHABLE key is read here — it is designed for browser exposure.
+ * The Clerk SECRET key and the webhook signing secret are server-side only and
+ * must never appear in a VITE_ variable, in this repository, or in any bundle.
  */
 
 export function readClerkPublishableKey(): string | null {
