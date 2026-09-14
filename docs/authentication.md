@@ -270,6 +270,38 @@ logs `message`/`code`/`details`/`hint`. The HTTP response body stays opaque.
 0023 also changes `app_users.is_active` to default **false**. It previously defaulted to true, so
 any INSERT that omitted the column would have created a live account.
 
+### Hardening: the `service_role` privilege boundary (migration 0024)
+
+Verifying the webhook fix surfaced a pre-existing gap. `service_role` held **TRUNCATE,
+REFERENCES, TRIGGER and MAINTAIN on all 35 tables and views in `public`** -- 106 grants. Nothing
+in this repository granted them; they came from a stock Supabase default privilege
+(`public / grantor postgres / tables -> service_role=Dxtm`). 0019's REVOKE baseline named only
+`anon` and `authenticated`, so they survived it.
+
+TRUNCATE is the serious one: a hard delete of an entire table that bypasses RLS, fires no row
+trigger and leaves no audit row -- the precise opposite of "records are archived, never removed".
+Anyone holding the service-role key could have emptied any table, audit history included.
+
+0024 revokes all four from every application-owned object, and -- the part that makes it stick --
+revokes them from the schema's **default privileges**, so the next `CREATE TABLE` cannot silently
+re-grant them. Platform schemas (`auth`, `storage`, `realtime`, `graphql`, `extensions`) and the
+separate `supabase_admin` default-privilege entries are untouched; this project does not own them
+and revoking them would break Supabase internals.
+
+Revoking REFERENCES and TRIGGER cannot break anything that exists: those privileges govern only
+the creation of NEW foreign keys and triggers, and every constraint in this schema was created by
+the migration role.
+
+**The resulting boundary**, asserted permanently by SR-1 through SR-10:
+
+| `service_role` may | `service_role` may not |
+| --- | --- |
+| `SELECT` on `app_users` | reach any other table in `public` |
+| `INSERT (clerk_user_id, email, full_name, role, is_active)` | write `role` on an existing row |
+| `UPDATE (email, full_name, is_active)` | `DELETE` or `TRUNCATE` anything |
+| | write `user_region_access` |
+| | create foreign keys or triggers |
+
 Security properties:
 
 - **Signature verified** with Svix (Clerk's official mechanism) before the body is trusted.

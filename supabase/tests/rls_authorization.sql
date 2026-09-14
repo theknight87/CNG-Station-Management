@@ -532,5 +532,65 @@ BEGIN
   RESET ROLE;
 END $$;
 
+-- The privilege BOUNDARY, asserted from the catalogue rather than by attempting
+-- each forbidden statement: this is the layer that actually constrains a
+-- BYPASSRLS role, and a single stock default privilege silently re-granted
+-- TRUNCATE on all 35 objects once already (migration 0024).
+DO $$
+DECLARE
+  n         int;
+  leaked    text;
+  app_privs text;
+BEGIN
+  -- SR-4..SR-6: nothing destructive or schema-modifying, anywhere in public.
+  FOR leaked IN SELECT unnest(ARRAY['TRUNCATE', 'REFERENCES', 'TRIGGER'])
+  LOOP
+    SELECT count(*) INTO n
+      FROM information_schema.role_table_grants
+     WHERE grantee = 'service_role' AND table_schema = 'public'
+       AND privilege_type = leaked;
+    PERFORM pg_temp.ok(n = 0,
+      format('SR-%s service_role holds no %s in public (found %s)',
+             CASE leaked WHEN 'TRUNCATE' THEN 4 WHEN 'REFERENCES' THEN 5 ELSE 6 END,
+             leaked, n));
+  END LOOP;
+
+  -- SR-7: app_users is the ONLY object it can touch at all.
+  SELECT count(DISTINCT table_name) INTO n
+    FROM information_schema.role_table_grants
+   WHERE grantee = 'service_role' AND table_schema = 'public' AND table_name <> 'app_users';
+  PERFORM pg_temp.ok(n = 0,
+    format('SR-7 service_role reaches no table but app_users (found %s others)', n));
+
+  -- SR-8: and on app_users, exactly SELECT at table level -- no DELETE, no
+  -- table-wide INSERT or UPDATE that would cover every column including role.
+  SELECT array_to_string(array_agg(DISTINCT privilege_type ORDER BY privilege_type), ',')
+    INTO app_privs
+    FROM information_schema.role_table_grants
+   WHERE grantee = 'service_role' AND table_schema = 'public' AND table_name = 'app_users';
+  PERFORM pg_temp.ok(app_privs = 'SELECT',
+    format('SR-8 service_role table privileges on app_users are exactly SELECT (found %s)',
+           coalesce(app_privs, 'none')));
+
+  -- SR-9: the column grants the webhook genuinely needs are still present.
+  SELECT count(*) INTO n
+    FROM information_schema.role_column_grants
+   WHERE grantee = 'service_role' AND table_schema = 'public' AND table_name = 'app_users'
+     AND ((privilege_type = 'INSERT' AND column_name IN ('clerk_user_id','email','full_name','role','is_active'))
+       OR (privilege_type = 'UPDATE' AND column_name IN ('email','full_name','is_active')));
+  PERFORM pg_temp.ok(n = 8, format('SR-9 webhook column grants intact, 5 INSERT + 3 UPDATE (found %s)', n));
+
+  -- SR-10: no future table can inherit the destructive privileges again.
+  SELECT count(*) INTO n
+    FROM pg_default_acl d
+    JOIN pg_namespace ns ON ns.oid = d.defaclnamespace
+   WHERE ns.nspname = 'public'
+     AND d.defaclobjtype = 'r'
+     AND pg_get_userbyid(d.defaclrole) = current_user
+     AND d.defaclacl::text ~ 'service_role=[^/]*[Dxt]';
+  PERFORM pg_temp.ok(n = 0,
+    'SR-10 default privileges cannot re-grant service_role TRUNCATE/REFERENCES/TRIGGER');
+END $$;
+
 DO $$ BEGIN RAISE EXCEPTION 'RLS_SUITE_ROLLBACK'; END $$;
 ROLLBACK;
