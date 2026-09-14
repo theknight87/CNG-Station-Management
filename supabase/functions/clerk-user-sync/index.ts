@@ -1,36 +1,28 @@
 /**
  * Clerk -> Supabase user synchronization webhook.
  *
- * NOT DEPLOYED YET. Deployment requires the Clerk application to exist and its
- * secrets to be stored as Supabase Edge Function secrets. See
- * docs/authentication.md.
+ * verify_jwt is deliberately FALSE: Clerk sends a Svix-signed request, not a
+ * Supabase JWT. This function implements its own authentication (Svix signature
+ * verification) and refuses everything that fails it.
  *
  * SECURITY MODEL
- * --------------
- * 1. Every request must carry a valid Svix signature (Clerk's official webhook
- *    signing mechanism). A missing or invalid signature is rejected with 401
- *    before the body is parsed or trusted for anything.
- * 2. This function runs server-side only and uses the service-role key, which
- *    bypasses RLS. That is precisely why it must do as little as possible, and
- *    why the key is read from an Edge Function secret and never from a VITE_
- *    variable.
- * 3. IDENTITY SYNC AND AUTHORIZATION ARE SEPARATE CONCERNS. This function may
- *    write identity fields (email, name) and may create an account in a
- *    non-privileged pending state. It must NEVER write `role`, and never
- *    re-activate an account. A Clerk profile edit — including anything a user
- *    puts in their own Clerk metadata — therefore cannot grant database
- *    privileges. Role and region access change only through an admin acting
- *    against RLS-protected tables.
- * 4. Idempotent: repeated delivery of the same event cannot duplicate a user or
- *    alter an existing one's authorization.
+ * 1. Fails CLOSED when unconfigured (503) - an unsigned body is never trusted.
+ * 2. Every request must carry a valid Svix signature; missing or invalid -> 401.
+ * 3. Runs server-side with the service-role key, which bypasses RLS. That is
+ *    why it does as little as possible and why the key never reaches a browser.
+ * 4. IDENTITY SYNC AND AUTHORIZATION ARE SEPARATE CONCERNS. It may write email
+ *    and name, and may create an account in a non-privileged pending state. It
+ *    must NEVER write `role` and never re-activate an account, so no Clerk
+ *    profile edit can grant database privileges.
+ * 5. Idempotent: redelivery cannot duplicate a user or alter authorization.
  */
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { Webhook } from 'npm:svix@1'
 
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
-const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-const CLERK_WEBHOOK_SIGNING_SECRET = Deno.env.get('CLERK_WEBHOOK_SIGNING_SECRET')!
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
+const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+const CLERK_WEBHOOK_SIGNING_SECRET = Deno.env.get('CLERK_WEBHOOK_SIGNING_SECRET')
 
 interface ClerkEmail {
   id: string
@@ -45,7 +37,6 @@ interface ClerkUserEvent {
     last_name?: string | null
     primary_email_address_id?: string | null
     email_addresses?: ClerkEmail[]
-    deleted?: boolean
   }
 }
 
@@ -65,13 +56,26 @@ Deno.serve(async (req: Request) => {
     return new Response('Method not allowed', { status: 405 })
   }
 
-  // --- 1. Signature verification, before the payload is trusted at all -------
+  // --- 0. Fail CLOSED if the deployment is not fully configured ------------
+  if (!CLERK_WEBHOOK_SIGNING_SECRET || !SUPABASE_URL || !SERVICE_ROLE_KEY) {
+    console.error(JSON.stringify({
+      event: 'clerk_webhook_unconfigured',
+      has_signing_secret: Boolean(CLERK_WEBHOOK_SIGNING_SECRET),
+      has_supabase_url: Boolean(SUPABASE_URL),
+      has_service_role_key: Boolean(SERVICE_ROLE_KEY),
+    }))
+    return new Response(
+      JSON.stringify({ error: 'webhook not configured; refusing all requests' }),
+      { status: 503, headers: { 'Content-Type': 'application/json' } },
+    )
+  }
+
+  // --- 1. Signature verification, before the payload is trusted at all ------
   const svixId = req.headers.get('svix-id')
   const svixTimestamp = req.headers.get('svix-timestamp')
   const svixSignature = req.headers.get('svix-signature')
 
   if (!svixId || !svixTimestamp || !svixSignature) {
-    // Missing signature headers: refuse without reading the body.
     return new Response(JSON.stringify({ error: 'missing signature headers' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' },
@@ -83,16 +87,14 @@ Deno.serve(async (req: Request) => {
   let event: ClerkUserEvent
   try {
     const wh = new Webhook(CLERK_WEBHOOK_SIGNING_SECRET)
-    // Throws on an invalid signature, a tampered body, or a stale timestamp
-    // (which is what gives us replay protection).
+    // Throws on invalid signature, tampered body, or stale timestamp (replay).
     event = wh.verify(rawBody, {
       'svix-id': svixId,
       'svix-timestamp': svixTimestamp,
       'svix-signature': svixSignature,
     }) as ClerkUserEvent
   } catch (_err) {
-    // Deliberately no detail: do not help an attacker calibrate a forgery, and
-    // never log the signing secret or the rejected body.
+    // No detail: do not help calibrate a forgery, and never log the secret.
     console.warn(JSON.stringify({ event: 'clerk_webhook_rejected', reason: 'invalid_signature', svix_id: svixId }))
     return new Response(JSON.stringify({ error: 'invalid signature' }), {
       status: 401,
@@ -112,14 +114,11 @@ Deno.serve(async (req: Request) => {
   try {
     switch (event.type) {
       case 'user.created': {
-        // Least-privileged onboarding state: role `viewer` AND is_active=false.
-        // cng_current_role() requires is_active, so a brand-new user resolves to
-        // NULL role and can read nothing except their own app_users row. An
-        // administrator must explicitly activate them and grant region access.
-        //
-        // ON CONFLICT DO NOTHING makes redelivery a no-op and, critically, means
-        // a replayed user.created can never reset an already-approved account
-        // back to pending.
+        // Least-privileged onboarding: role viewer AND is_active=false.
+        // cng_current_role() requires is_active, so a new user resolves to a
+        // NULL role and can read nothing but their own app_users row.
+        // ignoreDuplicates makes redelivery a no-op, so a replayed
+        // user.created can never reset an approved account back to pending.
         const { error } = await supabase
           .from('app_users')
           .upsert(
@@ -137,8 +136,7 @@ Deno.serve(async (req: Request) => {
       }
 
       case 'user.updated': {
-        // Identity fields ONLY. `role` and `is_active` are intentionally absent:
-        // authorization is not synchronized from Clerk.
+        // Identity fields ONLY. role and is_active are intentionally absent.
         const { error } = await supabase
           .from('app_users')
           .update({
@@ -151,10 +149,9 @@ Deno.serve(async (req: Request) => {
       }
 
       case 'user.deleted': {
-        // Deactivate, never delete. Audit and mapping history reference
-        // app_users with ON DELETE RESTRICT, and that history must survive the
-        // account. Deactivation immediately removes all access, because
-        // cng_current_role() returns NULL for an inactive user.
+        // Deactivate, never delete: audit and mapping history reference
+        // app_users with ON DELETE RESTRICT and must outlive the account.
+        // Deactivation removes all access immediately.
         const { error } = await supabase
           .from('app_users')
           .update({ is_active: false })
@@ -164,7 +161,6 @@ Deno.serve(async (req: Request) => {
       }
 
       default:
-        // Unhandled event types are acknowledged so Clerk stops retrying.
         break
     }
   } catch (err) {

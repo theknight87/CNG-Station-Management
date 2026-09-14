@@ -54,7 +54,9 @@ this automatically; if configured by hand it is added through Clerk's customized
 | Item | Value |
 | --- | --- |
 | Clerk application | `CNG Station Management` — dedicated to this project |
-| Clerk domain | *(set once the application exists; non-secret, goes in `supabase/config.toml` and the Supabase dashboard)* |
+| Clerk instance | **Development** |
+| Clerk domain | `joint-lion-2271.clerk.accounts.dev` — non-secret; recorded in `supabase/config.toml` and registered in the Supabase dashboard (scheme stripped: Supabase expects the bare host) |
+| Webhook endpoint | `https://ypkggegquetvpsflkaxg.supabase.co/functions/v1/clerk-user-sync` |
 | Supabase organization | `CNG Station Management` (`hlzsgygfczzdubcvmkjh`) |
 | Supabase project | `cng-station-management` (`ypkggegquetvpsflkaxg`) |
 | Frontend package | `@clerk/clerk-react` |
@@ -224,7 +226,15 @@ engineers only inside granted regions with `can_map`, and to viewers never.
 
 ## 8. User lifecycle sync — the Clerk webhook
 
-`supabase/functions/clerk-user-sync/` (written; **not deployed yet**).
+`supabase/functions/clerk-user-sync/` — **deployed** (status ACTIVE, version 1) at
+`https://ypkggegquetvpsflkaxg.supabase.co/functions/v1/clerk-user-sync`.
+
+`verify_jwt` is deliberately **false**: Clerk sends a Svix-signed request, not a Supabase JWT.
+The function implements its own authentication and refuses everything that fails it.
+
+It **fails closed with 503** while `CLERK_WEBHOOK_SIGNING_SECRET`, `SUPABASE_URL` or
+`SUPABASE_SERVICE_ROLE_KEY` is absent, so the endpoint is live but inert — it can never process
+an unsigned body — until the owner sets the signing secret and registers the endpoint in Clerk.
 
 | Event | Effect |
 | --- | --- |
@@ -300,10 +310,44 @@ self-escalation rejection, audit immutability and personal-data isolation.
 **They do not prove the Clerk → Supabase token exchange.** A synthetic claim is not a Clerk
 signature.
 
-### End-to-end tests — **not yet performed**
+### End-to-end tests — **not performed, and not performable from this session**
 
-Requires the Clerk application, the Supabase third-party registration, and a real browser session.
-See §12.
+A real end-to-end test needs a browser session against Clerk and an HTTPS call to the Supabase
+project. Both hosts are blocked by this environment's organization egress policy (403 on
+CONNECT):
+
+- `ypkggegquetvpsflkaxg.supabase.co`
+- `api.supabase.com`
+- `joint-lion-2271.clerk.accounts.dev`
+- `clerk.joint-lion-2271.clerk.accounts.dev`
+
+Per the owner's instruction, no end-to-end claim is made. See §13 for what the owner must run.
+
+---
+
+## 10a. Verification of the hosted authentication configuration
+
+Performed before any change, over the database (the only channel reachable from this session).
+
+**Ruled out conclusively — every row count was 0:**
+
+| Checked | Rules out |
+| --- | --- |
+| `auth.custom_oauth_providers` | a Custom OAuth Provider configuration |
+| `auth.oauth_clients`, `auth.oauth_authorizations`, `auth.oauth_consents` | Supabase acting as an OAuth server |
+| `auth.sso_providers`, `auth.saml_providers`, `auth.sso_domains` | a SAML/SSO provider |
+| `auth.users`, `auth.identities`, `auth.sessions`, `auth.refresh_tokens` | any use of Supabase's own Auth user store |
+
+So **no wrong or duplicated authentication configuration exists in any database-visible form**,
+and nothing needs to be removed.
+
+**What could not be positively confirmed from here:** the Third-Party Auth registration itself
+lives in GoTrue runtime configuration, readable only through the Supabase dashboard,
+`api.supabase.com`, or the project's `/auth/v1/settings` — all egress-blocked. The Supabase MCP
+server exposes no auth-configuration tool. The owner must confirm visually that
+**Authentication → Sign In / Providers → Third-Party Auth** lists exactly one Clerk entry with
+domain `joint-lion-2271.clerk.accounts.dev`, and that **no** legacy JWT-template secret is set
+under Authentication → JWT settings.
 
 ---
 
@@ -318,15 +362,16 @@ writes regardless of what is rendered. The professional interface begins in Prom
 
 ---
 
-## 12. Known deferrals
+## 13. Known deferrals
 
 | Item | Phase | Why |
 | --- | --- | --- |
-| Clerk application creation | **blocked on owner** | no Clerk API tooling is available in this session |
-| Supabase third-party auth registration | **blocked on owner** | needs the Clerk domain, which needs the application |
-| End-to-end Clerk-issued auth tests | after the two above | cannot be honestly claimed before then |
-| Webhook deployment | after the above | needs the Clerk signing secret as an Edge Function secret |
+| `VITE_CLERK_PUBLISHABLE_KEY` in `.env.local` | **blocked on owner** | Clerk hosts are egress-blocked; the key must be pasted from the Clerk dashboard |
+| Visual confirmation of the Third-Party Auth entry | **blocked on owner** | GoTrue runtime config is unreachable from this session (§10a) |
+| First real Clerk sign-in | **blocked on owner** | needs a browser against Clerk |
+| `CLERK_WEBHOOK_SIGNING_SECRET` Edge Function secret + endpoint registration in Clerk | **blocked on owner** | the deployed function fails closed until both are done |
 | First admin bootstrap | after sign-in | needs the owner's verified Clerk user id |
+| End-to-end Clerk → Supabase → RLS tests | after all of the above | cannot be honestly claimed before then |
 | Moving authz helpers to a non-exposed schema | Prompt 22 | removes RPC exposure of the two DEFINER helpers |
 | Manager access to the user directory | business decision | currently manager has none, per "limit to actual operational need" |
 | Manager managing region access | business decision | currently admin only |

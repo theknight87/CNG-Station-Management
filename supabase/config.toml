@@ -33,9 +33,10 @@ major_version = 17
 # register the same domain in the Supabase dashboard under
 # Authentication -> Third-Party Auth.
 #
-# Left commented out deliberately: an empty or wrong domain here would be worse
-# than an absent one, because `supabase start` would silently trust nothing.
+# The domain is recorded WITHOUT a scheme, which is the form Supabase expects.
+# The Clerk instance is a Development instance; a production instance will have
+# a different domain and must be registered separately before going live.
 # ---------------------------------------------------------------------------
-# [auth.third_party.clerk]
-# enabled = true
-# domain = "REPLACE_WITH_CLERK_DOMAIN"
+[auth.third_party.clerk]
+enabled = true
+domain = "joint-lion-2271.clerk.accounts.dev"
