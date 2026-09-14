@@ -1,0 +1,12 @@
+-- CNG Station Management System — seed data
+--
+-- Project: cng-station-management (its own Supabase organization).
+-- Never run this against any other project's database (see CLAUDE.md §2).
+--
+-- No tables exist yet: the schema arrives in the migrations phase. The only
+-- seed data this system will ever carry is the canonical region list below,
+-- which is reference data, not imported source data.
+--
+-- Canonical regions: East, West, Canal, Delta, Alex, Upper
+--
+-- Intentionally empty until the first migration defines `region`.

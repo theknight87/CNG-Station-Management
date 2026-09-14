@@ -1,0 +1,1 @@
+export { SrvManagementView } from './SrvManagementView'

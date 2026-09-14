@@ -1,0 +1,1 @@
+export { HosesManagementView } from './HosesManagementView'

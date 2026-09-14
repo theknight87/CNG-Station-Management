@@ -1,0 +1,1 @@
+export { AlertsView } from './AlertsView'
