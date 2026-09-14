@@ -138,12 +138,23 @@ installed_srv (
                                                     -- | needs_equipment_mapping | conflict
   mapping_note       TEXT NULL,        -- why it is unresolved / what the conflict is
 
+  location_raw         TEXT NULL,      -- source `Location` verbatim: 'Stage' | 'Storage'
+  expected_parent_kind srv_parent_kind NULL,  -- HINT ONLY: compressor | storage_vessel
+                                              -- never populates an equipment FK
+
+  resolved_by        UUID NULL REFERENCES app_user(id),
+  resolved_at        TIMESTAMPTZ NULL,
+
   tag_number         TEXT NULL,
   serial_number      TEXT NULL,        -- TEXT, nullable (principles #5, #11)
   set_pressure       NUMERIC NULL,
   set_pressure_unit  TEXT NULL,
-  last_test_date     DATE NULL,
-  next_due_date      DATE NULL,        -- Days Left derived from this, never stored
+  last_test_date       DATE NULL,
+  last_test_precision  date_precision NOT NULL DEFAULT 'unknown',
+  last_test_raw        TEXT NULL,
+  next_due_date        DATE NULL,      -- Days Left derived from this, never stored
+  next_due_precision   date_precision NOT NULL DEFAULT 'unknown',
+  next_due_raw         TEXT NULL,      -- e.g. '2022', 'منتهية', '209/2021'
 
   source_raw         JSONB NULL,
   import_batch_id    UUID NULL,
@@ -226,7 +237,8 @@ CREATE VIEW srv_full AS
 SELECT s.*,
        COALESCE(c.unit_id, v.unit_id, d.unit_id, s.unit_id) AS effective_unit_id,
        st.region_id,
-       CASE WHEN s.next_due_date IS NOT NULL
+       CASE WHEN s.next_due_precision = 'exact_date'
+             AND s.next_due_date IS NOT NULL
             THEN s.next_due_date - CURRENT_DATE END          AS days_left,
        (s.mapping_status <> 'resolved')                      AS needs_mapping
 FROM installed_srv s
@@ -236,8 +248,9 @@ LEFT JOIN storage_vessel v ON v.id = s.storage_vessel_id
 LEFT JOIN dispenser d    ON d.id  = s.dispenser_id;
 ```
 
-`days_left` is computed here and nowhere else (principles #12, #13); a NULL due date yields
-NULL — never `0`, never "overdue".
+`days_left` is computed here and nowhere else (principles #12, #13). It is NULL unless the due
+date is `exact_date` precision — a year-only, unknown or invalid date yields NULL, never `0` and
+never "overdue".
 
 Note that `station_id` and `unit_id` on the row are **not a second source of truth competing
 with the parent**: for resolved records the composite FKs force them to agree with the parent
@@ -273,6 +286,163 @@ so the original evidence stays inspectable. Nothing auto-promotes.
 The same pattern (owning table + aggregate view) gives `vessel_full`, `gas_detector_full`, and
 `hose_full` for the other global modules. **All four global modules are views; none of them
 owns records.**
+
+#### `expected_parent_kind` — a hint that never becomes a foreign key
+
+Source analysis (`data-quality-report.md` §4) established that the installed-SRV source has no
+Unit column and no equipment identifier. Its `Location` column holds only `Stage` (1 805 rows)
+and `Storage` (857). The deterministic reading of those values is stored:
+
+| `Location` | `expected_parent_kind` | What it proves | What it does **not** prove |
+| --- | --- | --- | --- |
+| `Stage` | `compressor` | the parent is a compressor | *which* compressor, or which Unit |
+| `Storage` | `storage_vessel` | the parent is a storage vessel | *which* vessel, or which Unit |
+| *(absent)* | `NULL` | — | — |
+
+Its only job is to narrow the candidate list in the mapping UI. Constraint 1 still requires
+every equipment FK to be NULL unless `mapping_status = 'resolved'`, so a hint physically cannot
+leak into parentage: **no import path writes an equipment FK.**
+
+The expected import outcome is therefore:
+
+| `mapping_status` | Expected population at first import |
+| --- | --- |
+| `resolved` | **0** |
+| `needs_equipment_mapping` | rows whose Station resolves to a single-Unit Station |
+| `needs_unit_mapping` | rows whose Station resolves only to a multi-Unit Station |
+| *(import staging)* | rows whose Station name has no confirmed alias |
+
+#### Prohibited automatic inferences
+
+Forbidden in the importer, in any backfill, and in any later feature:
+
+- mapping an SRV to a Unit from Station-name similarity
+- assigning a `Stage` SRV to a specific Compressor, or a `Storage` SRV to a specific Vessel
+- distributing SRVs across Units, compressors or vessels by count, order, or balancing rule
+- inferring a Dispenser SRV — **none is proven by any current source**
+- applying a bulk mapping rule from name similarity or `Location` without explicit confirmation
+
+Each would invent a physical relationship. The `CHECK` constraint blocks the write; this list
+states the intent so no one adds a "helpful" backfill later.
+
+#### Mapping workflow (Admin → Data Quality)
+
+Resolution is a product feature with its own screens, not a one-off script.
+
+| Capability | Detail |
+| --- | --- |
+| Filter | Region · Station · source `Location` · `expected_parent_kind` · `mapping_status` |
+| Search | serial number · manufacturer · set pressure |
+| Assign Unit | sets `unit_id`; status `needs_unit_mapping` → `needs_equipment_mapping` |
+| Assign equipment | sets exactly one parent FK; status → `resolved` |
+| Bulk assign | applies one Unit/equipment context to an explicitly selected set |
+| Audit | `resolved_by`, `resolved_at`, plus an append-only `asset_mapping_audit` row per change |
+
+**Bulk mapping rules.** The engineer selects specific records and confirms the target context in
+a dialogue that restates what will change and how many records it affects. The system may
+*suggest* a selection (for example, all `Storage` SRVs at a single-Unit Station) but never
+pre-applies one. There is no "apply to all similar" action and no rule persisted for future
+imports.
+
+```
+asset_mapping_audit (
+  id, asset_type, asset_id,
+  changed_by UUID REFERENCES app_user(id), changed_at TIMESTAMPTZ NOT NULL,
+  from_status, to_status,
+  from_unit_id, to_unit_id, from_parent_kind, to_parent_id, to_parent_kind,
+  is_bulk BOOLEAN NOT NULL, bulk_batch_id UUID NULL,
+  note TEXT NULL
+)
+```
+
+Audit rows are append-only and never touch `source_raw`: the original evidence and the human
+decision are separately inspectable, so a wrong mapping can be traced and reversed.
+
+### Canonical Station and Unit identity
+
+`Station data base.xlsx` is **not** the Station master. Its name column mixes unit-level names
+(`شبرا 1`…`شبرا 4`) with station-level names, so one row does not equal one Station
+(`data-quality-report.md` §3). Identity is reconciled across sources instead:
+
+```
+raw source name ──▶ station_aliases ──▶ canonical station
+   (+ file, region)     (explicit row)
+```
+
+```
+station_alias (
+  id,
+  raw_name        TEXT NOT NULL,      -- verbatim, including qualifiers and spacing
+  normalized_name TEXT NOT NULL,      -- NFKC + Arabic folding; for lookup, not identity
+  region_id       UUID NOT NULL REFERENCES region(id),
+  source_file     TEXT NOT NULL,
+  station_id      UUID NULL REFERENCES station(id),   -- NULL until confirmed
+  alias_status    alias_status NOT NULL,  -- confirmed | proposed | rejected
+  confirmed_by    UUID NULL REFERENCES app_user(id),
+  confirmed_at    TIMESTAMPTZ NULL,
+  UNIQUE (raw_name, region_id, source_file)
+)
+```
+
+`unit_alias` follows the same shape and is introduced when the analysis of numbered names
+(`الخمائل 1` — unit of `الخمائل`, or its own Station?) is settled.
+
+Rules:
+
+- **Runtime resolution reads `station_alias` only.** Fuzzy matching runs once, in the review UI,
+  to *propose* aliases. It never resolves a lookup at runtime and never writes a confirmed row.
+- An unmatched name produces an **import issue**, not a merge and not a silent new Station.
+- A proposed alias never attaches data; only `alias_status = 'confirmed'` does.
+- Confirming an alias is audited like a mapping change.
+
+This means a station name can be spelled four ways across four files and still resolve to one
+canonical Station — with every spelling preserved and every link traceable to the person who
+confirmed it.
+
+### Field-level source precedence
+
+No workbook is globally authoritative. Precedence is declared **per field**, only where the
+evidence supports it:
+
+| Field | Preferred source | Why |
+| --- | --- | --- |
+| Station→Unit structure, Unit Name | `Assets DataBase` | the only source that states the two levels explicitly (East/West/Delta only) |
+| Unit Job Number | `Assets DataBase` | the only source carrying it at all |
+| Gas detector presence, serial, calibration | `Gas detector.xlsx` | the dedicated source; `Station data base` carries model only |
+| Vessel calibration dates and serials | `شهادات الفحص والمعايرة` | the certificate source of record |
+| SRV attributes and calibration | `Warehouse Relief Data` | the dedicated SRV register |
+| Hose records | `HOSES.xlsx` | the only hose asset source; `No. Of Hoses` elsewhere is a count, not records |
+| Operational metrics (running hours, gas sales, bay status) | `Station data base.xlsx` | the only source |
+
+Where two sources disagree on a field with no declared precedence, **both values are retained**,
+the record is flagged `conflict`, and the disagreement stays visible in Data Quality until a
+human resolves it. Later precedence rules are added only with evidence, and never retro-apply
+over a human resolution.
+
+### Date precision
+
+Every date in the system is a triple: value, precision, raw.
+
+```sql
+CREATE TYPE date_precision AS ENUM ('exact_date', 'year_only', 'unknown', 'invalid');
+```
+
+| Precision | `value` | Source examples | Alerts |
+| --- | --- | --- | --- |
+| `exact_date` | set | `2026-08-08`, `15/12/2025` | **yes** |
+| `year_only` | **NULL** | `2021` (int), `'2022'` (text) | **no** |
+| `unknown` | NULL | empty cell | no |
+| `invalid` | NULL | `منتهية`, `209/2021`, `16/8/3033`, `______` | no |
+
+Only `exact_date` participates in **Days Left, Due Today, the 7/15/30/60-day alerts, and Overdue
+status**. Everything else renders its raw source value with an explicit label (*"Year only —
+exact date unknown"*, *"Unreadable source value"*) and is counted separately from compliance
+figures, so an unknown date can never masquerade as compliant or as overdue.
+
+This is enforced in the derived views: `days_left` is computed only
+`WHERE next_due_precision = 'exact_date'`, and is NULL otherwise. A year-only date is retained
+and visible as source information — it is never expanded to 1 January.
+
 
 ### Hoses
 
@@ -434,10 +604,17 @@ Vessels, Gas Detector, Hoses management on the same pattern.
 Create/edit/delete for stations, units, equipment, SRVs. Validation that honours the data
 principles (nullable job number, nullable serial, TEXT identifiers). Audit trail.
 
+**Phase 6b — Identity and mapping workflow**
+`station_alias` (and `unit_alias` if needed), `asset_mapping_audit`, and the Admin → Data Quality
+screens: filter/search, assign Unit, assign equipment, confirmation-gated bulk assign, alias
+confirmation, and audit history. This ships **before** the import so that unresolved records have
+somewhere to go the day they land.
+
 **Phase 7 — Data import**
 Importers under `scripts/import/` with a mandatory dry-run report: rows read, rows mapped,
-rows flagged `needs_review` with reason, rows landing in each `mapping_status`, and values
-normalized and by which rule. `source_raw` populated. Nothing is imported until a dry-run is reviewed. Admin import UI last.
+rows flagged `needs_review` with reason, rows landing in each `mapping_status`, counts per
+`date_precision`, proposed aliases (never auto-confirmed), and values normalized and by which
+rule. `source_raw` populated. Identifier columns asserted non-numeric, or the run aborts. Nothing is imported until a dry-run is reviewed. Admin import UI last.
 
 **Phase 8 — Notifications**
 `notification_log`, Edge Functions for due-date scanning, Resend email, Web Push with this
@@ -466,6 +643,10 @@ runbook in `docs/operations.md`.
 | A9 | **Web Push subscription rot** — expired subscriptions accumulate and every send fails | Low | Prune on 404/410 responses |
 | A10 | **Cloudflare Pages SPA routing** — deep links 404 without a catch-all rewrite | Low | `_redirects` configured in Phase 1 and verified with a deep link |
 | A11 | **Isolation breach** — a copied env var or a Supabase MCP call aimed at the wrong project silently couples this system to the Coding System | Critical | CLAUDE.md rule; verify project/org name before every hosted-resource operation; secrets generated fresh, never copied |
+| A13 | **A future "helpful" backfill auto-maps SRVs** from Location or name similarity, fabricating parentage at scale | High | Prohibited-inference list in CLAUDE.md and here; the `CHECK` blocks the write; mapping requires `resolved_by`/`resolved_at`, which a script cannot honestly supply |
+| A14 | **Alias table drifts into runtime fuzzy matching** because it is faster than confirming aliases | High | Resolution reads `station_alias` only; fuzzy matching lives in the review UI as a proposal step and has no runtime code path |
+| A15 | **A year-only or invalid date leaks into compliance figures**, showing an asset as compliant or overdue on no evidence | High | `date_precision` gates every alert path; `days_left` is NULL unless `exact_date`; unknown-precision items are counted in their own bucket, never folded into compliant/overdue |
+| A16 | **An analytical figure is hardcoded** (e.g. the 41 % overdue-vessel finding) and becomes phantom production truth | Medium | No source-analysis count appears in application code, seeds, or fixtures; every operational figure is computed from imported data at read time |
 | A12 | **Role model proves too coarse** (e.g. contractor access to one equipment type) | Medium | Scope stored in the database, not in Clerk metadata, so the model can be extended without an identity-provider migration |
 
 ---
@@ -488,6 +669,8 @@ runbook in `docs/operations.md`.
 | D11 | **Merged cells / multi-row headers / trailing total rows** in source spreadsheets shift every column | High | Header detection asserted explicitly per file; dry-run prints the detected header row and a sample mapping for human confirmation before any write |
 | D12 | **Unit-of-measure inconsistency** (bar vs psi, mm vs inch) in pressure and size columns | Medium | Store the value and its source unit; convert only in the display layer, and only when the source unit is stated — never infer |
 | D13 | **Loss of traceability after import** — no way to answer "where did this value come from?" | Medium | `source_raw JSONB` per row plus an import batch id recording file name, sheet, row number, and import timestamp (principle #6) |
+| D13b | **Numeric-typed identifiers** — 958 SRV, 452 vessel and 1 170 warehouse serials stored as Excel integers; 3 gas-detector serials and 41 part numbers as floats | High | Read raw, cast to TEXT with no numeric formatting; never pad a lost leading zero speculatively; dry-run asserts no identifier became a float or scientific-notation string |
+| D13c | **A part number in the serial column** (`SS-4R3A` on 48 rows) read as a duplicate serial | Medium | Preserve raw, flag for review; never auto-correct and never merge on it |
 | D14 | **Re-import overwrites human corrections** made in the app after the first load | High | Imports are idempotent by batch and never blind-overwrite a field edited in-app; conflicts go to the review queue |
 | D15 | **Valid rows dropped by a strict importer** on the first error | High | Importer is row-resilient: it collects errors and continues, reporting counts; a row is never discarded for a field-level problem (principle #10) |
 
@@ -502,4 +685,7 @@ runbook in `docs/operations.md`.
 5. Does a Hose attach only to Dispensers, or also to other equipment in the source data?
 6. Retention: is historical inspection data being imported, or only current status?
 7. Who owns the mapping queue, and is there a target for clearing `needs_unit_mapping` /
-   `needs_equipment_mapping` backlogs?
+   `needs_equipment_mapping` backlogs? With ~2 662 SRVs expected to arrive unresolved, throughput
+   here determines when SRV compliance reporting becomes trustworthy.
+8. The nine source questions in `data-quality-report.md` §13, of which items 1–3 (governorate
+   suffixes, numbered station names, SRV parent resolution) gate the largest record volumes.

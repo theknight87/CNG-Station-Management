@@ -20,8 +20,12 @@ first importer runs.
 | Placeholders → NULL + flag | `-`, `N/A`, `______`, `__________` become `NULL` with `review_reason = 'placeholder_in_source'`. `0` is **never** treated as a placeholder. |
 | Never guess (#8) | No fuzzy station matching. Unmatched names are retained and flagged. |
 | Nothing discarded (#10) | Row-level errors are collected; the run continues. |
-| Days Left | Never imported. Derived from `next_due_date − current_date`. |
-| Dates | Stored as `(value DATE NULL, precision TEXT, raw TEXT)`. See §7. |
+| Days Left | Never imported. Derived from `next_due_date − current_date`, and **only** where precision is `exact_date`. |
+| Dates | Stored as `(value DATE NULL, precision date_precision, raw TEXT)` with precision `exact_date` / `year_only` / `unknown` / `invalid`. See §7. |
+| Identifiers stay raw (#15) | No leading-zero padding, no stripping of decimal-looking characters, no "correcting" a value that looks like a part number. Wrong-looking values import verbatim and are flagged. |
+| Repeats ≠ duplicates (#16) | Duplicate candidates are reported, never merged or dropped. |
+| No global authority (#18) | Precedence is per field (§10). Undeclared conflicts are retained and flagged, not silently won by one file. |
+| Missing ≠ incomplete (#19) | NULL fields never block creation and never mark an entity incomplete. |
 | Pressure | Stored as `(raw TEXT, min NUMERIC NULL, max NUMERIC NULL, unit TEXT NULL)`. Never converted. |
 
 ### Region normalization (deterministic, all values covered)
@@ -75,15 +79,26 @@ Yields **156 stations, 188 units**.
 
 **Stage 2b — from `Station data base.xlsx` (all six regions):**
 
-For each row, match its (region, name) against units created in 2a using the deterministic
-normalizer (NFKC, strip tatweel/diacritics, fold `أإآ→ا`, `ى→ي`, `ة→ه`, collapse whitespace).
+This file is **not** treated as a Station master: its name column mixes station-level and
+unit-level naming, so one row does not equal one Station. Each row resolves through
+`station_alias` (and `unit_alias` where applicable):
 
 | Outcome | Action |
 | --- | --- |
-| Matches an existing **unit** | attach this row's attributes to that unit |
-| Matches an existing **station** with exactly one unit | attach to that unit |
-| No match, region is Canal / Alex / Upper | **create** station + one unit of the same name, `job_number = NULL`, `needs_review = true`, `review_reason = 'unit_structure_unknown_no_assets_source'` |
-| No match, region is East / West / Delta | create as above, `review_reason = 'not_found_in_assets_database'` — 12 such rows |
+| A **confirmed alias** exists for (raw name, region, file) | attach this row's attributes to the canonical entity it names |
+| Normalizer matches exactly one existing **unit** | write a **proposed** alias; **attach nothing yet**; queue for confirmation |
+| Normalizer matches exactly one existing **station** with a single unit | proposed alias to that unit; queue for confirmation |
+| Normalizer matches several candidates | proposed aliases for each candidate, `import_issue = 'ambiguous_station_identity'`; **no attachment** |
+| No match, region is Canal / Alex / Upper | create Station + one Unit of the same name, `job_number = NULL`, flag `unit_structure_unknown_no_assets_source`, and record a confirmed alias for the name that created it |
+| No match, region is East / West / Delta | as above, flagged `not_found_in_assets_database` — 12 such rows |
+
+A **proposed** alias never attaches data and never creates an entity. Only a **confirmed** alias
+resolves. This is what keeps the ~100–156 unmatched names per file (quality report §2) from
+either silently merging into the wrong Station or silently multiplying into duplicates.
+
+Creating a Station for an unmatched name is a last resort, used only where no candidate exists at
+all; where candidates exist the row waits for human confirmation rather than duplicating a
+Station that is probably already there.
 
 This is how **Canal, Alex and Upper are imported in full** despite having no Unit/Job Number
 source. Their stations and units exist, carry every attribute files 1, 3, 4, 5 provide, and hold
@@ -199,6 +214,17 @@ narrows the parent kind to *compressor* and `Location = 'Storage'` to *storage v
 hint is stored in `expected_parent_kind` to drive the resolution UI — but it identifies no
 specific record, so it never populates a parent FK. **No dispenser SRVs exist in this source.**
 
+The importer is explicitly forbidden to:
+
+- map an SRV to a Unit from Station-name similarity (only a **confirmed** alias resolves a Station)
+- assign a `Stage` SRV to a specific Compressor, or a `Storage` SRV to a specific Storage Vessel
+- distribute SRVs across Units, compressors or vessels by count, order or any balancing rule
+- create a Dispenser SRV
+- apply any bulk rule derived from `Location` or name similarity
+
+Expected outcome: **`resolved` = 0.** Every installed SRV arrives unresolved and is worked
+through Admin → Data Quality (§11).
+
 | Source col | Target | Notes |
 | --- | --- | --- |
 | `Area` | region | |
@@ -266,7 +292,85 @@ never expanded into synthetic hose rows.
 
 ---
 
-## 8. Explicitly not imported
+## 8. Field-level source precedence
+
+No workbook wins globally. Precedence is declared per field, only where evidence supports it.
+
+| Field | Preferred source | Basis |
+| --- | --- | --- |
+| Station→Unit structure, Unit Name | `Assets DataBase` | only source stating both levels (East/West/Delta) |
+| Unit Job Number | `Assets DataBase` | only source carrying it |
+| Gas detector presence / serial / calibration | `Gas detector.xlsx` | dedicated source; file 1 has model only |
+| Vessel serial and calibration dates | `شهادات الفحص والمعايرة` | certificate source of record |
+| SRV attributes and calibration | `Warehouse Relief Data` | dedicated SRV register |
+| Hose asset records | `HOSES.xlsx` | only hose asset source (file 1 gives counts, not records) |
+| Running hours, gas sales, bay status | `Station data base.xlsx` | only source |
+| Equipment models (compressor, dispenser, storage, recovery) | *(none declared)* | files 1 and 2 overlap; spellings differ — see below |
+
+Where no precedence is declared and two sources disagree, **both values are retained**, the
+record is flagged `conflict`, and it stays visible in Data Quality until resolved. A declared
+precedence never overwrites a human resolution on re-import.
+
+## 9. Identifier handling (TEXT, always)
+
+| Rule | Applies to |
+| --- | --- |
+| Read the raw cell; cast to TEXT with **no numeric formatting** | all serials, job numbers, part numbers, warehouse codes |
+| **Never** pad a missing leading zero | 958 SRV / 452 vessel / 1 170 warehouse int-typed serials |
+| **Never** strip decimal-looking characters | the 3 float-typed gas-detector serials (`1803.02075`) and 41 float part numbers |
+| **Never** "correct" a wrong-looking value | `SS-4R3A` (a part number in a serial column, 48 rows) — preserve raw, flag `suspected_part_number_in_serial_column` |
+| **Never** treat repeats as duplicates without evidence | 38 duplicate SRV serials / 224 rows; 94 vessel serials — reported as candidates only |
+
+A lost leading zero is **not recoverable** from the source and is not guessed. The dry-run
+asserts that no identifier column produced a float or scientific-notation string; a failure
+aborts the run.
+
+## 10. Date precision at import
+
+Every date column produces `(value, precision, raw)`:
+
+| Source shape | Precision | `value` | Alerts |
+| --- | --- | --- | --- |
+| Real Excel date | `exact_date` | set | yes |
+| Text `d/m/y`, `d-m-y` (format asserted per column) | `exact_date` | set | yes |
+| Year only — `2021` int **or** `'2022'` text (332 cells) | `year_only` | **NULL** | **no** |
+| Empty | `unknown` | NULL | no |
+| `منتهية`, `منتهي`, `شهادة المنشأ`, `209/2021`, `16/8/3033`, `______` | `invalid` | NULL | no |
+
+Only `exact_date` feeds Days Left, Due Today, 7/15/30/60-day alerts and Overdue. Year-only values
+stay visible as source information and are **never** expanded to 1 January. `منتهية` ("expired")
+is a genuine compliance signal but is imported as `invalid` with its raw text until an engineer
+confirms how it should be represented — it is not silently converted into a date or a status.
+
+## 11. Post-import: the mapping queue
+
+Import ends with unresolved records, by design. They are worked in Admin → Data Quality:
+
+| Queue | Population |
+| --- | --- |
+| SRV unit mapping | installed SRVs at multi-Unit Stations |
+| SRV equipment mapping | installed SRVs at single-Unit Stations |
+| Station alias confirmation | proposed aliases from every file |
+| Duplicate candidates | 71 SRV key-groups (142 rows), 94 vessel serials, 8 dispenser serials |
+| Invalid / year-only dates | 332 year-only cells plus the invalid set |
+| Flagged identifiers | `SS-4R3A`-type values, placeholder serials |
+| Missing serials | 149 gas detectors, 120 SRVs, 67 vessels |
+
+Nothing in this queue blocks the rest of the system: the assets exist, appear in their global
+management modules, and carry every value the source proved.
+
+## 12. Recalculating operational figures
+
+Figures in `data-quality-report.md` — notably **456 of 1 120 vessel certificates (41 %) overdue**
+— are *analytical findings about the source files*, not verified operational truth. They must be
+recalculated after date normalization, canonical Station reconciliation, duplicate review, and
+final import verification.
+
+**No analytical count from the source analysis is hardcoded anywhere in the application**, its
+seeds, or its fixtures. Every operational figure the UI shows is computed from imported data at
+read time.
+
+## 13. Explicitly not imported
 
 | Item | Reason |
 | --- | --- |
@@ -280,7 +384,7 @@ never expanded into synthetic hose rows.
 
 ---
 
-## 9. Dry-run report (required before any write)
+## 14. Dry-run report (required before any write)
 
 The importer must run in dry-run first and print, per file:
 

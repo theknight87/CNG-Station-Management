@@ -102,15 +102,20 @@ Historical source data sometimes proves an SRV's **Station** but not its Unit, a
 proves the Unit but not which Compressor, Vessel, or Dispenser it sits on. Such records are
 **preserved, not rejected and not guessed** (data principles #1, #8, #9, #10).
 
+Source analysis confirmed this is the normal case, not the exception: the installed-SRV source
+has **no Unit column and no equipment identifier**, so **no installed SRV can be imported as
+`resolved`**. See `docs/data-quality-report.md` §4.
+
 The installed-SRV record therefore carries:
 
 | Column | Nullability |
 | --- | --- |
-| `station_id` | **required** — set only when the Station is confidently identified |
+| `station_id` | required *once the Station is confirmed* — see `station_match_status` below |
 | `unit_id` | nullable |
 | `compressor_id` | nullable |
 | `storage_vessel_id` | nullable |
 | `dispenser_id` | nullable |
+| `expected_parent_kind` | nullable — **resolution hint only** |
 | `mapping_status` | required |
 
 `mapping_status` values:
@@ -121,6 +126,34 @@ The installed-SRV record therefore carries:
 | `needs_unit_mapping` | Station proven, Unit not | Unit NULL; no equipment parent |
 | `needs_equipment_mapping` | Station and Unit proven, parent equipment not | Unit set; no equipment parent |
 | `conflict` | source evidence disagrees | held for human resolution |
+
+#### `expected_parent_kind` is a hint, never a foreign key
+
+The source `Location` column is preserved verbatim. Where its interpretation is deterministic it
+also populates `expected_parent_kind`:
+
+| Source `Location` | `expected_parent_kind` | Meaning |
+| --- | --- | --- |
+| `Stage` | `compressor` | the parent is *a* compressor — **which one is unknown** |
+| `Storage` | `storage_vessel` | the parent is *a* storage vessel — **which one is unknown** |
+
+This value narrows the choices presented to an engineer in the mapping workflow. It **must never
+populate an equipment foreign key**, and it is not evidence of Unit membership.
+
+#### Prohibited automatic inferences
+
+These are forbidden at import and at every later stage. Each would fabricate a physical
+relationship the source does not prove:
+
+- **Never** map an SRV to a Unit from Station-name similarity alone.
+- **Never** assign a `Stage` SRV to a specific Compressor automatically.
+- **Never** assign a `Storage` SRV to a specific Storage Vessel automatically.
+- **Never** distribute SRVs across a Unit's Units, compressors or vessels by count, order,
+  round-robin, or any balancing rule.
+- **Never** infer a Dispenser SRV. **No dispenser SRV is proven by any current source.**
+- **Never** auto-apply a bulk mapping rule from name similarity or `Location`.
+
+Equipment parentage is set by an explicit human decision, recorded with who and when.
 
 Unresolved records:
 
@@ -167,6 +200,21 @@ introduce new ownership and do not change parentage.
 12. **Do not rely on Excel `Days Left` fields.**
 13. **Calculate Days Left dynamically** from the next valid due date.
 14. **Empty source data stays empty** in the system.
+15. **Identifiers are preserved exactly as the source holds them.** Never pad a missing leading
+    zero, never strip decimal-looking characters from a damaged Excel value, never "correct" a
+    value that looks wrong (e.g. a part number such as `SS-4R3A` sitting in a serial column) —
+    preserve it raw and flag it for review.
+16. **Repeated values are not duplicates without supporting evidence.** Six identical relief
+    valves on one station may be six real devices. Report duplicate candidates; never merge or
+    discard silently.
+17. **Date precision is explicit.** Every date carries `exact_date`, `year_only`, `unknown`, or
+    `invalid`. Only `exact_date` may drive Days Left, Due Today, 7/15/30/60-day alerts, or
+    Overdue status.
+18. **No workbook is globally authoritative.** Source precedence is decided per field, only
+    where evidence supports it, and conflicts stay visible until a human resolves them.
+19. **Missing data never makes an entity invalid.** A Region, Station, Unit or asset with NULL
+    fields is a complete record with unknown attributes — it is created, displayed and tracked
+    normally. Nothing is marked "incomplete" and nothing is blocked because a field is unknown.
 
 ### Canonical Regions
 
@@ -195,3 +243,47 @@ row is marked for review.
 - No secrets in the repository. `.env.example` documents keys with empty values.
 - Dynamic computations (Days Left, compliance status) live in SQL views or the query layer,
   never as stale stored columns.
+
+## 8. Canonical Station and Unit identity
+
+**No single workbook is the Station master.** `Station data base.xlsx` mixes station-level and
+unit-level naming in one column (`شبرا 1`…`شبرا 4` alongside single-name stations), so treating
+each of its rows as a unique Station would create duplicate and mis-levelled Stations. See
+`docs/data-quality-report.md` §3.
+
+The canonical Station/Unit model is **reconciled across all sources**:
+
+- Structure (which Units belong to which Station) comes from the source that states it
+  explicitly, currently `Assets DataBase` for East, West and Delta.
+- Every other file contributes attributes to entities identified by alias resolution.
+- Where no source states the structure (Canal, Alex, Upper), a Station is created with the Units
+  the evidence supports and flagged for review — never with invented Units.
+
+### Alias tables, not runtime fuzzy matching
+
+`station_aliases` — and `unit_aliases` where analysis shows it is needed — map a raw source name
+(plus its source file and region) to a canonical entity. Rules:
+
+- An alias is an **explicit, stored mapping**, created by import confirmation or by a human.
+- Normalization (NFKC, whitespace, Arabic letter folding) may *propose* an alias; it never
+  creates one silently.
+- **Runtime lookups resolve through the alias table only.** Fuzzy matching is a one-time
+  suggestion aid in the review UI, never a permanent resolution mechanism.
+- An unmatched name is preserved with an **import issue** and resolved by a human. It is never
+  silently merged into an existing Station, and never silently duplicated into a new one where
+  that can be avoided.
+
+## 9. Mapping workflow (Admin → Data Quality)
+
+Resolving unresolved imported assets is a **product feature**, not a migration script.
+
+For SRVs the workflow provides: filter by Region, Station, source `Location`, and
+`expected_parent_kind`; search by serial, manufacturer, or set pressure; assign a confirmed Unit;
+assign confirmed parent equipment; mark resolved.
+
+**Bulk mapping** is supported where an engineer explicitly confirms that the selected records
+share the same Unit/equipment context. It always requires explicit human confirmation of the
+specific selection, and is never applied automatically from name similarity or `Location`.
+
+Every mapping change — single or bulk — records who made it and when, and is retained as **audit
+history**. `source_raw` is never altered by a mapping decision.
