@@ -96,6 +96,10 @@ unit-level naming, so one row does not equal one Station. Each row resolves thro
 | No match, region is Canal / Alex / Upper | create the **Station only**, `job_number = NULL`; **no Unit is invented** (decision D7). Unit-scoped attributes attach at Station level with `mapping_status = 'needs_unit_mapping'` |
 | No match, region is East / West / Delta | as above, flagged `not_found_in_assets_database` — 12 such rows |
 
+> **Amended by the Prompt 3 brief (§5).** Rule D1/D2 output is inserted as **`proposed`** only.
+> A governorate suffix is never stripped to force a match unless a **confirmed** alias exists, so
+> no rule auto-resolves a station. The rules narrow the review queue; a human still confirms.
+
 **Decisions D1 and D2 apply first.** A trailing governorate qualifier is stripped
 (`ابنوب اسيوط` → `ابنوب`), and `<base> <n>` is read as Unit *n* of Station `<base>`
 (`الخمائل 1` → Unit 1 of `الخمائل`, which has two Units). Each rule fires only when its target
@@ -328,7 +332,7 @@ precedence never overwrites a human resolution on re-import.
 | Read the raw cell; cast to TEXT with **no numeric formatting** | all serials, job numbers, part numbers, warehouse codes |
 | **Never** pad a missing leading zero | 958 SRV / 452 vessel / 1 170 warehouse int-typed serials |
 | **Never** strip decimal-looking characters | the 3 float-typed gas-detector serials (`1803.02075`) and 41 float part numbers |
-| Relocate a **confirmed** part number | `SS-4R3A` (48 rows) is confirmed a part number (D4): `serial_raw` keeps it verbatim, `part_number` receives it, `serial_number = NULL`, `serial_status = 'not_yet_assigned'`. **These rows are not duplicate serials** — the duplicate counts must be recomputed. |
+| **Never** auto-relocate a part number | Amended by the Prompt 3 brief (§18): `SS-4R3A` (48 rows) stays in `serial_number`/`serial_number_raw` exactly as found, with `needs_review = true` and reason `suspected_part_number_in_serial_column`. Relocating it to `part_number` is a human action, not an import step. **These rows are still not duplicate serials** — the duplicate counts must be recomputed. |
 | **Never** "correct" any other wrong-looking value | preserve raw, flag `suspected_part_number_in_serial_column`, await a decision |
 | **Never** treat repeats as duplicates without evidence | 38 duplicate SRV serials / 224 rows; 94 vessel serials — reported as candidates only |
 

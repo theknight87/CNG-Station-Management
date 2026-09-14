@@ -1,7 +1,13 @@
 # Architecture — CNG Station Management System
 
-Status: **planning document**. No application code exists yet.
-Companion document: [`../CLAUDE.md`](../CLAUDE.md) (isolation rule, data principles).
+Status: **planning document**, with the database schema now implemented as local migrations.
+Companion documents: [`../CLAUDE.md`](../CLAUDE.md) (isolation rule, data principles),
+[`database.md`](./database.md) (the implemented schema, ERD, constraints and verification),
+[`decisions.md`](./decisions.md) (owner decisions D1–D8).
+
+> The conceptual model below is authoritative for *intent*. Where it differs in detail from
+> [`database.md`](./database.md), the migrations in `supabase/migrations/` are what actually
+> exists and `database.md` describes them.
 
 ---
 
@@ -456,6 +462,29 @@ Consequences, stated plainly:
   and should be worked first.
 - Where decision D2 proves a Unit from a numbered name, the Unit **is** created. D7 forbids the
   invented default, not an evidenced Unit.
+
+### Refinements discovered while implementing the schema
+
+Four things changed or firmed up once the migrations were written and tested:
+
+1. **`region_id` is denormalized onto every asset table**, held consistent by a composite FK
+   `(station_id, region_id) → stations(id, region_id)`. It cannot drift from the station's region,
+   and it lets an RLS region predicate be evaluated without joining up the hierarchy on every row
+   — the mitigation for risk A3.
+2. **A resolved SRV must name its resolver.** `irv_resolved_attribution_ck` requires
+   `resolved_by` and `resolved_at` whenever `mapping_status = 'resolved'`. A script cannot honestly
+   satisfy this, which makes it a second structural defence against an automated backfill
+   inventing parentage (risk A13).
+3. **The Unit SRV tab rule lives in the database**, as the view `v_unit_srvs`
+   (`mapping_status IN ('resolved','needs_equipment_mapping')`). A UI mistake cannot display an
+   unmapped valve inside a unit it may not belong to.
+4. **Date-precision constraints are biconditional** —
+   `(precision = 'exact_date') = (date IS NOT NULL)` — so they reject both "exact precision, no
+   date" and "a real date labelled year_only". The second direction is what structurally prevents
+   a bare `2021` from becoming a fabricated `2021-01-01`.
+
+Two brief-level instructions in Prompt 3 also reversed parts of decisions D1 and D4; both are
+implemented as the brief specifies and recorded in [`database.md`](./database.md) §14.
 
 ### Manufacturer aliases (decision D5)
 
