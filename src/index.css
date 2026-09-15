@@ -34,7 +34,32 @@
 
     --border: 214 20% 88%;
     --input: 214 20% 84%;
-    --ring: 215 25% 27%;
+    --ring: var(--brand-ring);
+
+    /* --- Brand (Cargas / NGV) -------------------------------------------
+     * A SEPARATE namespace from --status-*, deliberately. Brand colour marks
+     * identity, navigation and selection; semantic colour states compliance.
+     * They must never collapse into each other: Cargas green must not come to
+     * mean "healthy" and Cargas yellow must not come to mean "warning", or the
+     * operational reading of a screen becomes a brand decision.
+     *
+     * VALUES ARE NOT YET SET TO THE OFFICIAL CARGAS PALETTE. The official
+     * colours could not be sampled in this session (cargas.com.eg is blocked
+     * by the network egress proxy and no logo/favicon asset was supplied), and
+     * inventing a corporate palette would fabricate the identity rather than
+     * extract it. Until the real values land these alias the existing neutral
+     * industrial identity, so nothing on screen claims to be Cargas branding
+     * that is not. Swapping in the official colours is a change to THIS BLOCK
+     * ONLY — the shell, dashboard, tables and every later screen read through
+     * these variables and inherit centrally.
+     */
+    --brand-primary: 215 25% 27%;
+    --brand-primary-fg: 0 0% 100%;
+    --brand-accent: 215 19% 35%;
+    --brand-accent-fg: 0 0% 100%;
+    /* The navigation selection rail and the focus ring. */
+    --brand-rail: 222 47% 11%;
+    --brand-ring: 215 25% 27%;
 
     /* --- Radius: restrained. Not every surface is a pill (§11.4). -------- */
     --radius: 0.25rem;
@@ -90,7 +115,17 @@
 
     --border: 217 25% 22%;
     --input: 217 25% 26%;
-    --ring: 213 27% 70%;
+    --ring: var(--brand-ring);
+
+    /* Brand, dark. Derivatives, not the raw brand values: a colour that
+     * passes on white routinely fails on a dark ground, and §11.3 requires
+     * contrast to hold in BOTH themes. Same deferral as the light block. */
+    --brand-primary: 213 27% 84%;
+    --brand-primary-fg: 222 47% 11%;
+    --brand-accent: 215 19% 65%;
+    --brand-accent-fg: 222 47% 11%;
+    --brand-rail: 210 40% 96%;
+    --brand-ring: 213 27% 70%;
 
     --status-ok: 152 52% 62%;
     --status-ok-bg: 158 40% 14%;

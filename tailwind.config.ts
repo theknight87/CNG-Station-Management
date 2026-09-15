@@ -41,6 +41,18 @@ export default {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
+        // Brand identity (Cargas / NGV). Deliberately a SEPARATE scale from
+        // `status` below: brand marks identity, navigation and selection;
+        // status states compliance. A component reaches for one or the other
+        // and never treats them as interchangeable.
+        brand: {
+          DEFAULT: 'hsl(var(--brand-primary))',
+          fg: 'hsl(var(--brand-primary-fg))',
+          accent: 'hsl(var(--brand-accent))',
+          'accent-fg': 'hsl(var(--brand-accent-fg))',
+          rail: 'hsl(var(--brand-rail))',
+        },
+
         // Semantic status colours (§15). Named by MEANING, never by hue, so a
         // palette change cannot silently alter what a badge asserts.
         status: {

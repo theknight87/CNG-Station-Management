@@ -66,7 +66,7 @@ export function SidebarNav({
                         <span
                           aria-hidden="true"
                           className={cn(
-                            'absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-r bg-foreground transition-opacity',
+                            'absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-r bg-brand-rail transition-opacity',
                             isActive ? 'opacity-100' : 'opacity-0',
                           )}
                         />
