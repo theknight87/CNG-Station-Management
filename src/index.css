@@ -37,29 +37,43 @@
     --ring: var(--brand-ring);
 
     /* --- Brand (Cargas / NGV) -------------------------------------------
+     * SAMPLED FROM THE OFFICIAL LOGO, public/brand/logo.png — not from memory
+     * and not from the website (cargas.com.eg is egress-blocked here). The mark
+     * is exactly two inks: 80% of its opaque pixels are green with a modal
+     * value of #089B4B, 20% are yellow with a modal value of #FFEB00.
+     *
      * A SEPARATE namespace from --status-*, deliberately. Brand colour marks
      * identity, navigation and selection; semantic colour states compliance.
-     * They must never collapse into each other: Cargas green must not come to
-     * mean "healthy" and Cargas yellow must not come to mean "warning", or the
-     * operational reading of a screen becomes a brand decision.
+     * Cargas green must never come to mean "healthy" and NGV yellow must never
+     * come to mean "warning", or reading a screen becomes a brand decision.
      *
-     * VALUES ARE NOT YET SET TO THE OFFICIAL CARGAS PALETTE. The official
-     * colours could not be sampled in this session (cargas.com.eg is blocked
-     * by the network egress proxy and no logo/favicon asset was supplied), and
-     * inventing a corporate palette would fabricate the identity rather than
-     * extract it. Until the real values land these alias the existing neutral
-     * industrial identity, so nothing on screen claims to be Cargas branding
-     * that is not. Swapping in the official colours is a change to THIS BLOCK
-     * ONLY — the shell, dashboard, tables and every later screen read through
-     * these variables and inherit centrally.
+     * Contrast forced three derivatives (measured, see scripts/verify-brand.mjs):
+     *   #089B4B carries only 3.62:1 against white and 3.46:1 as text on our
+     *   working ground — both short of the 4.5:1 AA floor for normal text. So
+     *   the official green is used for IDENTITY FILLS only, and --brand-strong
+     *   (the same hue and saturation, lightness 32%→27%) does every job that
+     *   involves text.
      */
-    --brand-primary: 215 25% 27%;
-    --brand-primary-fg: 0 0% 100%;
-    --brand-accent: 215 19% 35%;
-    --brand-accent-fg: 0 0% 100%;
-    /* The navigation selection rail and the focus ring. */
-    --brand-rail: 222 47% 11%;
-    --brand-ring: 215 25% 27%;
+    --brand: 147 90% 32%;             /* #089B4B  official Cargas green */
+    --brand-fg: 0 0% 100%;
+    --brand-strong: 147 90% 27%;      /* #07833F  derived: AA for text */
+    --brand-strong-fg: 0 0% 100%;
+    /* #004221 — the darkest green present IN the logo, so the deep shade is
+     * sampled rather than invented. White on it reaches 11.66:1. */
+    --brand-deep: 156 100% 13%;
+    --brand-deep-fg: 0 0% 100%;
+    /* NGV yellow is a FILL, never text on a light ground: against our working
+     * ground it measures 1.17:1, which is invisible. It reaches 14.57:1 with
+     * near-black on top and 15.28:1 as a mark on the deep sidebar ground, so
+     * it is confined to dark grounds and to the logo itself. That confinement
+     * is also what keeps the product from reading as a yellow marketing site. */
+    --brand-yellow: 55 100% 50%;      /* #FFEB00  official NGV yellow */
+    --brand-yellow-fg: 222 47% 11%;
+    --brand-yellow-ink: 55 100% 24%;  /* #7A7000  derived, for rare text use */
+
+    /* Navigation selection rail and the focus ring. */
+    --brand-rail: 147 90% 27%;
+    --brand-ring: 147 90% 27%;
 
     /* --- Radius: restrained. Not every surface is a pill (§11.4). -------- */
     --radius: 0.25rem;
@@ -68,8 +82,12 @@
      * Every status ALSO carries an icon and a word. Colour is never the only
      * signal, and there is deliberately no rainbow: six states, muted tones.
      */
-    --status-ok: 158 64% 28%;         /* current / within date */
-    --status-ok-bg: 152 46% 94%;
+    /* Teal, not the leaf-green it used to be. At 158° it sat 11° from the
+     * official brand green and the two read as the same colour, which is
+     * exactly the collapse the brand/semantic split exists to prevent. At
+     * 174° it is unmistakably a status, and still reaches 6.75:1. */
+    --status-ok: 174 62% 24%;         /* current / within date */
+    --status-ok-bg: 174 45% 94%;
     --status-due-soon: 32 81% 34%;    /* approaching due */
     --status-due-soon-bg: 45 93% 93%;
     --status-overdue: 0 72% 42%;      /* overdue / critical */
@@ -117,18 +135,25 @@
     --input: 217 25% 26%;
     --ring: var(--brand-ring);
 
-    /* Brand, dark. Derivatives, not the raw brand values: a colour that
-     * passes on white routinely fails on a dark ground, and §11.3 requires
-     * contrast to hold in BOTH themes. Same deferral as the light block. */
-    --brand-primary: 213 27% 84%;
-    --brand-primary-fg: 222 47% 11%;
-    --brand-accent: 215 19% 65%;
-    --brand-accent-fg: 222 47% 11%;
-    --brand-rail: 210 40% 96%;
-    --brand-ring: 213 27% 70%;
+    /* Brand, dark. The official green is too dark to sit on a dark ground
+     * (#089B4B measures 2.4:1 there), so the dark theme lightens the SAME hue
+     * rather than substituting a different colour: 147° and 70% saturation at
+     * 45% lightness reaches 8.10:1. NGV yellow needs no derivative here — on
+     * the dark ground it already measures 15.28:1. */
+    --brand: 147 70% 45%;             /* #22C36B  derived for dark ground */
+    --brand-fg: 222 47% 11%;
+    --brand-strong: 147 70% 45%;
+    --brand-strong-fg: 222 47% 11%;
+    --brand-deep: 156 100% 13%;
+    --brand-deep-fg: 0 0% 100%;
+    --brand-yellow: 55 100% 50%;
+    --brand-yellow-fg: 222 47% 11%;
+    --brand-yellow-ink: 55 90% 70%;
+    --brand-rail: 147 70% 45%;
+    --brand-ring: 147 70% 55%;
 
-    --status-ok: 152 52% 62%;
-    --status-ok-bg: 158 40% 14%;
+    --status-ok: 174 55% 62%;
+    --status-ok-bg: 174 40% 14%;
     --status-due-soon: 40 84% 64%;
     --status-due-soon-bg: 36 45% 15%;
     --status-overdue: 0 80% 70%;
@@ -164,6 +189,16 @@
       'Liberation Mono', monospace;
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.01em;
+  }
+
+  /* A strip that may scroll sideways (the breadcrumb trail) without showing a
+   * scrollbar over the chrome. The content is still reachable by wheel, drag,
+   * touch and keyboard - only the bar itself is hidden. */
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
   }
 
   /* Any column of figures that must line up vertically. */

@@ -60,7 +60,7 @@ export function AppHeader({
         <Breadcrumbs crumbs={crumbs} />
       </div>
 
-      {account}
+      <div className="shrink-0">{account}</div>
     </header>
   )
 }

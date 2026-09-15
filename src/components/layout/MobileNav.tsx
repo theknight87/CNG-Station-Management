@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
 
+import { BrandMark } from '@/components/layout/BrandMark'
+
 import { Button } from '@/components/ui/button'
 import type { AppRole } from '@/types/domain'
 import { SidebarNav } from './SidebarNav'
@@ -90,13 +92,22 @@ export function MobileNav({
         role="dialog"
         aria-modal="true"
         aria-label="Main navigation"
-        className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col border-r bg-card shadow-lg"
+        className="absolute inset-y-0 left-0 flex w-80 max-w-[85vw] flex-col border-r bg-card shadow-lg"
       >
-        <div className="flex h-header shrink-0 items-center justify-between border-b px-3">
-          <span className="text-sm font-semibold tracking-tight">CNG Station Management</span>
+        <div className="flex h-header shrink-0 items-center justify-between border-b border-b-brand-strong/25 px-3">
+          <span className="flex min-w-0 items-center gap-2">
+            <BrandMark variant="mark" className="h-6 w-auto shrink-0" />
+            <span className="truncate text-sm font-semibold tracking-tight">CNG Station Management</span>
+          </span>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close navigation">
             <X className="h-4 w-4" aria-hidden="true" />
           </Button>
+        </div>
+        {/* Same brand keyline as the desktop sidebar, so the drawer reads as
+          * the same product rather than a separate mobile skin. */}
+        <div className="flex h-0.5 shrink-0" aria-hidden="true">
+          <div className="w-2/3 bg-brand" />
+          <div className="w-1/3 bg-brand-yellow" />
         </div>
         <div className="flex-1 overflow-y-auto">
           {/* Roomier rows here: this IS a touch-primary surface, so the 44px

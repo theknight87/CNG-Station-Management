@@ -1,6 +1,7 @@
 import { useCallback, useState, type ReactNode } from 'react'
 
 import { AppHeader } from '@/components/layout/AppHeader'
+import { BrandMark } from '@/components/layout/BrandMark'
 import { MobileNav } from '@/components/layout/MobileNav'
 import { SidebarNav } from '@/components/layout/SidebarNav'
 import type { Crumb } from '@/components/layout/breadcrumbPaths'
@@ -82,19 +83,33 @@ export function AppShell({
           collapsed ? 'w-sidebar-collapsed' : 'w-sidebar',
         )}
       >
+        {/* Brand block. The logo sits on the card ground, not on a green panel:
+          * the mark's own ink IS green, and on a green field the leaf would
+          * disappear into it. The Cargas identity is carried instead by the
+          * keyline below — a green rule with a short NGV-yellow segment, which
+          * is where the brand's green/yellow relationship enters the UI. */}
         <div
           className={cn(
-            'flex h-header shrink-0 items-center border-b',
+            'flex h-header shrink-0 items-center gap-2 border-b border-b-brand-strong/25',
             collapsed ? 'justify-center px-0' : 'px-3',
           )}
         >
           {collapsed ? (
-            <span className="text-sm font-semibold tracking-tight" aria-hidden="true">
-              CNG
-            </span>
+            <BrandMark variant="mark" className="h-6 w-auto" />
           ) : (
-            <span className="truncate text-sm font-semibold tracking-tight">CNG Station Management</span>
+            <>
+              <BrandMark variant="full" className="h-7 w-auto shrink-0" />
+              <span className="truncate text-sm font-semibold tracking-tight">
+                CNG Station Management
+              </span>
+            </>
           )}
+        </div>
+        {/* 2px of brand, once. Restraint is the point: this and the active-row
+          * rail are the only places the corporate colours touch the chrome. */}
+        <div className="flex h-0.5 shrink-0" aria-hidden="true">
+          <div className="w-2/3 bg-brand" />
+          <div className="w-1/3 bg-brand-yellow" />
         </div>
 
         <div className="flex-1 overflow-y-auto">

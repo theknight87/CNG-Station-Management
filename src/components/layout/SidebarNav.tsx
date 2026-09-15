@@ -53,7 +53,7 @@ export function SidebarNav({
                         'group relative flex items-center gap-2 rounded px-2 py-1.5 text-sm transition-colors',
                         collapsed && 'justify-center px-0',
                         isActive
-                          ? 'bg-accent font-medium text-accent-foreground'
+                          ? 'bg-brand-strong/10 font-medium text-brand-strong'
                           : 'text-muted-foreground hover:bg-accent/60 hover:text-accent-foreground',
                       )
                     }

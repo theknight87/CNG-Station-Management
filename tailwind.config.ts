@@ -46,10 +46,15 @@ export default {
         // status states compliance. A component reaches for one or the other
         // and never treats them as interchangeable.
         brand: {
-          DEFAULT: 'hsl(var(--brand-primary))',
-          fg: 'hsl(var(--brand-primary-fg))',
-          accent: 'hsl(var(--brand-accent))',
-          'accent-fg': 'hsl(var(--brand-accent-fg))',
+          DEFAULT: 'hsl(var(--brand))',
+          fg: 'hsl(var(--brand-fg))',
+          strong: 'hsl(var(--brand-strong))',
+          'strong-fg': 'hsl(var(--brand-strong-fg))',
+          deep: 'hsl(var(--brand-deep))',
+          'deep-fg': 'hsl(var(--brand-deep-fg))',
+          yellow: 'hsl(var(--brand-yellow))',
+          'yellow-fg': 'hsl(var(--brand-yellow-fg))',
+          'yellow-ink': 'hsl(var(--brand-yellow-ink))',
           rail: 'hsl(var(--brand-rail))',
         },
 
