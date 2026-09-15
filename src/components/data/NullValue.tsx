@@ -13,7 +13,10 @@ import { cn } from '@/lib/utils'
  */
 export function NullValue({ label = 'not recorded', className }: { label?: string; className?: string }) {
   return (
-    <span className={cn('select-none text-muted-foreground/60', className)} title={label}>
+    // NOT text-muted-foreground/60. Browser-measured, that came to 2.51:1
+    // against the working ground - under the 4.5:1 AA floor for a marker that
+    // carries meaning. The solid token is 5.17:1 and still reads as quiet.
+    <span className={cn('select-none text-muted-foreground', className)} title={label}>
       <span aria-hidden="true">—</span>
       <span className="sr-only">{label}</span>
     </span>

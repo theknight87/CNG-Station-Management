@@ -258,6 +258,11 @@ row is marked for review.
 `docs/import-pipeline.md`. The production import of the six workbooks has NOT been performed; it is
 Prompt 21. Canonical asset tables are still empty.*
 
+*Hierarchy browsing (Prompt 9) is built: `/regions`, `/regions/:regionId`, `/stations`,
+`/stations/:stationId` and the Unit navigation boundary — see `docs/regions-stations.md`. Full Unit
+Detail is Prompt 10. Migration 0028 fixed a latent defect in `cng_normalize_name()` that would have
+corrupted canonical Station and Unit identity at the Prompt 21 import.*
+
 - Documentation-first: architecture and data-mapping decisions are recorded in `docs/`
   before implementation.
 - Migrations are additive and versioned; no destructive migration without explicit approval.
@@ -385,7 +390,9 @@ These hold for every future phase.
 ## 11. UI/UX rules (durable, from Prompt 7 onward)
 
 *Status: the foundation is built and browser-verified (Prompt 7) — see `docs/ui-foundation.md`;
-the operational dashboard is built on it (Prompt 8) — see `docs/dashboard.md`.
+the operational dashboard is built on it (Prompt 8) — see `docs/dashboard.md`; the hierarchy
+browser is built on both (Prompt 9) — see `docs/regions-stations.md`. The **Cargas brand system**
+was established during Prompt 9 and is authoritative — see §11.6 and `docs/ui-foundation.md` §13.
 It records which ui-ux-pro-max recommendations were accepted and which were rejected for
 conflicting with the rules below.*
 
@@ -459,6 +466,48 @@ template filled with decorative cards.
 Specifically avoid: excessive gradients · excessive rounded cards · oversized KPI cards ·
 unnecessary animation · decorative visual noise · glassmorphism · whitespace that reduces data
 density · AI-generated-dashboard aesthetics.
+
+### 11.6 The Cargas brand system is authoritative
+
+*Established in Prompt 9. Applies to EVERY future UI prompt.*
+
+This application is for **Cargas / NGV**. Its identity is derived from the official
+supplied logo, `public/brand/logo.png`, and is recorded in full in
+`docs/ui-foundation.md` §13. Future UI work **preserves** that system; it does not
+re-derive, re-sample or restyle it.
+
+**The official colours, sampled from the logo — never from memory:**
+
+| Token | Value | Use |
+| --- | --- | --- |
+| `--brand` | `#089B4B` Cargas green | identity fills ONLY — never behind text |
+| `--brand-strong` | `#07833F` derived | everything involving text: links, buttons, active nav, focus ring |
+| `--brand-deep` | `#004221` (from the logo) | deep brand ground |
+| `--brand-yellow` | `#FFEB00` NGV yellow | fills on DARK grounds and the logo only — 1.17:1 on the working ground |
+
+Rules that must not be broken:
+
+1. **Brand colour and semantic status colour are separate namespaces.** Cargas green
+   never means "healthy"; NGV yellow never means "warning". `--status-*` states
+   compliance; `--brand-*` marks identity, navigation and selection. A minimum 20°
+   hue separation between `--brand` and `--status-ok` is asserted by
+   `scripts/verify-brand.mjs`, which must pass.
+2. **Never use a raw brand colour where it fails contrast.** `#089B4B` is 3.62:1 with
+   white and `#FFEB00` is 1.17:1 on the working ground. Use the documented accessible
+   derivatives. Appearing in the logo is not a licence to fail WCAG.
+3. **Never redraw, recolour, distort, stretch, regenerate or re-crop the logo.** Use
+   the existing assets: `logo-trimmed.png` (full lockup) and `mark.png` (the leaf
+   device, already cut from the lockup at its own transparent seam). Preserve the
+   aspect ratio; size from height with `w-auto`.
+4. **The logo is never a decorative watermark.** Once per surface, as identification.
+5. **Restraint is the design.** Brand colour touches the chrome in three places only:
+   the logo, the 2px green/yellow keyline, and the active/focus state. The working
+   surfaces stay neutral so the data leads. This must not drift into a green/yellow
+   marketing aesthetic (§11.4 still governs).
+6. **Application identity is fixed:** the browser title is
+   `CNG Station Management | Cargas`, and the favicon is the leaf device derived from
+   the official logo. `public/brand/favicon.svg` is a non-Cargas placeholder and must
+   not be wired up. No invented slogans or taglines.
 
 ### 11.5 Displaying unknown data
 

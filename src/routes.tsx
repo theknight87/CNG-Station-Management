@@ -11,6 +11,7 @@ import { GasDetectorsPage } from '@/pages/GasDetectorsPage'
 import { HosesManagementPage } from '@/pages/HosesManagementPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { RecoveryTanksPage } from '@/pages/RecoveryTanksPage'
+import { RegionDetailPage } from '@/pages/RegionDetailPage'
 import { RegionsPage } from '@/pages/RegionsPage'
 import { ReportsPage } from '@/pages/ReportsPage'
 import { SettingsPage } from '@/pages/SettingsPage'
@@ -60,6 +61,7 @@ export const router = createBrowserRouter([
 
       // Physical hierarchy
       { path: 'regions', element: <RegionsPage /> },
+      { path: 'regions/:regionId', element: <RegionDetailPage /> },
       { path: 'stations', element: <StationsPage /> },
       { path: 'stations/:stationId', element: <StationPage /> },
       {

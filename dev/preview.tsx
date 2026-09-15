@@ -1,6 +1,6 @@
 import { StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { LogOut } from 'lucide-react'
 
 import '../src/index.css'
@@ -33,7 +33,32 @@ import {
 } from '@/components/data/DataTable'
 import { EmptyState, ErrorState, LoadingState, NoResultsState, PermissionDenied } from '@/components/states/AppStates'
 import { Button } from '@/components/ui/button'
+import { RegionDetailView } from '@/features/regions/RegionDetailView'
+import { RegionsView } from '@/features/regions/RegionsView'
+import { StationOverview } from '@/features/stations/StationOverview'
+import { StationsView } from '@/features/stations/StationsView'
+import { UnitOverview } from '@/features/units/UnitOverview'
 import type { AppRole } from '@/types/domain'
+
+/**
+ * The Prompt 9 hierarchy screens, mounted for their OWN sake.
+ *
+ * These are the real components with the real data hooks; only the Supabase
+ * transport is stubbed (dev/supabaseStub.ts, aliased by
+ * vite.preview.config.ts). So search, sorting, filtering, pagination, the
+ * empty/filtered-empty/error branches and the Arabic rendering are all
+ * genuinely exercised in a browser here, not mocked up.
+ */
+function HierarchyFixture({ view }: { view: string }) {
+  if (view === 'regions') return <RegionsView />
+  if (view === 'region') return <RegionDetailView />
+  if (view === 'stations') return <StationsView />
+  if (view === 'station') return <StationOverview />
+  if (view === 'unit') return <UnitOverview />
+  return null
+}
+
+const HIERARCHY_VIEWS = ['regions', 'region', 'stations', 'station', 'unit']
 
 /**
  * DEV-ONLY visual verification harness. NOT part of the application build.
@@ -129,6 +154,18 @@ function DashboardFixture() {
   )
 }
 
+/**
+ * The harness router needs an entry the detail routes can match, so the view
+ * being inspected decides it.
+ */
+function previewEntry(): string {
+  const v = new URLSearchParams(window.location.search).get('view')
+  if (v === 'region') return '/regions/r-east'
+  if (v === 'station') return '/stations/s-0'
+  if (v === 'unit') return '/units/u-1'
+  return '/manage/srvs'
+}
+
 function Preview() {
   const [role, setRole] = useState<AppRole>('admin')
   const view = new URLSearchParams(window.location.search).get('view')
@@ -155,6 +192,16 @@ function Preview() {
         />
       }
     >
+      {/* The hierarchy screens bring their own PageContainer, so they are
+        * mounted directly rather than nested inside the harness's one. */}
+      {view && HIERARCHY_VIEWS.includes(view) ? (
+        <Routes>
+          <Route path="/regions/:regionId" element={<HierarchyFixture view={view} />} />
+          <Route path="/stations/:stationId" element={<HierarchyFixture view={view} />} />
+          <Route path="/units/:unitId" element={<HierarchyFixture view={view} />} />
+          <Route path="*" element={<HierarchyFixture view={view} />} />
+        </Routes>
+      ) : (
       <PageContainer>
         {view === 'dashboard' ? <DashboardFixture /> : null}
         {view === 'dashboard' ? null : <>
@@ -250,13 +297,14 @@ function Preview() {
         </div>
         </>}
       </PageContainer>
+      )}
     </AppShell>
   )
 }
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <MemoryRouter initialEntries={['/manage/srvs']}>
+    <MemoryRouter initialEntries={[previewEntry()]}>
       <Preview />
     </MemoryRouter>
   </StrictMode>,

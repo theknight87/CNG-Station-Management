@@ -233,7 +233,7 @@ export function DueMatrix({ due }: { due: DueRow[] }) {
                         <TableCell key={b.status} align="right" numeric>
                           <span
                             className={cn(
-                              n === 0 && 'text-muted-foreground/50',
+                              n === 0 && 'text-muted-foreground',
                               n > 0 && b.status === 'overdue' && 'font-semibold text-status-overdue',
                               n > 0 && (b.status === 'due_today' || b.status === 'due_7') && 'font-medium text-status-due-soon',
                             )}
@@ -322,17 +322,17 @@ export function RegionOverview({ regions }: { regions: RegionRow[] }) {
                   <TableCell align="right" numeric>{r.units.toLocaleString()}</TableCell>
                   <TableCell align="right" numeric>{r.assets.toLocaleString()}</TableCell>
                   <TableCell align="right" numeric>
-                    <span className={cn(r.overdue > 0 ? 'font-semibold text-status-overdue' : 'text-muted-foreground/50')}>
+                    <span className={cn(r.overdue > 0 ? 'font-semibold text-status-overdue' : 'text-muted-foreground')}>
                       {r.overdue.toLocaleString()}
                     </span>
                   </TableCell>
                   <TableCell align="right" numeric>
-                    <span className={cn(r.approaching_due > 0 ? 'text-status-due-soon' : 'text-muted-foreground/50')}>
+                    <span className={cn(r.approaching_due > 0 ? 'text-status-due-soon' : 'text-muted-foreground')}>
                       {r.approaching_due.toLocaleString()}
                     </span>
                   </TableCell>
                   <TableCell align="right" numeric>
-                    <span className={cn(r.unresolved_mapping === 0 && 'text-muted-foreground/50')}>
+                    <span className={cn(r.unresolved_mapping === 0 && 'text-muted-foreground')}>
                       {r.unresolved_mapping.toLocaleString()}
                     </span>
                   </TableCell>

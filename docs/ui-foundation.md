@@ -274,3 +274,115 @@ after an earlier click, so it measured the second tab stop rather than the first
 | Dark-mode toggle | tokens are complete and contrast-checked; no control is wired yet |
 | Removing `/sign-in`, `/sign-up`, `/auth-test` | before production (`docs/authentication.md` §11) |
 | End-to-end verification of the authenticated shell | blocked by the egress policy; the harness covers the shell itself |
+
+
+---
+
+## 13. Cargas Brand System (added during Prompt 9)
+
+*Status: implemented and browser-verified at 1440 / 1024 / 390. Authoritative for
+every future UI prompt.*
+
+### 13.1 Official reference source
+
+| Source | Used? | Why |
+| --- | --- | --- |
+| `public/brand/logo.png` (official Cargas / NGV lockup, 300×300 RGBA) | **yes — primary** | The only official artwork available to this environment. Colours were sampled from its pixels. |
+| `https://cargas.com.eg/English/Default.aspx` | **no — unreachable** | The network egress proxy refuses CONNECT with HTTP 403. Verified three ways (WebFetch, curl to the apex and the `www` host). |
+| Memory of the Cargas website | **never** | Recalling a corporate palette is fabrication, not extraction (principle #1). |
+
+Because the site could not be inspected, **the logo is the single source of brand
+truth** for this system. Nothing in the palette below was invented.
+
+### 13.2 Supplied assets
+
+| File | Role | Note |
+| --- | --- | --- |
+| `logo.png` | official source asset, kept unchanged | never edited |
+| `logo-trimmed.png` | expanded sidebar, mobile drawer | transparent margin removed only — **no artwork altered**; 204×232 |
+| `mark.png` | collapsed sidebar rail | the leaf device, cut from the lockup at its own **fully transparent seam** (row y=192, the blank row the artwork itself puts between the device and the NGV wordmark) |
+| `favicon.ico` (16/32/48), `favicon-96.png`, `apple-touch-icon.png` | browser and platform icons | resampled from `mark.png` |
+| `favicon.svg` | **deliberately NOT wired up** | a blue gear placeholder (`#1d4ed8`) — scaffold content, not Cargas artwork. Flagged to the owner; the derived favicon is used instead. |
+
+### 13.3 Extracted brand colours
+
+The mark is exactly **two inks**. Of its 22,269 fully opaque pixels, 80.04% are
+green and 19.96% are yellow:
+
+| Token | Value | Source |
+| --- | --- | --- |
+| Cargas green | `#089B4B` — `hsl(147 90% 32%)` | modal green pixel |
+| NGV yellow | `#FFEB00` — `hsl(55 100% 50%)` | modal yellow pixel |
+| Deep green | `#004221` — `hsl(156 100% 13%)` | the darkest green **already present in the logo** |
+
+### 13.4 Accessible UI derivatives, and why each was required
+
+Two official colours cannot legally carry text. Every figure below is measured,
+and re-measured on every run by `scripts/verify-brand.mjs`.
+
+| Source colour | Measured | Derivative | Why required |
+| --- | --- | --- | --- |
+| `#089B4B` | 3.62:1 with white; 3.46:1 as text on the working ground | **`#07833F`** (`--brand-strong`, same hue and saturation, lightness 32%→27%) → 4.85:1 and 4.64:1 | Both source figures are under the 4.5:1 AA floor for normal text. The official green is therefore used for **identity fills only**; anything involving text uses the derivative. |
+| `#FFEB00` | **1.17:1** on the working ground | none for light grounds — the colour is **confined** to dark grounds and the logo | At 1.17:1 it is invisible. It reaches 14.49:1 with near-black on top and 9.40:1 as a mark on `--brand-deep`. Confinement is also what stops the product reading as a yellow marketing site. |
+| `#FFEB00` (rare text use) | — | `#7A7000` (`--brand-yellow-ink`) → 4.84:1 | For the rare case where a yellow-derived *text* accent is needed on light. |
+| `#089B4B` on a dark ground | 2.4:1 | **`#22C36B`** (`hsl(147 70% 45%)`) → 8.10:1 | The dark theme lightens the **same hue** rather than substituting another colour. |
+
+### 13.5 Brand vs semantic colour — the separation rule
+
+**Brand colour marks identity, navigation and selection. Semantic colour states
+compliance. They are separate token namespaces and must never collapse.**
+
+Cargas green must never come to mean "healthy", and NGV yellow must never come to
+mean "warning" — otherwise reading a screen becomes a brand decision.
+
+Enforcing that required moving a semantic token: `--status-ok` was green at hue
+**158°**, only **11° from the brand green**, and the two read as one colour. It is
+now **174° (teal)**, 27° away. `scripts/verify-brand.mjs` fails if that distance
+ever drops below 20°.
+
+`AttentionBadge` deliberately renders "Nothing overdue" in the **teal** `ok`
+status, never in Cargas green.
+
+### 13.6 Logo usage
+
+- Never recoloured, stretched, distorted, redrawn or regenerated.
+- Aspect ratio preserved by sizing from height with `w-auto`, and by declaring
+  intrinsic `width`/`height` so the browser reserves the correct box. Measured in
+  the browser: **0.0004 drift** from intrinsic ratio.
+- **Never a decorative watermark.** It appears once per surface, as
+  identification: the expanded sidebar, the mobile drawer, and the browser icon.
+- The collapsed rail uses the leaf device because the wordmarks turn to mud
+  between 16px and 52px — an official crop, never a new mark.
+
+### 13.7 Typography
+
+Unchanged by the branding work. The system sans stack (with `Noto Sans Arabic` /
+`Segoe UI Arabic` for Arabic) and the monospace technical stack stay as decided in
+§4. No webfont was added: the brand character is carried by the logo and the
+colour system, and a webfont would cost a network request and layout shift for a
+tool engineers keep open all day.
+
+### 13.8 Sidebar and header treatment
+
+- The logo sits on the **card ground, not on a green panel** — the mark's own ink
+  is green, and on a green field the leaf would disappear into it.
+- The brand's green/yellow relationship enters the UI as a **2px keyline** beneath
+  the brand block: `--brand` for two thirds, `--brand-yellow` for one third. The
+  same keyline appears in the mobile drawer so it reads as one product.
+- The active navigation row uses `--brand-strong` text on a 10% tint, plus the
+  selection rail. The focus ring is `--brand-strong` throughout.
+- **That is the whole of it.** Brand colour touches the chrome in exactly three
+  places: the logo, the keyline, and the active/focus state. Everything else stays
+  neutral slate so the data leads.
+
+### 13.9 What was taken from the official identity — and what was not
+
+**Taken:** the two inks and their proportion (green dominant, yellow as the
+accent), the deep green already inside the mark, the green-above-yellow
+relationship expressed in the keyline, and the lockup itself.
+
+**Deliberately NOT copied from the public website:** its page layout, its
+navigation pattern, its hero and marketing sections, any slogan or tagline, large
+flat areas of corporate green, and decorative use of the logo. This is an
+operations console, not a corporate site — §11.3 and §11.4 still govern, and the
+brand serves the data rather than competing with it.

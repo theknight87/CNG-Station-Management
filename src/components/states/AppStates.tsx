@@ -128,6 +128,27 @@ export function PermissionDenied({
 }
 
 /**
+ * An entity that is not there.
+ *
+ * Deliberately says "does not exist, OR is outside your access" and does not
+ * distinguish the two. Telling an unauthorized caller that a Station exists
+ * but is forbidden confirms its existence, which is precisely what the
+ * row-level policy is there to withhold (CLAUDE.md §10). PermissionDenied is
+ * for a whole AREA the role cannot use; this is for one record.
+ */
+export function NotFound({ what, detail }: { what: string; detail?: string }) {
+  return (
+    <Frame className="border-border bg-muted/30">
+      <SearchX className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+      <p className="text-sm font-medium text-foreground">{what} not found</p>
+      <p className="max-w-md text-sm text-muted-foreground">
+        {detail ?? `This ${what} does not exist, or it is outside the records you are authorized for.`}
+      </p>
+    </Frame>
+  )
+}
+
+/**
  * A route that exists but whose feature is not built yet.
  *
  * It must NOT look like a successful empty result. It names the phase that will
