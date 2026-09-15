@@ -379,3 +379,81 @@ These hold for every future phase.
   user-supplied identity parameter, and EXECUTE granted to `authenticated` only.
 - **Use the current Clerk-Supabase third-party auth integration.** The deprecated JWT-template
   approach must not be reintroduced, and this project's JWT secret is never shared with Clerk.
+
+---
+
+## 11. UI/UX rules (durable, from Prompt 7 onward)
+
+### 11.1 Always use the UI/UX review skill
+
+**From Prompt 7 onward, proactively invoke the UI/UX design-review skill for every user-facing
+interface task** — new screens, changed screens, component work, layout, tables, forms, filters,
+and any styling decision. Do not wait to be asked.
+
+The skill currently enabled for this account is **`ui-ux-critique-pro`** ("UI/UX Critique Pro").
+Invoke it by name via the Skill tool.
+
+> **Naming note.** The owner refers to this as "UI/UX Pro Max". No skill with that literal name is
+> installed on this account; `ui-ux-critique-pro` is the enabled design/review skill and is what
+> this rule means. A separate `website-builder-setup` skill offers to *install* a "UI/UX Pro Max"
+> stack bundled with Framer Motion animations and 21st.dev components — **do not run it without
+> explicit approval**: its animation-heavy, marketing-site output directly conflicts with §11.3
+> below. If a skill named "UI/UX Pro Max" is genuinely installed later, use it and update this note.
+
+### 11.2 It is a design and review system — not a mandate to redesign
+
+The skill critiques and improves the *presentation* of what already exists. It has no authority
+over the product.
+
+**These remain authoritative and are never changed to satisfy a design suggestion:**
+
+- the equipment hierarchy (§4) and the SRV parentage rules
+- authorization, roles and RLS (§10)
+- the data principles (§6), including NULL handling and the no-fabrication rule
+- database constraints, the mapping lifecycle, and the data-quality workflow (§9)
+- the import pipeline's behaviour (`docs/import-pipeline.md`)
+
+A design review never invents a business requirement, never adds a field the schema does not
+carry, never displays a value the source did not prove, and never renders a placeholder where the
+data is NULL. If a design suggestion conflicts with any rule above, the rule wins and the
+suggestion is discarded.
+
+### 11.3 What this product must look like
+
+**Professional industrial engineering software for CNG Station Inspection, Calibration and Asset
+Management.** It is a working tool for engineers who spend their day in it, not a product page.
+
+| Required | Meaning in practice |
+| --- | --- |
+| Industrial/engineering visual language | sober, utilitarian, built for repeated daily use |
+| Information-dense but readable | show more rows and more columns, not fewer; density is a feature |
+| Excellent technical tables | sortable, alignable, scannable; numerals aligned; units visible; wide tables scroll rather than wrap |
+| Strong filtering and search | filtering by Region, Station, Unit, status, due window and mapping status is primary UI, not an afterthought |
+| Clear asset hierarchy | `Region → Station → Unit → Equipment → SRV` legible at a glance and never flattened |
+| Clear status states | inspection/calibration state, due windows and mapping status readable without decoding a legend |
+| Restrained colour | colour carries meaning — status, severity, overdue — and is never decorative |
+| Strong accessibility and contrast | meets contrast requirements in light and dark; colour is never the only signal |
+| Responsive desktop / tablet / mobile | desktop is the primary target; tablet and mobile must remain usable, not merely not-broken |
+| Excellent Arabic support | Arabic Station, Unit and equipment names render correctly at every size, including mixed Arabic/Latin/numeric strings and RTL text inside LTR layout. Never truncate an Arabic name into ambiguity |
+| Consistent loading, empty, error and permission states | every one handled explicitly, every time — an empty result is stated, never left blank |
+| Keyboard-friendly | tab order, focus visibility, and keyboard paths through tables and filters wherever practical |
+
+### 11.4 What it must never look like
+
+Not a generic AI SaaS dashboard. Not a marketing landing page. Not a consumer mobile app. Not a
+template filled with decorative cards.
+
+Specifically avoid: excessive gradients · excessive rounded cards · oversized KPI cards ·
+unnecessary animation · decorative visual noise · glassmorphism · whitespace that reduces data
+density · AI-generated-dashboard aesthetics.
+
+### 11.5 Displaying unknown data
+
+This is where a design system most often violates the data principles, so it is stated here too:
+
+- a NULL field is shown as genuinely empty, or with a neutral marker that reads as "not recorded"
+- **never** `N/A`, `Unknown`, `-`, `0`, or an invented placeholder standing in for missing data
+- a `year_only` date shows its year and is never rendered as a full calendar date
+- an unresolved mapping is labelled as unresolved; it is never hidden to make a screen look complete
+- a record with NULL fields is a complete record with unknown attributes — never badged
+  "incomplete" and never visually degraded
