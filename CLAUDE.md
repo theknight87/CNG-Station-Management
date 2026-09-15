@@ -390,19 +390,23 @@ These hold for every future phase.
 interface task** — new screens, changed screens, component work, layout, tables, forms, filters,
 and any styling decision. Do not wait to be asked.
 
-The skill is **`ui-ux-critique-pro`** ("UI/UX Critique Pro"). Invoke it by name via the Skill tool.
+The skill is **`ui-ux-pro-max`** ("UI/UX Pro Max") — a searchable design-intelligence database
+covering styles, colour palettes, font pairings, product types, UX guidelines, icons, motion and
+chart types across 22 stacks. Invoke it by name via the Skill tool.
 
-It is **vendored into this repository** at `.claude/skills/ui-ux-critique-pro/`, so it travels with
-the project and is available in every future session on any machine, rather than depending on a
-particular account's synced skill set. See `.claude/skills/README.md` for what else is vendored and
-what is deliberately left out.
+It is **vendored into this repository** at `.claude/skills/ui-ux-pro-max/`, together with the
+supporting design skills (`ui-styling`, `design-system`, `design`, `brand`) and the engineering
+skills the project uses (`security-audit`, `playwright-cli`, the `speckit-*` suite). They travel
+with the project and work in every future session on any machine, rather than depending on a
+particular account's synced skill set. See `.claude/skills/README.md`.
 
-> **Naming note.** The owner refers to this as "UI/UX Pro Max". No skill with that literal name is
-> installed on this account; `ui-ux-critique-pro` is the enabled design/review skill and is what
-> this rule means. A separate `website-builder-setup` skill offers to *install* a "UI/UX Pro Max"
-> stack bundled with Framer Motion animations and 21st.dev components — **do not run it without
-> explicit approval**: its animation-heavy, marketing-site output directly conflicts with §11.3
-> below. If a skill named "UI/UX Pro Max" is genuinely installed later, use it and update this note.
+`ui-ux-critique-pro` is also vendored as a **secondary**, narrower review pass over existing
+frontend code. It complements `ui-ux-pro-max`; it does not replace it.
+
+> **Use its rules selectively.** `ui-ux-pro-max` is a general design database and carries motion
+> presets, decorative styles and consumer/marketing patterns that §11.3 and §11.4 explicitly rule
+> out for this product. Take its structure, spacing, contrast, accessibility, typography and
+> data-display guidance; ignore the parts that would make this look like a marketing site.
 
 ### 11.2 It is a design and review system — not a mandate to redesign
 
