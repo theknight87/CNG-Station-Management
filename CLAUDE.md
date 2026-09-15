@@ -390,8 +390,12 @@ These hold for every future phase.
 interface task** — new screens, changed screens, component work, layout, tables, forms, filters,
 and any styling decision. Do not wait to be asked.
 
-The skill currently enabled for this account is **`ui-ux-critique-pro`** ("UI/UX Critique Pro").
-Invoke it by name via the Skill tool.
+The skill is **`ui-ux-critique-pro`** ("UI/UX Critique Pro"). Invoke it by name via the Skill tool.
+
+It is **vendored into this repository** at `.claude/skills/ui-ux-critique-pro/`, so it travels with
+the project and is available in every future session on any machine, rather than depending on a
+particular account's synced skill set. See `.claude/skills/README.md` for what else is vendored and
+what is deliberately left out.
 
 > **Naming note.** The owner refers to this as "UI/UX Pro Max". No skill with that literal name is
 > installed on this account; `ui-ux-critique-pro` is the enabled design/review skill and is what
