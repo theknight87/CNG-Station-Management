@@ -1,1 +1,1 @@
-export { VesselsManagementView } from './VesselsManagementView'
+export { VesselWorkspace } from './VesselWorkspace'

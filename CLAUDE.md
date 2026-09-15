@@ -269,6 +269,14 @@ Installed and warehouse valves are never merged. Mapping MUTATION is deliberatel
 the database enforces hierarchy consistency, but mapping attribution is still forgeable and
 unaudited, so no mapping control is exposed.*
 
+*Vessels Management (Prompt 12) is built: `/manage/vessels/storage` and
+`/manage/vessels/recovery` — see `docs/vessels-management.md`. **No new migration.** Storage
+Vessels and Recovery Tanks stay distinct entities. A Recovery Tank cannot own an SRV (no
+`recovery_tank_id`, not in `srv_parent_kind`) and none is shown. NOTE: `needs_station_mapping`
+is unreachable for vessels because `station_id` is NOT NULL — Prompt 6 staged 433 Storage and
+403 Recovery rows in that state, which the canonical tables cannot hold; Prompt 21 must resolve
+this. Mapping mutation remains deferred for the same attribution reason as Prompt 11.*
+
 *The Unit workspace (Prompt 10) is built: `/units/:unitId` with routed Overview, Compressor,
 Recovery Tank, Dispensers, Storage, Gas Detectors, Hoses and SRVs sections — see
 `docs/unit-workspace.md`. It required **no new migration**; every source already existed. The Unit
@@ -309,6 +317,7 @@ These rules are permanent and apply to every future prompt.
 | --- | --- | --- | --- |
 | 10 | 217 | 72 | 134 |
 | 11 | 245 | 72 | 149 |
+| 12 | 270 | 72 | 166 |
 
 Update this table when a prompt is accepted, so the next one has a baseline to compare
 against.
@@ -435,7 +444,8 @@ These hold for every future phase.
 the operational dashboard is built on it (Prompt 8) — see `docs/dashboard.md`; the hierarchy
 browser is built on both (Prompt 9) — see `docs/regions-stations.md`; the Unit workspace is built
 on all three (Prompt 10) — see `docs/unit-workspace.md`; Global SRV Management (Prompt 11) — see
-`docs/srv-management.md`. The **Cargas brand system**
+`docs/srv-management.md`; Vessels Management (Prompt 12) — see `docs/vessels-management.md`.
+The **Cargas brand system**
 was established during Prompt 9 and is authoritative — see §11.6 and `docs/ui-foundation.md` §13.
 It records which ui-ux-pro-max recommendations were accepted and which were rejected for
 conflicting with the rules below.*

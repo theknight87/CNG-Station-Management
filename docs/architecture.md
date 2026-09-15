@@ -878,3 +878,26 @@ so mapping attribution would be forgeable and unrecorded. See `docs/srv-manageme
 §11 for what Prompt 12+ needs to add first.
 
 See `docs/srv-management.md`.
+
+
+## Vessels Management (Prompt 12)
+
+`/manage/vessels` is a two-asset-type workspace over the existing
+`v_vessel_management` view, which unions `storage_vessels` and `recovery_tanks` behind an
+`asset_type` discriminator. It added no database objects.
+
+The two types share a renderer because their schemas genuinely match field for field —
+not to force symmetry. Where they differ they diverge: only Storage Vessels show related
+relief valves, because `installed_relief_valves` has a `storage_vessel_id` and no
+`recovery_tank_id`, and `srv_parent_kind` does not include recovery tanks. The Recovery
+registry issues no related-SRV query at all.
+
+The generic registry table (server-sorted, server-paged, expand-in-place detail) was
+promoted from the SRV feature to `src/components/data/RegistryTable.tsx`, since two
+features now use it. Four registries — installed SRVs, warehouse stock, storage vessels,
+recovery tanks — share one set of loading, empty, filtered-empty and error states.
+
+A schema discrepancy was found and flagged rather than worked around: Prompt 6 staged
+hundreds of vessel records as `needs_station_mapping`, but `station_id` is NOT NULL on
+both vessel tables, so that state is unreachable in canonical storage. See
+`docs/vessels-management.md` §5.

@@ -39,6 +39,8 @@ import { RegionsView } from '@/features/regions/RegionsView'
 import { StationOverview } from '@/features/stations/StationOverview'
 import { StationsView } from '@/features/stations/StationsView'
 import { SrvWorkspace } from '@/features/relief-valves/SrvWorkspace'
+import { VesselWorkspace } from '@/features/vessels/VesselWorkspace'
+import { VesselRegistrySection } from '@/features/vessels/sections/VesselRegistrySection'
 import { InstalledSrvSection } from '@/features/relief-valves/sections/InstalledSrvSection'
 import { WarehouseSrvSection } from '@/features/relief-valves/sections/WarehouseSrvSection'
 import { UnitWorkspace } from '@/features/units/UnitWorkspace'
@@ -68,7 +70,7 @@ function HierarchyFixture({ view }: { view: string }) {
   return null
 }
 
-const HIERARCHY_VIEWS = ['regions', 'region', 'stations', 'station', 'unit', 'srvs']
+const HIERARCHY_VIEWS = ['regions', 'region', 'stations', 'station', 'unit', 'srvs', 'vessels']
 
 /**
  * DEV-ONLY visual verification harness. NOT part of the application build.
@@ -172,6 +174,10 @@ function previewEntry(): string {
   const v = new URLSearchParams(window.location.search).get('view')
   if (v === 'region') return '/regions/r-east'
   if (v === 'station') return '/stations/s-0'
+  if (v === 'vessels') {
+    const tab = new URLSearchParams(window.location.search).get('tab')
+    return `/manage/vessels/${tab ?? 'storage'}`
+  }
   if (v === 'srvs') {
     const tab = new URLSearchParams(window.location.search).get('tab')
     return `/manage/srvs/${tab ?? 'installed'}`
@@ -239,6 +245,11 @@ function Preview() {
             <Route index element={<InstalledSrvSection />} />
             <Route path="installed" element={<InstalledSrvSection />} />
             <Route path="warehouse" element={<WarehouseSrvSection />} />
+          </Route>
+          <Route path="/manage/vessels" element={<VesselWorkspace />}>
+            <Route index element={<VesselRegistrySection assetType="storage_vessel" />} />
+            <Route path="storage" element={<VesselRegistrySection assetType="storage_vessel" />} />
+            <Route path="recovery" element={<VesselRegistrySection assetType="recovery_tank" />} />
           </Route>
           <Route path="*" element={<HierarchyFixture view={view} />} />
         </Routes>

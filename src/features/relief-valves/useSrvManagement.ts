@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { useSupabaseClient } from '@/lib/supabase/client'
+import type { RegistryPage } from '@/components/data/RegistryTable'
 import { foldName } from '@/features/hierarchy/foldName'
 import type { Loadable } from '@/features/hierarchy/useHierarchy'
 import type { DatePrecision, DueStatus, PressureUnit } from '@/features/units/useUnitWorkspace'
@@ -171,13 +172,8 @@ const INSTALLED_SORT: Record<InstalledSort, string[]> = {
 /** Buckets that mean "needs attention within 60 days OR already overdue". */
 const ATTENTION_BUCKETS = ['overdue', 'due_today', 'due_7', 'due_15', 'due_30', 'due_60']
 
-export interface SrvPage<T> {
-  rows: T[]
-  /** Total matching rows THE CALLER MAY SEE — RLS applies to the count too. */
-  total: number
-  /** True when records exist for this caller but none match the filters. */
-  filtered: boolean
-}
+/** The shared registry page shape. Re-exported so callers here keep one import. */
+export type SrvPage<T> = RegistryPage<T>
 
 export function useInstalledSrvs(query: InstalledQuery): {
   state: Loadable<SrvPage<InstalledSrvRow>>

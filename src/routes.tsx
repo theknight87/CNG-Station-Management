@@ -11,6 +11,7 @@ import { SrvSection } from '@/features/units/sections/SrvSection'
 import { VesselSection } from '@/features/units/sections/VesselSection'
 import { InstalledSrvSection } from '@/features/relief-valves/sections/InstalledSrvSection'
 import { WarehouseSrvSection } from '@/features/relief-valves/sections/WarehouseSrvSection'
+import { VesselRegistrySection } from '@/features/vessels/sections/VesselRegistrySection'
 import { AdminPage } from '@/pages/AdminPage'
 import { AlertsPage } from '@/pages/AlertsPage'
 import { DashboardPage } from '@/pages/DashboardPage'
@@ -102,7 +103,18 @@ export const router = createBrowserRouter([
           { path: 'warehouse', element: <WarehouseSrvSection /> },
         ],
       },
-      { path: 'manage/vessels', element: <VesselsManagementPage /> },
+      // Vessels Management. `/manage/vessels` stays the canonical entry and
+      // lands on Storage Vessels; both asset types are deep-linkable routes.
+      // The Prompt-10 Unit tabs are untouched and keep their Unit scoping.
+      {
+        path: 'manage/vessels',
+        element: <VesselsManagementPage />,
+        children: [
+          { index: true, element: <Navigate to="/manage/vessels/storage" replace /> },
+          { path: 'storage', element: <VesselRegistrySection assetType="storage_vessel" /> },
+          { path: 'recovery', element: <VesselRegistrySection assetType="recovery_tank" /> },
+        ],
+      },
       { path: 'manage/gas-detectors', element: <GasDetectorsPage /> },
       { path: 'manage/hoses', element: <HosesManagementPage /> },
 

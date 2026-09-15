@@ -9,7 +9,7 @@ import { Fact } from '@/features/hierarchy/HierarchyPieces'
 import { useRegions } from '@/features/hierarchy/useHierarchy'
 import { DueBadge, PrecisionDate, PressureRange, Serial, SourceStatus, Text } from '@/features/units/assetDisplay'
 import { HierarchyCell, MappingBadge, Metric, ParentCell, SourceContext } from '@/features/relief-valves/SrvPieces'
-import { SrvTable, type SrvColumn } from '@/features/relief-valves/SrvTable'
+import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
 import {
   DEFAULT_INSTALLED_QUERY, useInstalledSrvs, useInstalledSummary,
   type InstalledQuery, type InstalledSrvRow, type InstalledSort,
@@ -34,7 +34,7 @@ import {
  * mutation is deferred — see docs/srv-management.md.
  */
 
-const COLUMNS: SrvColumn<InstalledSrvRow>[] = [
+const COLUMNS: RegistryColumn<InstalledSrvRow>[] = [
   {
     key: 'serial', header: 'Serial', rowHeader: true, sort: 'serial',
     render: (r) => <Serial value={r.serial_number} status={r.serial_status} />,
@@ -241,7 +241,7 @@ export function InstalledSrvSection() {
         ) : null}
       </DataToolbar>
 
-      <SrvTable
+      <RegistryTable
         label="Installed relief valves"
         state={state}
         reload={reload}

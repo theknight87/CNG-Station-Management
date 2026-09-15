@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Fact } from '@/features/hierarchy/HierarchyPieces'
 import { DueBadge, PrecisionDate, PressureRange, Serial, SourceStatus, Text } from '@/features/units/assetDisplay'
 import { Metric } from '@/features/relief-valves/SrvPieces'
-import { SrvTable, type SrvColumn } from '@/features/relief-valves/SrvTable'
+import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
 import {
   DEFAULT_WAREHOUSE_QUERY, useWarehouseSrvs,
   type WarehouseQuery, type WarehouseSrvRow, type WarehouseSort,
@@ -38,7 +38,7 @@ const AVAILABILITY_LABEL: Record<string, string> = {
   sent_to_station_not_received: 'Sent to station — not received',
 }
 
-const COLUMNS: SrvColumn<WarehouseSrvRow>[] = [
+const COLUMNS: RegistryColumn<WarehouseSrvRow>[] = [
   {
     key: 'serial', header: 'Serial', rowHeader: true, sort: 'serial',
     render: (r) => <Serial value={r.serial_number} status={r.serial_status} />,
@@ -193,7 +193,7 @@ export function WarehouseSrvSection() {
         ) : null}
       </DataToolbar>
 
-      <SrvTable
+      <RegistryTable
         label="Warehouse relief valves"
         state={state}
         reload={reload}

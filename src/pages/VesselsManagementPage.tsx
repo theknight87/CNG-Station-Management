@@ -1,5 +1,5 @@
-import { VesselsManagementView } from '@/features/vessels'
+import { VesselWorkspace } from '@/features/vessels'
 
 export function VesselsManagementPage() {
-  return <VesselsManagementView />
+  return <VesselWorkspace />
 }

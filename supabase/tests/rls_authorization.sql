@@ -1054,5 +1054,150 @@ BEGIN
     format('SRV-15 composite FKs still force unit-in-station and equipment-in-unit (%s missing)', missing));
 END $$;
 
+-- ===========================================================================
+-- 15. VESSELS MANAGEMENT (Prompt 12)
+-- ===========================================================================
+-- Storage Vessels and Recovery Tanks are separate asset types sharing one
+-- management view. These assert the boundary holds through every path the
+-- global registry offers: list, direct id, search, counts and filters.
+DO $$
+DECLARE
+  n         bigint;
+  west_sv   uuid;
+  west_rt   uuid;
+BEGIN
+  SELECT id INTO west_sv FROM storage_vessels
+   WHERE station_id = 'e5700000-0000-0000-0000-0000000000f1' LIMIT 1;
+  SELECT id INTO west_rt FROM recovery_tanks
+   WHERE station_id = 'e5700000-0000-0000-0000-0000000000f1' LIMIT 1;
+
+  PERFORM pg_temp.become('clerk_eng_east');
+
+  SELECT count(*) INTO n FROM v_vessel_management
+   WHERE asset_type = 'storage_vessel' AND station_id = 'e5700000-0000-0000-0000-0000000000f1';
+  PERFORM pg_temp.ok(n = 0, 'VES-1 another Region''s Storage Vessels are absent from the registry');
+
+  SELECT count(*) INTO n FROM v_vessel_management
+   WHERE asset_type = 'recovery_tank' AND station_id = 'e5700000-0000-0000-0000-0000000000f1';
+  PERFORM pg_temp.ok(n = 0, 'VES-2 another Region''s Recovery Tanks are absent from the registry');
+
+  -- Direct id lookup: the id is a key, never authorization (IDOR).
+  IF west_sv IS NOT NULL THEN
+    SELECT count(*) INTO n FROM v_vessel_management WHERE id = west_sv;
+    PERFORM pg_temp.ok(n = 0, 'VES-3 fetching a foreign Region''s vessel by id returns nothing');
+  END IF;
+  IF west_rt IS NOT NULL THEN
+    SELECT count(*) INTO n FROM v_vessel_management WHERE id = west_rt;
+    PERFORM pg_temp.ok(n = 0, 'VES-4 fetching a foreign Region''s recovery tank by id returns nothing');
+  END IF;
+
+  -- Search must not become a side channel.
+  SELECT count(*) INTO n FROM v_vessel_management
+   WHERE station_name ILIKE '%TESTDATA-WEST-STATION%';
+  PERFORM pg_temp.ok(n = 0, 'VES-5 searching a foreign Station name leaks no vessel');
+
+  -- The count behind the summary strip and pagination is the caller's own.
+  SELECT count(*) INTO n FROM v_vessel_management WHERE asset_type = 'storage_vessel';
+  PERFORM pg_temp.ok(n = (SELECT count(*) FROM storage_vessels),
+    'VES-6 the Storage count equals the caller''s own visible rows, never the table total');
+  SELECT count(*) INTO n FROM v_vessel_management WHERE asset_type = 'recovery_tank';
+  PERFORM pg_temp.ok(n = (SELECT count(*) FROM recovery_tanks),
+    'VES-7 the Recovery count equals the caller''s own visible rows');
+
+  -- A mapping filter cannot widen visibility.
+  SELECT count(*) INTO n FROM v_vessel_management
+   WHERE mapping_status = 'needs_unit_mapping'
+     AND region_id NOT IN (SELECT region_id FROM user_region_access ura
+                            JOIN app_users u ON u.id = ura.app_user_id
+                           WHERE u.clerk_user_id = 'clerk_eng_east');
+  PERFORM pg_temp.ok(n = 0, 'VES-8 a mapping filter cannot surface a row outside the caller''s Regions');
+
+  RESET ROLE;
+END $$;
+
+-- The two asset types must not bleed into one another, and the schema must
+-- still forbid the relationships the UI refuses to draw.
+DO $$
+DECLARE n bigint; cols int;
+BEGIN
+  PERFORM pg_temp.become('clerk_admin');
+
+  -- The discriminator genuinely partitions the view.
+  SELECT count(*) INTO n FROM v_vessel_management
+   WHERE asset_type NOT IN ('storage_vessel', 'recovery_tank');
+  PERFORM pg_temp.ok(n = 0, 'VES-9 the vessel view contains only the two vessel asset types');
+
+  SELECT count(*) INTO n FROM v_vessel_management v
+   WHERE v.asset_type = 'storage_vessel' AND EXISTS (SELECT 1 FROM recovery_tanks r WHERE r.id = v.id);
+  PERFORM pg_temp.ok(n = 0, 'VES-10 no row appears under both asset types');
+
+  -- A RECOVERY TANK CANNOT OWN AN SRV. The UI refuses to draw the
+  -- relationship; this proves the schema refuses to hold it, so the refusal is
+  -- a fact rather than a UI convention.
+  SELECT count(*) INTO cols FROM information_schema.columns
+   WHERE table_schema = 'public' AND table_name = 'installed_relief_valves'
+     AND column_name LIKE '%recovery%';
+  PERFORM pg_temp.ok(cols = 0,
+    'VES-11 installed_relief_valves has no recovery-tank column, so a tank cannot own a valve');
+
+  SELECT count(*) INTO cols FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
+   WHERE t.typname = 'srv_parent_kind' AND e.enumlabel = 'recovery_tank';
+  PERFORM pg_temp.ok(cols = 0, 'VES-12 srv_parent_kind does not include recovery_tank');
+
+  -- A storage vessel CAN own one, and only through the composite key that
+  -- forces the valve and the vessel into the same Unit.
+  SELECT count(*) INTO cols FROM pg_constraint
+   WHERE conrelid = 'installed_relief_valves'::regclass AND contype = 'f'
+     AND conname = 'irv_storage_vessel_unit_fk';
+  PERFORM pg_temp.ok(cols = 1,
+    'VES-13 a valve reaches its Storage Vessel only through the composite unit-scoped FK');
+
+  -- A vessel cannot be station-unconfirmed: station_id is NOT NULL on both
+  -- tables, so `needs_station_mapping` is unreachable for these asset types.
+  SELECT count(*) INTO cols FROM information_schema.columns
+   WHERE table_schema = 'public' AND table_name IN ('storage_vessels', 'recovery_tanks')
+     AND column_name = 'station_id' AND is_nullable = 'YES';
+  PERFORM pg_temp.ok(cols = 0,
+    'VES-14 station_id is NOT NULL on both vessel tables, so no vessel can be station-unconfirmed');
+
+  RESET ROLE;
+END $$;
+
+-- Structural guarantees for the view the registry reads.
+DO $$
+DECLARE definer int; anon_grants int; write_grants int;
+BEGIN
+  SELECT count(*) INTO definer
+    FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace
+   WHERE ns.nspname = 'public' AND c.relname = 'v_vessel_management'
+     AND NOT coalesce((c.reloptions::text LIKE '%security_invoker=true%'), false);
+  PERFORM pg_temp.ok(definer = 0, 'VES-15 the vessel management view is security_invoker');
+
+  SELECT count(*) INTO anon_grants
+    FROM information_schema.role_table_grants
+   WHERE grantee = 'anon' AND table_schema = 'public' AND table_name = 'v_vessel_management';
+  PERFORM pg_temp.ok(anon_grants = 0, 'VES-16 anon holds no grant on the vessel management view');
+
+  SELECT count(*) INTO write_grants
+    FROM information_schema.role_table_grants
+   WHERE table_schema = 'public' AND table_name = 'v_vessel_management'
+     AND grantee IN ('anon', 'authenticated', 'service_role', 'PUBLIC')
+     AND privilege_type IN ('INSERT', 'UPDATE', 'DELETE', 'TRUNCATE');
+  PERFORM pg_temp.ok(write_grants = 0,
+    format('VES-17 no application role may write through the vessel view (found %s)', write_grants));
+END $$;
+
+-- The Prompt-10 Unit tabs must keep their Unit scoping: the global registry
+-- widening must not have relaxed them.
+DO $$
+DECLARE n bigint;
+BEGIN
+  PERFORM pg_temp.become('clerk_admin');
+  SELECT count(*) INTO n FROM v_vessel_management WHERE unit_id IS NULL AND mapping_status = 'resolved';
+  PERFORM pg_temp.ok(n = 0,
+    'VES-18 a resolved vessel always carries a confirmed Unit, so a Unit tab cannot show an unresolved one');
+  RESET ROLE;
+END $$;
+
 DO $$ BEGIN RAISE EXCEPTION 'RLS_SUITE_ROLLBACK'; END $$;
 ROLLBACK;

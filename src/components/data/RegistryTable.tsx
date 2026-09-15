@@ -9,19 +9,29 @@ import { Button } from '@/components/ui/button'
 import { FactGrid } from '@/features/hierarchy/HierarchyPieces'
 import { pageCount } from '@/features/hierarchy/useHierarchy'
 import type { Loadable } from '@/features/hierarchy/useHierarchy'
-import type { SrvPage } from '@/features/relief-valves/useSrvManagement'
+
 
 /**
- * The dense SRV table, shared by the installed and warehouse datasets.
+ * The dense registry table: server-sorted, server-paged, with expand-in-place
+ * detail. Shared by every company-wide asset registry.
  *
- * One renderer so the two never drift: the states, the sort affordance, the
- * expand-in-place detail and the pagination behave identically whichever
- * dataset you are looking at. The COLUMNS differ, because the datasets differ —
- * warehouse stock has no hierarchy and is never given fake columns to make the
- * two look alike.
+ * One renderer so they never drift: the loading, empty, filtered-empty and
+ * error states, the sort affordance, the detail disclosure and the pagination
+ * behave identically on installed SRVs, warehouse stock, storage vessels and
+ * recovery tanks. The COLUMNS differ, because the assets differ — warehouse
+ * stock has no hierarchy, and a recovery tank has no SRV relationship, and
+ * neither is given a fake column to make the tables look symmetrical.
  */
 
-export interface SrvColumn<T> {
+/** A page of rows plus the caller's RLS-scoped total. */
+export interface RegistryPage<T> {
+  rows: T[]
+  total: number
+  /** True when records exist for this caller but none match the filters. */
+  filtered: boolean
+}
+
+export interface RegistryColumn<T> {
   key: string
   header: string
   align?: 'left' | 'right'
@@ -32,7 +42,7 @@ export interface SrvColumn<T> {
   render: (row: T) => ReactNode
 }
 
-export function SrvTable<T>({
+export function RegistryTable<T>({
   label,
   state,
   reload,
@@ -52,9 +62,9 @@ export function SrvTable<T>({
   footnote,
 }: {
   label: string
-  state: Loadable<SrvPage<T>>
+  state: Loadable<RegistryPage<T>>
   reload: () => void
-  columns: SrvColumn<T>[]
+  columns: RegistryColumn<T>[]
   rowKey: (row: T) => string
   detail: (row: T) => ReactNode
   sort: string

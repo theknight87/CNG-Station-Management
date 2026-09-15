@@ -269,6 +269,75 @@ function warehouseSrv(i: number, over: Record<string, unknown> = {}) {
 
 const WAREHOUSE_SRVS = Array.from({ length: 64 }, (_, i) => warehouseSrv(i))
 
+
+/* ------------------------------------------------------------------ *
+ * Prompt 12 — Vessels Management fixtures.
+ *
+ * Both asset types, every reachable mapping state (resolved, needs unit,
+ * conflict — needs_station_mapping is unreachable because station_id is NOT
+ * NULL), every due bucket, both date precisions, Arabic station and unit
+ * names, NULL and very long serials. Storage vessels carry confirmed relief
+ * valves; recovery tanks carry none, because the schema has no such
+ * relationship.
+ * ------------------------------------------------------------------ */
+
+function vesselRow(i: number, kind: 'storage_vessel' | 'recovery_tank', over: Record<string, unknown> = {}) {
+  const region = SRV_REGIONS[i % SRV_REGIONS.length]
+  const dues = ['overdue', 'due_today', 'due_7', 'due_30', 'due_60', 'valid', 'unknown']
+  const due = dues[i % dues.length]
+  const exact = due !== 'unknown'
+  const prefix = kind === 'storage_vessel' ? 'SV' : 'RT'
+  return {
+    asset_type: kind,
+    id: `${prefix.toLowerCase()}-${i}`,
+    region_id: region.id, region_name: region.name,
+    station_id: `s-${i % 4}`, station_name: i % 2 ? 'الماظة' : `Shobra ${i % 4}`,
+    unit_id: i % 5 === 0 ? null : `u-${i % 3}`,
+    unit_name: i % 5 === 0 ? null : (i % 2 ? 'الماظة 1' : `Unit ${i % 3}`),
+    mapping_status: i % 5 === 0 ? 'needs_unit_mapping' : 'resolved',
+    needs_mapping: i % 5 === 0,
+    manufacturer: i % 3 ? 'CIMC' : 'Faber',
+    model: i % 3 ? 'CNG-80' : null,
+    serial_number: i % 7 === 0 ? null : `${prefix}-${String(400000 + i)}`,
+    serial_number_raw: i % 7 === 0 ? null : `${prefix}-${String(400000 + i)}`,
+    serial_status: i % 7 === 0 ? 'unknown' : 'assigned',
+    compressor_type_raw: i % 4 === 0 ? 'أفقي' : null,
+    last_inspection_date: '2024-03-11', last_inspection_precision: 'exact_date',
+    last_inspection_display: '11 Mar 2024',
+    next_inspection_date: exact ? '2026-10-02' : null,
+    next_inspection_precision: exact ? 'exact_date' : 'year_only',
+    next_inspection_display: exact ? '2 Oct 2026' : '2027',
+    days_left: exact ? 17 : null, due_status: due,
+    source_status_raw: due === 'unknown' && i % 3 === 0 ? 'منتهية' : null,
+    needs_review: false, notes: null,
+    ...over,
+  }
+}
+
+const VESSEL_REGISTRY = [
+  // The vessel with confirmed relief valves. Given an explicit serial so it is
+  // findable by search; index 0 would otherwise land in the NULL-serial branch.
+  vesselRow(0, 'storage_vessel', {
+    id: 'sv-resolved', mapping_status: 'resolved', needs_mapping: false,
+    unit_id: 'u-1', unit_name: 'الماظة 1',
+    serial_number: 'SV-RELATED-01', serial_number_raw: 'SV-RELATED-01', serial_status: 'assigned',
+  }),
+  vesselRow(1, 'storage_vessel', { id: 'sv-needs-unit', mapping_status: 'needs_unit_mapping', needs_mapping: true, unit_id: null, unit_name: null }),
+  vesselRow(2, 'storage_vessel', { id: 'sv-conflict', mapping_status: 'conflict', needs_mapping: true, notes: 'Two source files disagree on the Unit.' }),
+  vesselRow(3, 'storage_vessel', { id: 'sv-noserial', serial_number: null, serial_number_raw: null, serial_status: 'not_yet_assigned' }),
+  vesselRow(4, 'storage_vessel', { id: 'sv-long', serial_number: 'SV-CNG-2019-000044170-REV-A-LONG', serial_number_raw: 'SV-CNG-2019-000044170-REV-A-LONG' }),
+  ...Array.from({ length: 70 }, (_, k) => vesselRow(k + 5, 'storage_vessel')),
+  vesselRow(0, 'recovery_tank', { id: 'rt-resolved', mapping_status: 'resolved', needs_mapping: false, unit_id: 'u-1', unit_name: 'الماظة 1' }),
+  vesselRow(1, 'recovery_tank', { id: 'rt-needs-unit', mapping_status: 'needs_unit_mapping', needs_mapping: true, unit_id: null, unit_name: null }),
+  vesselRow(2, 'recovery_tank', { id: 'rt-conflict', mapping_status: 'conflict', needs_mapping: true }),
+  ...Array.from({ length: 45 }, (_, k) => vesselRow(k + 3, 'recovery_tank')),
+]
+
+/** Confirmed SRV -> storage vessel relationships, by foreign key. */
+const VESSEL_SRVS: Record<string, string[]> = {
+  'sv-resolved': ['isrv-resolved', 'isrv-long'],
+}
+
 type Reply = { data: unknown; error: { message: string } | null; count?: number }
 
 const FAILURE = { message: 'permission denied for view v_station_summary' }
@@ -282,7 +351,7 @@ const EQUIPMENT_TABLES = new Set([
 function builder(table: string) {
   let head = false
   const filters: { region?: string; overdue?: boolean; unresolved?: boolean; search?: string; stationId?: string; unitId?: string; assetType?: string; mappingStatus?: string;
-    parentKind?: string; availability?: string; dueStatus?: string; dueIn?: string[] } = {}
+    parentKind?: string; availability?: string; dueStatus?: string; dueIn?: string[]; parentId?: string } = {}
   // PostgREST applies .order() calls IN SEQUENCE - the first is the primary
   // key, later ones are tie-breaks. An earlier version of this stub overwrote
   // a single column instead, so a sort by Assets silently became a sort by
@@ -332,6 +401,42 @@ function builder(table: string) {
         }))
       }
       return { data: list, error: null }
+    }
+    // Vessels Management. Pinned by asset_type on every query, exactly as the
+    // real view is, so the two registries can never bleed into one another.
+    if (table === 'v_vessel_management' && (filters.assetType === 'storage_vessel' || filters.assetType === 'recovery_tank')) {
+      if (scenario === 'empty') return { data: [], error: null, count: 0 }
+      let list: Record<string, unknown>[] = VESSEL_REGISTRY.filter((v) => v.asset_type === filters.assetType)
+      if (filters.region) list = list.filter((r) => r.region_id === filters.region)
+      if (filters.mappingStatus) list = list.filter((r) => r.mapping_status === filters.mappingStatus)
+      if (filters.dueStatus) list = list.filter((r) => r.due_status === filters.dueStatus)
+      if (filters.dueIn) list = list.filter((r) => filters.dueIn!.includes(String(r.due_status)))
+      if (filters.search) {
+        const q = filters.search.toLowerCase()
+        list = list.filter((r) =>
+          ['serial_number', 'manufacturer', 'model', 'station_name', 'unit_name']
+            .some((k) => String(r[k] ?? '').toLowerCase().includes(q)),
+        )
+      }
+      list.sort((a, b) => {
+        for (const { col, asc } of orders) {
+          const x = a[col] as string | number | null
+          const y = b[col] as string | number | null
+          if (x === y) continue
+          if (x === null || x === undefined) return 1
+          if (y === null || y === undefined) return -1
+          const cmp = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'ar')
+          if (cmp !== 0) return asc ? cmp : -cmp
+        }
+        return 0
+      })
+      if (head) return { data: null, error: null, count: list.length }
+      return { data: list.slice(from, to + 1), error: null, count: list.length }
+    }
+    // Relief valves related to one storage vessel, by confirmed foreign key.
+    if (table === 'v_installed_srv_management' && filters.parentId) {
+      const ids = VESSEL_SRVS[filters.parentId] ?? []
+      return { data: INSTALLED_SRVS.filter((v) => ids.includes(String(v.id))), error: null, count: ids.length }
     }
     // Global SRV Management.
     if (table === 'v_installed_srv_management' || table === 'v_warehouse_srv_management') {
@@ -402,6 +507,7 @@ function builder(table: string) {
       if (col === 'asset_type') filters.assetType = value
       if (col === 'mapping_status') filters.mappingStatus = value
       if (col === 'parent_kind') filters.parentKind = value
+      if (col === 'parent_id') filters.parentId = value
       if (col === 'availability_status') filters.availability = value
       if (col === 'due_status') filters.dueStatus = value
       return chain
