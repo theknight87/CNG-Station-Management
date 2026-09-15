@@ -38,6 +38,9 @@ import { RegionDetailView } from '@/features/regions/RegionDetailView'
 import { RegionsView } from '@/features/regions/RegionsView'
 import { StationOverview } from '@/features/stations/StationOverview'
 import { StationsView } from '@/features/stations/StationsView'
+import { SrvWorkspace } from '@/features/relief-valves/SrvWorkspace'
+import { InstalledSrvSection } from '@/features/relief-valves/sections/InstalledSrvSection'
+import { WarehouseSrvSection } from '@/features/relief-valves/sections/WarehouseSrvSection'
 import { UnitWorkspace } from '@/features/units/UnitWorkspace'
 import { CompressorSection } from '@/features/units/sections/CompressorSection'
 import { DetectorSection } from '@/features/units/sections/DetectorSection'
@@ -65,7 +68,7 @@ function HierarchyFixture({ view }: { view: string }) {
   return null
 }
 
-const HIERARCHY_VIEWS = ['regions', 'region', 'stations', 'station', 'unit']
+const HIERARCHY_VIEWS = ['regions', 'region', 'stations', 'station', 'unit', 'srvs']
 
 /**
  * DEV-ONLY visual verification harness. NOT part of the application build.
@@ -169,6 +172,10 @@ function previewEntry(): string {
   const v = new URLSearchParams(window.location.search).get('view')
   if (v === 'region') return '/regions/r-east'
   if (v === 'station') return '/stations/s-0'
+  if (v === 'srvs') {
+    const tab = new URLSearchParams(window.location.search).get('tab')
+    return `/manage/srvs/${tab ?? 'installed'}`
+  }
   if (v === 'unit') {
     const tab = new URLSearchParams(window.location.search).get('tab')
     return tab ? `/units/u-1/${tab}` : '/units/u-1'
@@ -226,6 +233,12 @@ function Preview() {
             <Route path="gas-detectors" element={<DetectorSection />} />
             <Route path="hoses" element={<HoseSection />} />
             <Route path="srvs" element={<SrvSection />} />
+          </Route>
+          {/* Same nested shape as the application. */}
+          <Route path="/manage/srvs" element={<SrvWorkspace />}>
+            <Route index element={<InstalledSrvSection />} />
+            <Route path="installed" element={<InstalledSrvSection />} />
+            <Route path="warehouse" element={<WarehouseSrvSection />} />
           </Route>
           <Route path="*" element={<HierarchyFixture view={view} />} />
         </Routes>

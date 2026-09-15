@@ -898,5 +898,161 @@ BEGIN
     format('UNIT-16 no application role may write through a Unit workspace view (found %s)', write_grants));
 END $$;
 
+-- ===========================================================================
+-- 14. GLOBAL SRV MANAGEMENT (Prompt 11)
+-- ===========================================================================
+-- The global screen deliberately shows EVERY mapping state, which makes it the
+-- widest SRV surface in the product. These assert the widening is safe: it is
+-- the database that decides what a caller may see, through search, through
+-- filters, through counts and through a direct id.
+DO $$
+DECLARE
+  n         bigint;
+  east_srv  uuid;
+  west_srv  uuid;
+BEGIN
+  -- An SRV in each region, both fully station-mapped.
+  SELECT id INTO east_srv FROM installed_relief_valves
+   WHERE station_id = 'e5700000-0000-0000-0000-0000000000e1' LIMIT 1;
+  SELECT id INTO west_srv FROM installed_relief_valves
+   WHERE station_id = 'e5700000-0000-0000-0000-0000000000f1' LIMIT 1;
+
+  PERFORM pg_temp.become('clerk_eng_east');
+
+  -- Region scope, through the management view the screen actually reads.
+  SELECT count(*) INTO n FROM v_installed_srv_management
+   WHERE station_id = 'e5700000-0000-0000-0000-0000000000f1';
+  PERFORM pg_temp.ok(n = 0, 'SRV-1 another Region''s installed valves are absent from the global view');
+
+  -- Direct id access: the id is a lookup key, never authorization (IDOR).
+  IF west_srv IS NOT NULL THEN
+    SELECT count(*) INTO n FROM v_installed_srv_management WHERE id = west_srv;
+    PERFORM pg_temp.ok(n = 0, 'SRV-2 fetching another Region''s valve by its id returns nothing');
+  END IF;
+
+  -- Search is retrieval, not a side channel: querying the exact foreign
+  -- station name still returns nothing.
+  SELECT count(*) INTO n FROM v_installed_srv_management
+   WHERE station_name ILIKE '%TESTDATA-WEST-STATION%';
+  PERFORM pg_temp.ok(n = 0, 'SRV-3 searching a foreign Station name leaks no valve');
+
+  -- Counts drive the summary strip and pagination. They must be the caller's.
+  SELECT count(*) INTO n FROM v_installed_srv_management;
+  PERFORM pg_temp.ok(n = (SELECT count(*) FROM installed_relief_valves),
+    'SRV-4 the global count equals the caller''s own visible valves, never the table total');
+
+  -- Filtering by mapping state must not widen visibility either.
+  SELECT count(*) INTO n FROM v_installed_srv_management
+   WHERE mapping_status = 'needs_station_mapping'
+     AND id IN (SELECT id FROM installed_relief_valves WHERE station_id IS NOT NULL);
+  PERFORM pg_temp.ok(n = 0, 'SRV-5 a mapping-status filter cannot surface a row the caller may not read');
+
+  RESET ROLE;
+END $$;
+
+-- An unconfirmed Station name is EVIDENCE, never permission (CLAUDE.md §10).
+-- A Region-scoped engineer must not read station-less valves at all, because
+-- their raw source name would otherwise disclose a Station they have no claim
+-- to; admin and manager may, and that asymmetry is the policy's whole point.
+DO $$
+DECLARE eng bigint; adm bigint;
+BEGIN
+  PERFORM pg_temp.become('clerk_eng_east');
+  SELECT count(*) INTO eng FROM installed_relief_valves WHERE station_id IS NULL;
+  RESET ROLE;
+
+  PERFORM pg_temp.become('clerk_admin');
+  SELECT count(*) INTO adm FROM installed_relief_valves WHERE station_id IS NULL;
+  RESET ROLE;
+
+  PERFORM pg_temp.ok(eng = 0,
+    'SRV-6 a Region-scoped engineer reads NO station-unconfirmed valve, so raw source names cannot leak');
+  PERFORM pg_temp.ok(adm >= eng,
+    'SRV-7 admin reaches at least what the engineer can, so the asymmetry is the policy and not an accident');
+END $$;
+
+-- Warehouse isolation, from both directions.
+DO $$
+DECLARE n bigint; cols int;
+BEGIN
+  PERFORM pg_temp.become('clerk_admin');
+
+  -- Warehouse stock carries no physical position, so it cannot be rendered as
+  -- hierarchy however the UI queries it.
+  SELECT count(*) INTO cols FROM information_schema.columns
+   WHERE table_schema = 'public' AND table_name = 'warehouse_relief_valves'
+     AND column_name IN ('unit_id', 'station_id', 'compressor_id', 'storage_vessel_id', 'dispenser_id');
+  PERFORM pg_temp.ok(cols = 0,
+    'SRV-8 warehouse valves carry no station, unit or equipment column at all');
+
+  -- target_station is a DESTINATION and is deliberately a different column
+  -- from any installed position; it must never be confused with station_id.
+  SELECT count(*) INTO cols FROM information_schema.columns
+   WHERE table_schema = 'public' AND table_name = 'v_warehouse_srv_management'
+     AND column_name IN ('mapping_status', 'unit_id', 'parent_kind');
+  PERFORM pg_temp.ok(cols = 0,
+    'SRV-9 the warehouse view exposes no mapping status, unit or equipment parent');
+
+  -- The two datasets are never unioned: an id from one cannot appear in the
+  -- other's view.
+  SELECT count(*) INTO n FROM v_warehouse_srv_management w
+   WHERE EXISTS (SELECT 1 FROM v_installed_srv_management i WHERE i.id = w.id);
+  PERFORM pg_temp.ok(n = 0, 'SRV-10 no record appears in both the installed and the warehouse view');
+
+  -- And the Unit tab's narrower rule is untouched by the global widening.
+  SELECT count(*) INTO n FROM v_unit_srvs
+   WHERE mapping_status NOT IN ('resolved', 'needs_equipment_mapping') OR unit_id IS NULL;
+  PERFORM pg_temp.ok(n = 0,
+    'SRV-11 Prompt 10 Unit SRV visibility is unchanged by the global SRV screen');
+
+  RESET ROLE;
+END $$;
+
+-- Structural guarantees for the two views the global screen reads.
+DO $$
+DECLARE definer int; anon_grants int; write_grants int;
+BEGIN
+  SELECT count(*) INTO definer
+    FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace
+   WHERE ns.nspname = 'public'
+     AND c.relname IN ('v_installed_srv_management', 'v_warehouse_srv_management')
+     AND NOT coalesce((c.reloptions::text LIKE '%security_invoker=true%'), false);
+  PERFORM pg_temp.ok(definer = 0,
+    format('SRV-12 both SRV management views are security_invoker (found %s that are not)', definer));
+
+  SELECT count(*) INTO anon_grants
+    FROM information_schema.role_table_grants
+   WHERE grantee = 'anon' AND table_schema = 'public'
+     AND table_name IN ('v_installed_srv_management', 'v_warehouse_srv_management');
+  PERFORM pg_temp.ok(anon_grants = 0, 'SRV-13 anon holds no grant on either SRV management view');
+
+  -- The screen is read-only, and so is its data path.
+  SELECT count(*) INTO write_grants
+    FROM information_schema.role_table_grants
+   WHERE table_schema = 'public'
+     AND table_name IN ('v_installed_srv_management', 'v_warehouse_srv_management')
+     AND grantee IN ('anon', 'authenticated', 'service_role', 'PUBLIC')
+     AND privilege_type IN ('INSERT', 'UPDATE', 'DELETE', 'TRUNCATE');
+  PERFORM pg_temp.ok(write_grants = 0,
+    format('SRV-14 no application role may write through an SRV management view (found %s)', write_grants));
+END $$;
+
+-- The mapping hierarchy constraints that a future mapping workflow will rely
+-- on. Asserted here because the global screen is where that workflow will
+-- live: if these ever weaken, the deferred write UI must not be built.
+DO $$
+DECLARE missing int;
+BEGIN
+  SELECT count(*) INTO missing FROM (
+    SELECT unnest(ARRAY['irv_station_region_fk','irv_unit_station_fk','irv_compressor_unit_fk',
+                        'irv_storage_vessel_unit_fk','irv_dispenser_unit_fk']) AS want
+  ) w WHERE NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conrelid = 'installed_relief_valves'::regclass AND contype = 'f' AND conname = w.want
+  );
+  PERFORM pg_temp.ok(missing = 0,
+    format('SRV-15 composite FKs still force unit-in-station and equipment-in-unit (%s missing)', missing));
+END $$;
+
 DO $$ BEGIN RAISE EXCEPTION 'RLS_SUITE_ROLLBACK'; END $$;
 ROLLBACK;

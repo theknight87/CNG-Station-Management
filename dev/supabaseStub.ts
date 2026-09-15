@@ -149,6 +149,126 @@ const UNIT_SRVS = [
   { id: 'v-3', unit_id: 'u-1', station_id: 's-0', mapping_status: 'needs_equipment_mapping', mapping_label: 'Needs Equipment Mapping', needs_mapping: true, expected_parent_kind: 'compressor', location_raw: 'Stage', parent_kind: null, parent_id: null, parent_label: null, tag_number: 'PSV-204', serial_number: 'RV-CNG-2019-00004417-A', serial_number_raw: 'RV-CNG-2019-00004417-A', serial_status: 'assigned', part_number: null, manufacturer: null, size_type: null, inlet_size: null, outlet_size: null, set_pressure_raw: null, pressure_min: null, pressure_max: null, pressure_unit: null, last_calibration_date: '2026-05-05', last_calibration_precision: 'exact_date', last_calibration_display: '5 May 2026', next_calibration_date: '2026-11-20', next_calibration_precision: 'exact_date', next_calibration_display: '20 Nov 2026', days_left: 66, due_status: 'valid', source_status_raw: null, needs_review: false, notes: null },
 ]
 
+
+/* ------------------------------------------------------------------ *
+ * Prompt 11 — Global SRV Management fixtures.
+ *
+ * Every mapping state, every due bucket, both date precisions, an Arabic
+ * station and unit, a NULL serial, the owner-confirmed SS-4R3A part number,
+ * a very long identifier, and multiple Regions. Warehouse rows deliberately
+ * carry NO station/unit/equipment - only a destination, which is what the
+ * schema actually models.
+ * ------------------------------------------------------------------ */
+
+const SRV_REGIONS = [
+  { id: 'r-east', name: 'East' },
+  { id: 'r-west', name: 'West' },
+  { id: 'r-delta', name: 'Delta' },
+]
+
+function installedSrv(i: number, over: Record<string, unknown> = {}) {
+  const region = SRV_REGIONS[i % SRV_REGIONS.length]
+  const dues = ['overdue', 'due_today', 'due_7', 'due_30', 'due_60', 'valid', 'unknown']
+  const due = dues[i % dues.length]
+  const exact = due !== 'unknown'
+  return {
+    id: `isrv-${i}`,
+    region_id: region.id, region_name: region.name,
+    station_id: `s-${i % 4}`, station_name: i % 2 ? 'الماظة' : `Shobra ${i % 4}`,
+    source_station_name_raw: null, station_display: null, needs_station_mapping: false,
+    unit_id: `u-${i % 3}`, unit_name: i % 2 ? 'الماظة 1' : `Unit ${i % 3}`,
+    mapping_status: 'resolved', needs_mapping: false, mapping_label: 'Resolved',
+    expected_parent_kind: 'compressor', location_raw: 'Stage',
+    parent_kind: 'compressor', parent_id: `c-${i}`, parent_label: `F-${19000 + i}`,
+    tag_number: `PSV-${100 + i}`,
+    serial_number: `RV-${String(880000 + i)}`, serial_number_raw: `RV-${String(880000 + i)}`,
+    serial_status: 'assigned', part_number: null, manufacturer: i % 3 ? 'Leser' : 'Swagelok',
+    size_type: 'Flanged', inlet_size: '1"', outlet_size: '2"',
+    set_pressure_raw: '250-260', pressure_min: 250, pressure_max: 260, pressure_unit: 'BAR',
+    last_calibration_date: '2026-01-14', last_calibration_precision: 'exact_date',
+    last_calibration_display: '14 Jan 2026',
+    next_calibration_date: exact ? '2026-10-02' : null,
+    next_calibration_precision: exact ? 'exact_date' : 'year_only',
+    next_calibration_display: exact ? '2 Oct 2026' : '2027',
+    days_left: exact ? 17 : null, due_status: due,
+    source_status_raw: null, needs_review: false, notes: null,
+    source_file: 'Installed SRV.xlsx', source_sheet: 'Sheet1', source_row: 100 + i,
+    ...over,
+  }
+}
+
+const INSTALLED_SRVS = [
+  // One of each mapping state, first, so every state is on page one.
+  installedSrv(0, { id: 'isrv-resolved', mapping_status: 'resolved' }),
+  installedSrv(1, {
+    id: 'isrv-needs-equipment', mapping_status: 'needs_equipment_mapping', needs_mapping: true,
+    mapping_label: 'Needs Equipment Mapping', parent_kind: null, parent_id: null, parent_label: null,
+    // The owner-confirmed part number: serial stays NULL.
+    serial_number: null, serial_number_raw: 'SS-4R3A', serial_status: 'unknown', part_number: 'SS-4R3A',
+    expected_parent_kind: 'storage_vessel', location_raw: 'Storage',
+  }),
+  installedSrv(2, {
+    id: 'isrv-needs-unit', mapping_status: 'needs_unit_mapping', needs_mapping: true,
+    mapping_label: 'Needs Unit Mapping', unit_id: null, unit_name: null,
+    parent_kind: null, parent_id: null, parent_label: null,
+  }),
+  installedSrv(3, {
+    id: 'isrv-needs-station', mapping_status: 'needs_station_mapping', needs_mapping: true,
+    mapping_label: 'Needs Station Mapping', needs_station_mapping: true,
+    region_id: null, region_name: null, station_id: null, station_name: null,
+    unit_id: null, unit_name: null, parent_kind: null, parent_id: null, parent_label: null,
+    source_station_name_raw: 'ابو تيج- اسيوط',
+  }),
+  installedSrv(4, {
+    id: 'isrv-conflict', mapping_status: 'conflict', needs_mapping: true, mapping_label: 'Conflict',
+    parent_kind: null, parent_id: null, parent_label: null,
+    notes: 'Two source files disagree on the Station for this serial.',
+  }),
+  installedSrv(5, {
+    id: 'isrv-long', serial_number: 'RV-CNG-2019-00004417-REV-A-LONG', serial_number_raw: 'RV-CNG-2019-00004417-REV-A-LONG',
+  }),
+  installedSrv(6, { id: 'isrv-noserial', serial_number: null, serial_number_raw: null, serial_status: 'not_yet_assigned' }),
+  ...Array.from({ length: 118 }, (_, k) => installedSrv(k + 7)),
+]
+
+function warehouseSrv(i: number, over: Record<string, unknown> = {}) {
+  const avail = ['available_new', 'available_calibrated', 'available_in_store_uc',
+    'sent_to_station_received', 'sent_to_station_not_received']
+  const dues = ['overdue', 'due_30', 'valid', 'unknown']
+  const due = dues[i % dues.length]
+  const exact = due !== 'unknown'
+  return {
+    id: `wsrv-${i}`,
+    availability_status: avail[i % avail.length],
+    warehouse_code: `WH-${10 + (i % 5)}`,
+    serial_number: i % 6 === 0 ? null : `WRV-${String(500000 + i)}`,
+    serial_number_raw: i % 6 === 0 ? null : `WRV-${String(500000 + i)}`,
+    serial_status: i % 6 === 0 ? 'unknown' : 'assigned',
+    part_number: i % 4 === 0 ? 'SS-4R3A' : null,
+    manufacturer: i % 3 ? 'Leser' : 'Swagelok',
+    size_type: 'Threaded', inlet_size: '1/4"', outlet_size: '1/4"',
+    set_pressure_raw: '206', pressure_min: 206, pressure_max: 206, pressure_unit: 'BAR',
+    // A DESTINATION, not a hierarchy position.
+    target_region_id: i % 3 === 0 ? null : 'r-east',
+    target_region_name: i % 3 === 0 ? null : 'East',
+    target_station_id: i % 3 === 0 ? null : 's-0',
+    target_station_name: i % 3 === 0 ? null : 'الماظة',
+    is_unassigned_stock: i % 3 === 0,
+    warehouse_issue_date: i % 3 === 0 ? null : '2026-04-02',
+    last_calibration_date: '2025-11-03', last_calibration_precision: 'exact_date',
+    last_calibration_display: '3 Nov 2025',
+    next_calibration_date: exact ? '2026-09-30' : null,
+    next_calibration_precision: exact ? 'exact_date' : 'year_only',
+    next_calibration_display: exact ? '30 Sep 2026' : '2027',
+    days_left: exact ? 15 : null, due_status: due,
+    calibration_location: 'Cairo calibration lab',
+    source_status_raw: null, needs_review: false, notes: null,
+    ...over,
+  }
+}
+
+const WAREHOUSE_SRVS = Array.from({ length: 64 }, (_, i) => warehouseSrv(i))
+
 type Reply = { data: unknown; error: { message: string } | null; count?: number }
 
 const FAILURE = { message: 'permission denied for view v_station_summary' }
@@ -161,7 +281,8 @@ const EQUIPMENT_TABLES = new Set([
 /** A chainable stand-in for the PostgREST builder, resolving from fixtures. */
 function builder(table: string) {
   let head = false
-  const filters: { region?: string; overdue?: boolean; unresolved?: boolean; search?: string; stationId?: string; unitId?: string; assetType?: string } = {}
+  const filters: { region?: string; overdue?: boolean; unresolved?: boolean; search?: string; stationId?: string; unitId?: string; assetType?: string; mappingStatus?: string;
+    parentKind?: string; availability?: string; dueStatus?: string; dueIn?: string[] } = {}
   // PostgREST applies .order() calls IN SEQUENCE - the first is the primary
   // key, later ones are tie-breaks. An earlier version of this stub overwrote
   // a single column instead, so a sort by Assets silently became a sort by
@@ -212,6 +333,43 @@ function builder(table: string) {
       }
       return { data: list, error: null }
     }
+    // Global SRV Management.
+    if (table === 'v_installed_srv_management' || table === 'v_warehouse_srv_management') {
+      if (scenario === 'empty') return { data: [], error: null, count: 0 }
+      const installed = table === 'v_installed_srv_management'
+      let list: Record<string, unknown>[] = installed ? INSTALLED_SRVS : WAREHOUSE_SRVS
+      if (filters.region) list = list.filter((r) => r.region_id === filters.region)
+      if (filters.mappingStatus) list = list.filter((r) => r.mapping_status === filters.mappingStatus)
+      if (filters.parentKind) list = list.filter((r) => r.parent_kind === filters.parentKind)
+      if (filters.availability) list = list.filter((r) => r.availability_status === filters.availability)
+      if (filters.dueStatus) list = list.filter((r) => r.due_status === filters.dueStatus)
+      if (filters.dueIn) list = list.filter((r) => filters.dueIn!.includes(String(r.due_status)))
+      if (filters.search) {
+        const q = filters.search.toLowerCase()
+        list = list.filter((r) =>
+          ['serial_number', 'part_number', 'manufacturer', 'tag_number', 'station_name', 'unit_name',
+           'warehouse_code', 'source_station_name_raw']
+            .some((k) => String(r[k] ?? '').toLowerCase().includes(q)),
+        )
+      }
+      list.sort((a, b) => {
+        for (const { col, asc } of orders) {
+          const x = a[col] as string | number | null
+          const y = b[col] as string | number | null
+          if (x === y) continue
+          // NULLs last, matching nullsFirst:false on the real query.
+          if (x === null || x === undefined) return 1
+          if (y === null || y === undefined) return -1
+          const cmp = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'ar')
+          if (cmp !== 0) return asc ? cmp : -cmp
+        }
+        return 0
+      })
+      // A head count is still a FILTERED count in PostgREST - returning the
+      // unfiltered total here made every summary metric read the same number.
+      if (head) return { data: null, error: null, count: list.length }
+      return { data: list.slice(from, to + 1), error: null, count: list.length }
+    }
     // Unit workspace equipment. `emptytab` proves an empty tab is distinct
     // from a failed one; `error` proves a failure never renders as empty.
     if (EQUIPMENT_TABLES.has(table)) {
@@ -242,6 +400,10 @@ function builder(table: string) {
       if (col === 'station_id') filters.stationId = value
       if (col === 'unit_id') filters.unitId = value
       if (col === 'asset_type') filters.assetType = value
+      if (col === 'mapping_status') filters.mappingStatus = value
+      if (col === 'parent_kind') filters.parentKind = value
+      if (col === 'availability_status') filters.availability = value
+      if (col === 'due_status') filters.dueStatus = value
       return chain
     },
     gt: (col: string) => {
@@ -249,8 +411,12 @@ function builder(table: string) {
       if (col === 'unresolved_mapping') filters.unresolved = true
       return chain
     },
+    in: (col: string, values: string[]) => {
+      if (col === 'due_status') filters.dueIn = values
+      return chain
+    },
     or: (expr: string) => {
-      const m = /station_name\.ilike\.\*(.*?)\*/.exec(expr)
+      const m = /(?:serial_number|station_name)\.ilike\.\*(.*?)\*/.exec(expr)
       filters.search = m ? m[1] : ''
       return chain
     },

@@ -11,11 +11,21 @@ import { STATUS_SPECS, type StatusKind } from './statusSemantics'
 export function StatusBadge({
   kind,
   label,
+  description,
   className,
 }: {
   kind: StatusKind
   /** Override the wording; the icon and semantics are unchanged. */
   label?: string
+  /**
+   * Override the screen-reader description.
+   *
+   * Required when a badge borrows a KIND for its colour and icon but means
+   * something else. A mapping state rendered with the `ok` kind would
+   * otherwise be announced as "within its calibration or inspection date" -
+   * describing a compliance state to someone reading a mapping state.
+   */
+  description?: string
   className?: string
 }) {
   const spec = STATUS_SPECS[kind]
@@ -31,7 +41,7 @@ export function StatusBadge({
     >
       <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
       <span>{label ?? spec.label}</span>
-      <span className="sr-only"> — {spec.description}</span>
+      <span className="sr-only"> — {description ?? spec.description}</span>
     </span>
   )
 }

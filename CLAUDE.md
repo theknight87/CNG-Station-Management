@@ -263,6 +263,12 @@ Prompt 21. Canonical asset tables are still empty.*
 `cng_normalize_name()` that would have corrupted canonical Station and Unit identity at the
 Prompt 21 import.*
 
+*Global SRV Management (Prompt 11) is built: `/manage/srvs/installed` and
+`/manage/srvs/warehouse` — see `docs/srv-management.md`. It required **no new migration**.
+Installed and warehouse valves are never merged. Mapping MUTATION is deliberately deferred:
+the database enforces hierarchy consistency, but mapping attribution is still forgeable and
+unaudited, so no mapping control is exposed.*
+
 *The Unit workspace (Prompt 10) is built: `/units/:unitId` with routed Overview, Compressor,
 Recovery Tank, Dispensers, Storage, Gas Detectors, Hoses and SRVs sections — see
 `docs/unit-workspace.md`. It required **no new migration**; every source already existed. The Unit
@@ -276,6 +282,36 @@ the warehouse experience are Prompt 11.*
 - No secrets in the repository. `.env.example` documents keys with empty values.
 - Dynamic computations (Days Left, compliance status) live in SQL views or the query layer,
   never as stale stored columns.
+
+## 7a. Verification Integrity Gate (permanent, from Prompt 11 onward)
+
+Two verification-process defects in Prompts 9-10 caused a PASS to be reported over a
+broken build and a silently shrunken test suite. Both had the same root cause: **success
+was inferred from filtered text instead of taken from the process.**
+
+These rules are permanent and apply to every future prompt.
+
+1. **The exit code is the only authoritative PASS/FAIL signal.** Never infer success by
+   grepping stdout or stderr.
+2. Run the real build and the complete test suite **directly**, and require exit code `0`.
+3. Never mask a failure with `grep`, a pipe that replaces the exit code, `|| true`,
+   command substitution, or any other construct that discards the status.
+4. Record the exact discovered / passed / failed counts wherever the tool reports them.
+5. **Compare every count against the previous accepted baseline.** A decrease is not
+   automatically a failure, but it must be investigated and explicitly justified before
+   reporting PASS - a deleted, renamed, skipped or undiscovered test file must never
+   silently reduce coverage.
+6. Report the actual final command results, never inferred success.
+
+### Accepted baselines
+
+| Prompt | Frontend tests | Schema assertions | Authorization assertions |
+| --- | --- | --- | --- |
+| 10 | 217 | 72 | 134 |
+| 11 | 245 | 72 | 149 |
+
+Update this table when a prompt is accepted, so the next one has a baseline to compare
+against.
 
 ## 8. Canonical Station and Unit identity
 
@@ -398,7 +434,8 @@ These hold for every future phase.
 *Status: the foundation is built and browser-verified (Prompt 7) — see `docs/ui-foundation.md`;
 the operational dashboard is built on it (Prompt 8) — see `docs/dashboard.md`; the hierarchy
 browser is built on both (Prompt 9) — see `docs/regions-stations.md`; the Unit workspace is built
-on all three (Prompt 10) — see `docs/unit-workspace.md`. The **Cargas brand system**
+on all three (Prompt 10) — see `docs/unit-workspace.md`; Global SRV Management (Prompt 11) — see
+`docs/srv-management.md`. The **Cargas brand system**
 was established during Prompt 9 and is authoritative — see §11.6 and `docs/ui-foundation.md` §13.
 It records which ui-ux-pro-max recommendations were accepted and which were rejected for
 conflicting with the rules below.*

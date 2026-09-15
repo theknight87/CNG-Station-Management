@@ -1,5 +1,5 @@
-import { SrvManagementView } from '@/features/relief-valves'
+import { SrvWorkspace } from '@/features/relief-valves'
 
 export function SrvManagementPage() {
-  return <SrvManagementView />
+  return <SrvWorkspace />
 }

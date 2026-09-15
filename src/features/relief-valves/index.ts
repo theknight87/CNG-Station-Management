@@ -1,1 +1,1 @@
-export { SrvManagementView } from './SrvManagementView'
+export { SrvWorkspace } from './SrvWorkspace'

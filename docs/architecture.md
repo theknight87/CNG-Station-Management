@@ -854,3 +854,27 @@ Two shared pieces were introduced:
   be drawn differently.
 
 See `docs/unit-workspace.md`.
+
+
+## Global SRV Management (Prompt 11)
+
+`/manage/srvs` is a two-dataset workspace: installed valves (in the physical
+hierarchy) and warehouse stock (inventory, no physical position). They are separate
+routes, separate queries and separate views, and are never unioned.
+
+It added **no database objects** — `v_installed_srv_management` and
+`v_warehouse_srv_management` already existed as `security_invoker` views.
+
+The global screen is the widest SRV surface in the product, showing every mapping
+state. That widening is safe because the RLS policy, not the UI, decides: station-mapped
+rows go through `cng_can_read_region()`, station-less rows through
+`cng_can_access_unmapped_srv()` (admin/manager only). The Unit tab's narrower rule is a
+different view and is untouched.
+
+**Mapping mutation is deliberately deferred.** The composite foreign keys already force
+unit-in-station and equipment-in-unit, and the UPDATE policy carries both `USING` and
+`WITH CHECK` — but there is no audit trigger and the actor columns are client-writable,
+so mapping attribution would be forgeable and unrecorded. See `docs/srv-management.md`
+§11 for what Prompt 12+ needs to add first.
+
+See `docs/srv-management.md`.

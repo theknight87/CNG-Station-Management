@@ -9,6 +9,8 @@ import { HoseSection } from '@/features/units/sections/HoseSection'
 import { OverviewSection } from '@/features/units/sections/OverviewSection'
 import { SrvSection } from '@/features/units/sections/SrvSection'
 import { VesselSection } from '@/features/units/sections/VesselSection'
+import { InstalledSrvSection } from '@/features/relief-valves/sections/InstalledSrvSection'
+import { WarehouseSrvSection } from '@/features/relief-valves/sections/WarehouseSrvSection'
 import { AdminPage } from '@/pages/AdminPage'
 import { AlertsPage } from '@/pages/AlertsPage'
 import { DashboardPage } from '@/pages/DashboardPage'
@@ -88,7 +90,18 @@ export const router = createBrowserRouter([
       },
 
       // Global management modules (aggregate views)
-      { path: 'manage/srvs', element: <SrvManagementPage /> },
+      // Global SRV Management. `/manage/srvs` stays the canonical entry point
+      // and lands on Installed; both datasets are deep-linkable sub-routes.
+      // `/units/:unitId/srvs` is untouched and keeps its narrower Unit rule.
+      {
+        path: 'manage/srvs',
+        element: <SrvManagementPage />,
+        children: [
+          { index: true, element: <Navigate to="/manage/srvs/installed" replace /> },
+          { path: 'installed', element: <InstalledSrvSection /> },
+          { path: 'warehouse', element: <WarehouseSrvSection /> },
+        ],
+      },
       { path: 'manage/vessels', element: <VesselsManagementPage /> },
       { path: 'manage/gas-detectors', element: <GasDetectorsPage /> },
       { path: 'manage/hoses', element: <HosesManagementPage /> },
