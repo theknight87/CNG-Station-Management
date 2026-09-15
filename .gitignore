@@ -46,3 +46,4 @@ yarn-error.log*
 # Local tooling
 coverage/
 .wrangler/
+artifacts/

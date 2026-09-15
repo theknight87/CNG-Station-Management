@@ -405,6 +405,31 @@ read time.
 
 ---
 
+## 14a. Implementation and the first real dry run (Prompt 6)
+
+This mapping is implemented in `src/import/` and documented in
+[import-pipeline.md](./import-pipeline.md). It was executed in DRY-RUN against all six workbooks
+on 2026-09-14; **no production import was performed** (that is Prompt 21).
+
+| Figure | Prompt 2 | Dry run | Note |
+| --- | --- | --- | --- |
+| Installed SRV rows | 2 662 | **2 662** | exact |
+| Warehouse SRV rows | 2 188 | **2 188** | exact |
+| Storage vessels / recovery tanks | 671 / 528 | **671 / 528** | exact |
+| Gas detector rows | 316 | **316** | exact |
+| Hose rows | ~71 | **71** | exact |
+| `SS-4R3A` applications | 48 | **48** | exact |
+| Installed SRVs `resolved` | 0 expected | **0** | as designed |
+| Station candidates | 156 | **157** | +1: `بيلا / كفر الشيخ` (Delta, row 352) is a station row with NO Unit Name. A Station with no Units is a valid record (principle #19, D7); the earlier count evidently counted only stations that have units. |
+| Year-only dates | 332 | **372** | +40: 332 is the installed-SRV sheet alone (166 + 166). The extra 40 are the warehouse sheet's 20 + 20, which §6b of this document already records. Both figures are Prompt 2's; they count different scopes. |
+| Repair Kit rows | 8 361 | **0 read** | sheet never opened |
+
+**`ابنوب اسيوط` does not occur in any of the six workbooks** — only the bare `ابنوب`, once, in
+`Station data base.xlsx`. The owner-confirmed alias is implemented and unit-tested, and correctly
+applied **0 times** on this corpus. It is not dead code; this source set simply does not exercise it.
+
+---
+
 ## 14. Dry-run report (required before any write)
 
 The importer must run in dry-run first and print, per file:

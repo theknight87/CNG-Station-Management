@@ -25,6 +25,28 @@ Resulting decisions: [`import-mapping.md`](./import-mapping.md).
 
 Every finding below is **retained-and-flagged**, never dropped and never guessed.
 
+### How the pipeline handles each of these (Prompt 6 dry run)
+
+The import pipeline was built and executed in DRY-RUN against all six workbooks on 2026-09-14.
+**No production import was performed** — canonical asset tables remain empty; that is Prompt 21.
+
+| Finding | Dry-run outcome |
+| --- | --- |
+| Unit-grain vs station-grain | `Assets DataBase` builds the structure (157 station candidates, 188 units); `Station data base.xlsx` rows resolve against it and stage as `proposal_only` where they do not — attaching nothing |
+| No SRV parent in any source | **0 of 2 662 installed SRVs resolved**, as predicted. 1 599 `needs_station_mapping`, 262 `needs_unit_mapping`, 801 `needs_equipment_mapping`. Zero carry any equipment foreign key |
+| Unmatched station names | 387 distinct names unresolved across all files; every affected row is still staged with its raw station name. 832 advisory proposals generated, **0 auto-accepted** |
+| Year-only dates | 372 detected, **0 given a day**. (332 of them are the installed-SRV sheet — the figure this table quotes; the other 40 are the warehouse sheet's, per import-mapping.md §6b) |
+| Stale `Days Left` | never read; the three columns are on the never-imported list |
+| Numeric/float identifiers | **0 rendered in scientific notation**; `1803.02075` survives intact, and no leading zero is invented |
+| Duplicate serials | reported as candidates; nothing merged or dropped |
+| Manufacturer/model spellings | preserved verbatim; no auto-merge |
+| Missing serials | 339 missing-serial issues, all **non-blocking**; every record still staged |
+| Missing Job Numbers | 6 issues, all **non-blocking** |
+
+Across all 7 163 source rows the dry run produced **0 blocking issues** and 3 402 non-blocking
+ones. Full method in [import-pipeline.md](./import-pipeline.md); per-figure reconciliation against
+this report in [import-mapping.md §14a](./import-mapping.md).
+
 ---
 
 ## 2. Unmatched stations

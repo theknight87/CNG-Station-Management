@@ -702,7 +702,8 @@ Each phase ends in a deployable state.
 | Prompt 3 — database schema as local migrations | **complete** |
 | Prompt 4 — dedicated Supabase environment, migrations applied | **complete** |
 | **Prompt 5 — Clerk authentication + RLS and region authorization** | **COMPLETE, verified end to end in a real browser 2026-09-14** (`docs/authentication.md` §10) |
-| Prompt 6 onward | not started |
+| **Prompt 6 — safe import pipeline** | **COMPLETE, dry-run verified against all six workbooks** (`docs/import-pipeline.md`). No production import performed. |
+| Prompt 7 onward | not started |
 
 **Phase 0 — Documentation and decisions**
 CLAUDE.md, architecture, file structure, risks. No code.

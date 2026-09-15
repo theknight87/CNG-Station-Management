@@ -254,6 +254,10 @@ row is marked for review.
 
 ## 7. Working agreements
 
+*Import status: the pipeline is built and dry-run verified (Prompt 6) — see
+`docs/import-pipeline.md`. The production import of the six workbooks has NOT been performed; it is
+Prompt 21. Canonical asset tables are still empty.*
+
 - Documentation-first: architecture and data-mapping decisions are recorded in `docs/`
   before implementation.
 - Migrations are additive and versioned; no destructive migration without explicit approval.
