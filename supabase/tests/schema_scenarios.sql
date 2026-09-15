@@ -671,4 +671,70 @@ SELECT pg_temp.assert(
   (SELECT min(queue_order) FROM v_srv_mapping_queue) >= 1,
   'P7: SRV mapping queue is populated and ordered by lifecycle stage');
 
+-- ===========================================================================
+-- NAME NORMALIZATION (0028)
+-- ===========================================================================
+-- cng_normalize_name backs stations_region_norm_uq and units_station_norm_uq —
+-- it decides canonical Station and Unit IDENTITY. The original 0001 version
+-- passed translate() 14 source characters against 5 replacements, so Arabic
+-- diacritics and tatweel were REPLACED by ا (inserting letters that were never
+-- written) while أ إ آ ى ة were DELETED outright. At the Prompt 21 import that
+-- would have silently split or merged real stations. These assertions exist so
+-- the folding rules can never regress unnoticed.
+
+-- N1: taa marbuta folds to haa, so the two common spellings are one station.
+SELECT pg_temp.assert(
+  cng_normalize_name('الماظة') = cng_normalize_name('الماظه'),
+  'N1: taa marbuta and haa spellings normalize to the same station identity');
+
+-- N2: alef forms fold together WITHOUT dropping the letter.
+SELECT pg_temp.assert(
+  cng_normalize_name('إبراهيم') = cng_normalize_name('ابراهيم')
+  AND cng_normalize_name('آمال') = cng_normalize_name('امال')
+  AND length(cng_normalize_name('إبراهيم')) = length('ابراهيم'),
+  'N2: hamzated alef folds to bare alef and is never deleted');
+
+-- N3: alef maqsura folds to yaa rather than vanishing.
+SELECT pg_temp.assert(
+  cng_normalize_name('مصطفى') = cng_normalize_name('مصطفي'),
+  'N3: alef maqsura folds to yaa');
+
+-- N4: tatweel is STRIPPED, never turned into a letter. This was the defect
+-- that turned طاليــا into طاليااا.
+SELECT pg_temp.assert(
+  cng_normalize_name('طاليــا') = cng_normalize_name('طاليا'),
+  'N4: tatweel is removed and never substituted with a letter');
+
+-- N5: diacritics are removed, not substituted.
+SELECT pg_temp.assert(
+  cng_normalize_name('شَبرا') = cng_normalize_name('شبرا'),
+  'N5: Arabic diacritics are removed without inserting characters');
+
+-- N6: case and whitespace folding still hold for Latin names.
+SELECT pg_temp.assert(
+  cng_normalize_name('  East   Station ') = 'east station',
+  'N6: case folded, edges trimmed, internal whitespace collapsed');
+
+-- N7: a name that is only whitespace normalizes to NULL, so it can never
+-- become a canonical identity.
+SELECT pg_temp.assert(
+  cng_normalize_name('   ') IS NULL AND cng_normalize_name(NULL) IS NULL,
+  'N7: an empty or whitespace-only name normalizes to NULL, never to a key');
+
+-- N8: distinct stations must NOT be merged by folding. Identity rules that
+-- over-merge are as damaging as ones that over-split.
+SELECT pg_temp.assert(
+  cng_normalize_name('ابنوب') <> cng_normalize_name('ابنوب اسيوط')
+  AND cng_normalize_name('شبرا 1') <> cng_normalize_name('شبرا 2'),
+  'N8: folding never merges genuinely different names — that is the alias table''s job');
+
+-- N9: the generated columns actually carry the fixed folding, not a stale
+-- value from before the function was replaced.
+SELECT pg_temp.assert(
+  NOT EXISTS (SELECT 1 FROM stations
+               WHERE normalized_name IS DISTINCT FROM cng_normalize_name(station_name))
+  AND NOT EXISTS (SELECT 1 FROM units
+                   WHERE normalized_name IS DISTINCT FROM cng_normalize_name(unit_name)),
+  'N9: stored normalized_name matches the current folding function');
+
 ROLLBACK;

@@ -663,5 +663,119 @@ BEGIN
   PERFORM pg_temp.ok(anon_grants = 0, 'DASH-8 anon holds no grant on any dashboard view');
 END $$;
 
+-- ===========================================================================
+-- 12. HIERARCHY SUMMARY VIEWS (0029)
+-- ===========================================================================
+-- These back the Stations list and the Unit listing. Browsing is the surface an
+-- attacker actually has: search, sort and pagination all run through them, so
+-- each must prove a station outside the caller's region scope is ABSENT, not
+-- merely zeroed. A total row count is itself a disclosure.
+DO $$
+DECLARE
+  n         bigint;
+  seen      int;
+  west_stn  uuid := 'e5700000-0000-0000-0000-0000000000f1';
+  east_stn  uuid := 'e5700000-0000-0000-0000-0000000000e1';
+BEGIN
+  -- Engineer authorized for East only.
+  PERFORM pg_temp.become('clerk_eng_east');
+
+  SELECT count(*) INTO n FROM v_station_summary WHERE station_id = west_stn;
+  PERFORM pg_temp.ok(n = 0,
+    'HIER-1 an unauthorized region''s station produces NO row in v_station_summary');
+
+  -- Search must not become a side channel: querying the exact foreign name
+  -- still returns nothing, so existence cannot be probed string by string.
+  SELECT count(*) INTO n FROM v_station_summary
+   WHERE normalized_name = cng_normalize_name('TESTDATA-WEST-STATION');
+  PERFORM pg_temp.ok(n = 0,
+    'HIER-2 searching an unauthorized station by exact name returns nothing');
+
+  -- Pagination metadata is computed from the same view, so the total the client
+  -- pages through must equal only what the caller may read.
+  SELECT count(*) INTO n FROM v_station_summary;
+  PERFORM pg_temp.ok(n = (SELECT count(*) FROM stations WHERE archived_at IS NULL),
+    'HIER-3 the paginated total equals the caller''s own visible stations, never the table total');
+
+  SELECT count(*) INTO n FROM v_unit_summary WHERE station_id = west_stn;
+  PERFORM pg_temp.ok(n = 0,
+    'HIER-4 an unauthorized region''s units produce NO row in v_unit_summary');
+
+  -- The counts on a station the caller CAN read must match their own visible
+  -- detail rows, so the summary neither inflates nor hides.
+  SELECT units INTO n FROM v_station_summary WHERE station_id = east_stn;
+  PERFORM pg_temp.ok(n = (SELECT count(*) FROM units
+                           WHERE station_id = east_stn AND archived_at IS NULL),
+    'HIER-5 station unit count matches the caller''s visible units exactly');
+
+  SELECT assets INTO n FROM v_station_summary WHERE station_id = east_stn;
+  PERFORM pg_temp.ok(n = (
+      (SELECT count(*) FROM installed_relief_valves WHERE station_id = east_stn) +
+      (SELECT count(*) FROM storage_vessels       WHERE station_id = east_stn) +
+      (SELECT count(*) FROM recovery_tanks        WHERE station_id = east_stn) +
+      (SELECT count(*) FROM gas_detectors         WHERE station_id = east_stn) +
+      (SELECT count(*) FROM hoses                 WHERE station_id = east_stn) +
+      (SELECT count(*) FROM compressors           WHERE station_id = east_stn) +
+      (SELECT count(*) FROM dispensers            WHERE station_id = east_stn)),
+    'HIER-6 station asset count matches the caller''s visible asset rows exactly');
+
+  -- A station-scoped SRV with no confirmed unit must not be attributed to one.
+  SELECT coalesce(sum(installed_srvs), 0) INTO n FROM v_unit_summary
+   WHERE station_id = east_stn;
+  PERFORM pg_temp.ok(n = (SELECT count(*) FROM installed_relief_valves
+                           WHERE station_id = east_stn AND unit_id IS NOT NULL),
+    'HIER-7 unit SRV counts include only unit-confirmed valves, never unresolved ones');
+
+  RESET ROLE;
+
+  -- An unscoped viewer browses nothing, rather than everything.
+  PERFORM pg_temp.become('clerk_view_none');
+  SELECT count(*) INTO seen FROM v_station_summary;
+  PERFORM pg_temp.ok(seen = 0,
+    format('HIER-8 an unscoped viewer sees no stations at all (saw %s)', seen));
+  SELECT count(*) INTO seen FROM v_unit_summary;
+  PERFORM pg_temp.ok(seen = 0,
+    format('HIER-9 an unscoped viewer sees no units at all (saw %s)', seen));
+  RESET ROLE;
+
+  -- An admin browses every region.
+  PERFORM pg_temp.become('clerk_admin');
+  SELECT count(*) INTO seen FROM v_station_summary WHERE station_id = west_stn;
+  PERFORM pg_temp.ok(seen = 1, 'HIER-10 an admin sees stations in every region');
+  RESET ROLE;
+END $$;
+
+-- Same structural guarantees the dashboard views carry.
+DO $$
+DECLARE definer_views int; anon_grants int; write_grants int;
+BEGIN
+  SELECT count(*) INTO definer_views
+    FROM pg_class c
+    JOIN pg_namespace ns ON ns.oid = c.relnamespace
+   WHERE ns.nspname = 'public' AND c.relname IN ('v_station_summary','v_unit_summary')
+     AND NOT coalesce((c.reloptions::text LIKE '%security_invoker=true%'), false);
+  PERFORM pg_temp.ok(definer_views = 0,
+    format('HIER-11 both hierarchy views are security_invoker (found %s that are not)', definer_views));
+
+  SELECT count(*) INTO anon_grants
+    FROM information_schema.role_table_grants
+   WHERE grantee = 'anon' AND table_schema = 'public'
+     AND table_name IN ('v_station_summary','v_unit_summary');
+  PERFORM pg_temp.ok(anon_grants = 0, 'HIER-12 anon holds no grant on either hierarchy view');
+
+  -- A browsing surface is read-only. A writable view would be a second,
+  -- unpoliced write path into stations and units. The object OWNER's implicit
+  -- privileges are excluded deliberately: they are inherent to ownership and
+  -- cannot be revoked; the boundary that matters is the application roles.
+  SELECT count(*) INTO write_grants
+    FROM information_schema.role_table_grants
+   WHERE table_schema = 'public'
+     AND table_name IN ('v_station_summary','v_unit_summary')
+     AND grantee IN ('anon','authenticated','service_role','PUBLIC')
+     AND privilege_type IN ('INSERT','UPDATE','DELETE','TRUNCATE');
+  PERFORM pg_temp.ok(write_grants = 0,
+    format('HIER-13 no role may write through a hierarchy view (found %s grants)', write_grants));
+END $$;
+
 DO $$ BEGIN RAISE EXCEPTION 'RLS_SUITE_ROLLBACK'; END $$;
 ROLLBACK;
