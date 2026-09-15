@@ -13,6 +13,7 @@ import {
 import { Identifier, EntityName } from '@/components/data/TechnicalText'
 import { NullValue, ValueOrNull } from '@/components/data/NullValue'
 import { StatusBadge } from '@/components/data/StatusBadge'
+import { usePublishBreadcrumbs } from '@/components/layout/breadcrumbContext'
 import { PageContainer, PageHeader, SectionHeader } from '@/components/layout/PageContainer'
 import { EmptyState, ErrorState, LoadingState, NotFound, NotImplemented } from '@/components/states/AppStates'
 import { AttentionBadge, Count, EntityLink, Fact, FactGrid } from '@/features/hierarchy/HierarchyPieces'
@@ -36,6 +37,17 @@ import { useStation } from '@/features/hierarchy/useHierarchy'
 export function StationOverview() {
   const { stationId } = useParams<{ stationId: string }>()
   const { state, reload } = useStation(stationId)
+  const loaded = state.status === 'ready' ? state.data.station : null
+
+  usePublishBreadcrumbs(
+    loaded
+      ? [
+          { label: 'Regions', to: '/regions' },
+          { label: loaded.region_name, to: `/regions/${loaded.region_id}` },
+          { label: loaded.station_name, isEntity: true },
+        ]
+      : null,
+  )
 
   if (state.status === 'loading') return <PageContainer><LoadingState label="Loading Station" /></PageContainer>
   if (state.status === 'unconfigured')

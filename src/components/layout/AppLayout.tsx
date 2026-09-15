@@ -2,6 +2,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 
 import { AppShell } from '@/components/layout/AppShell'
 import { ClerkAccountControl } from '@/components/layout/AccountControl'
+import { BreadcrumbProvider } from '@/components/layout/BreadcrumbProvider'
 import { crumbsFromPath } from '@/components/layout/breadcrumbPaths'
 import { useAppUser } from '@/hooks/useAppUser'
 
@@ -19,8 +20,19 @@ export function AppLayout() {
   const role = appUser.status === 'active' ? appUser.user.role : null
 
   return (
-    <AppShell role={role} crumbs={crumbsFromPath(location.pathname)} account={<ClerkAccountControl role={role} />}>
-      <Outlet />
-    </AppShell>
+    // A screen that owns an entity publishes the real trail once its data has
+    // loaded; until then the path-derived one stands, so no label is ever
+    // fabricated from a URL segment.
+    <BreadcrumbProvider>
+      {(override) => (
+        <AppShell
+          role={role}
+          crumbs={override ?? crumbsFromPath(location.pathname)}
+          account={<ClerkAccountControl role={role} />}
+        >
+          <Outlet />
+        </AppShell>
+      )}
+    </BreadcrumbProvider>
   )
 }

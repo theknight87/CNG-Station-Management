@@ -16,6 +16,7 @@ import { ATTENTION_STATUSES } from '@/features/dashboard/dueBuckets'
 import { dueTotal, mappingTotal } from '@/features/dashboard/useDashboard'
 import type { DueRow, MappingRow, RegionRow } from '@/features/dashboard/useDashboard'
 import { AppShell } from '@/components/layout/AppShell'
+import { BreadcrumbProvider } from '@/components/layout/BreadcrumbProvider'
 import { DataToolbar, PageContainer, PageHeader, SectionHeader } from '@/components/layout/PageContainer'
 import { DateValue } from '@/components/data/DateValue'
 import { EntityName, Identifier } from '@/components/data/TechnicalText'
@@ -37,7 +38,14 @@ import { RegionDetailView } from '@/features/regions/RegionDetailView'
 import { RegionsView } from '@/features/regions/RegionsView'
 import { StationOverview } from '@/features/stations/StationOverview'
 import { StationsView } from '@/features/stations/StationsView'
-import { UnitOverview } from '@/features/units/UnitOverview'
+import { UnitWorkspace } from '@/features/units/UnitWorkspace'
+import { CompressorSection } from '@/features/units/sections/CompressorSection'
+import { DetectorSection } from '@/features/units/sections/DetectorSection'
+import { DispenserSection } from '@/features/units/sections/DispenserSection'
+import { HoseSection } from '@/features/units/sections/HoseSection'
+import { OverviewSection } from '@/features/units/sections/OverviewSection'
+import { SrvSection } from '@/features/units/sections/SrvSection'
+import { VesselSection } from '@/features/units/sections/VesselSection'
 import type { AppRole } from '@/types/domain'
 
 /**
@@ -54,7 +62,6 @@ function HierarchyFixture({ view }: { view: string }) {
   if (view === 'region') return <RegionDetailView />
   if (view === 'stations') return <StationsView />
   if (view === 'station') return <StationOverview />
-  if (view === 'unit') return <UnitOverview />
   return null
 }
 
@@ -162,7 +169,10 @@ function previewEntry(): string {
   const v = new URLSearchParams(window.location.search).get('view')
   if (v === 'region') return '/regions/r-east'
   if (v === 'station') return '/stations/s-0'
-  if (v === 'unit') return '/units/u-1'
+  if (v === 'unit') {
+    const tab = new URLSearchParams(window.location.search).get('tab')
+    return tab ? `/units/u-1/${tab}` : '/units/u-1'
+  }
   return '/manage/srvs'
 }
 
@@ -170,16 +180,22 @@ function Preview() {
   const [role, setRole] = useState<AppRole>('admin')
   const view = new URLSearchParams(window.location.search).get('view')
 
-  return (
-    <AppShell
-      role={role}
-      crumbs={[
+  const fallbackCrumbs = [
         { label: 'Stations', to: '/stations' },
         { label: 'East', to: '/regions/east' },
         { label: 'الماظة', isEntity: true },
         { label: 'الماظة 1', isEntity: true },
-        { label: 'Compressor' },
-      ]}
+    { label: 'Compressor' },
+  ]
+
+  return (
+    // Same BreadcrumbProvider the application uses, so a screen that publishes
+    // real entity crumbs is verified here rather than approximated.
+    <BreadcrumbProvider>
+      {(override) => (
+    <AppShell
+      role={role}
+      crumbs={override ?? fallbackCrumbs}
       account={
         <AccountControl
           displayName="Eng/Eslam Fares"
@@ -198,7 +214,19 @@ function Preview() {
         <Routes>
           <Route path="/regions/:regionId" element={<HierarchyFixture view={view} />} />
           <Route path="/stations/:stationId" element={<HierarchyFixture view={view} />} />
-          <Route path="/units/:unitId" element={<HierarchyFixture view={view} />} />
+          {/* Same nested shape as the application, so the tab strip, the
+            * Outlet and every deep link behave exactly as they do in
+            * production rather than through a harness-only approximation. */}
+          <Route path="/units/:unitId" element={<UnitWorkspace />}>
+            <Route index element={<OverviewSection />} />
+            <Route path="compressor" element={<CompressorSection />} />
+            <Route path="recovery-tank" element={<VesselSection kind="recovery_tank" />} />
+            <Route path="dispensers" element={<DispenserSection />} />
+            <Route path="storage" element={<VesselSection kind="storage_vessel" />} />
+            <Route path="gas-detectors" element={<DetectorSection />} />
+            <Route path="hoses" element={<HoseSection />} />
+            <Route path="srvs" element={<SrvSection />} />
+          </Route>
           <Route path="*" element={<HierarchyFixture view={view} />} />
         </Routes>
       ) : (
@@ -299,6 +327,8 @@ function Preview() {
       </PageContainer>
       )}
     </AppShell>
+      )}
+    </BreadcrumbProvider>
   )
 }
 

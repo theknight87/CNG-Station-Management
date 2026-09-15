@@ -1,5 +1,5 @@
-import { UnitOverview } from '@/features/units'
+import { UnitWorkspace } from '@/features/units'
 
 export function UnitPage() {
-  return <UnitOverview />
+  return <UnitWorkspace />
 }

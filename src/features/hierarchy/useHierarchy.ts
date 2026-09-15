@@ -244,7 +244,7 @@ export function useStations(query: StationQuery): {
         return
       }
 
-      const rows = (data ?? []) as StationSummary[]
+      const rows = (data ?? []) as unknown as StationSummary[]
       const total = count ?? 0
 
       // "No stations at all" and "no stations match these filters" are

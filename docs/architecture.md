@@ -824,3 +824,33 @@ runbook in `docs/operations.md`.
    here determines when SRV compliance reporting becomes trustworthy.
 8. The nine source questions in `data-quality-report.md` §13, of which items 1–3 (governorate
    suffixes, numbered station names, SRV parent resolution) gate the largest record volumes.
+
+
+## Unit workspace (Prompt 10)
+
+`/units/:unitId` is a nested-route workspace: the shell (header, breadcrumbs, tab strip)
+renders an `Outlet`, and each of the eight sections is its own route. That makes every
+section deep-linkable and leaves room for a future equipment-detail route on the same
+tree, rather than burying section state inside a component.
+
+It added **no database objects**. All seven equipment sources already existed as
+`security_invoker` views or RLS-protected tables, and the Unit SRV visibility rule was
+already encoded in `v_unit_srvs`:
+
+    unit_id IS NOT NULL AND mapping_status IN ('resolved', 'needs_equipment_mapping')
+
+Keeping that rule in SQL rather than re-implementing it in the query layer is deliberate:
+a rule expressed twice is a rule that will eventually disagree with itself.
+
+Two shared pieces were introduced:
+
+- `BreadcrumbProvider` / `usePublishBreadcrumbs` — lets a screen that owns an entity
+  publish the real trail once its data has loaded. The shell can derive `Regions ›
+  Stations` from a URL, but only the screen that loaded the Unit knows that
+  `/units/3f2a…` is `الماظة › الماظة 1`. Until a screen publishes, the path-derived
+  fallback stands, so no label is ever fabricated from a URL segment.
+- `EquipmentSection` — one renderer for all seven equipment tabs. Seven near-identical
+  tables would otherwise be seven chances for a NULL, a due status, or a failed query to
+  be drawn differently.
+
+See `docs/unit-workspace.md`.

@@ -777,5 +777,126 @@ BEGIN
     format('HIER-13 no role may write through a hierarchy view (found %s grants)', write_grants));
 END $$;
 
+-- ===========================================================================
+-- 13. UNIT WORKSPACE EQUIPMENT ISOLATION (Prompt 10)
+-- ===========================================================================
+-- The Unit workspace reads seven sources, each narrowed by `unit_id`. That
+-- filter is a LOOKUP, not an authorization check: the boundary is RLS on the
+-- underlying tables. These assert the boundary actually holds, because a Unit
+-- id is guessable from a URL and an engineer in East must not learn a West
+-- Unit's equipment, serials, due dates or even its existence.
+DO $$
+DECLARE
+  n          bigint;
+  east_unit  uuid := 'e5700000-0000-0000-0000-0000000000e2';
+  west_unit  uuid := 'e5700000-0000-0000-0000-0000000000f2';
+BEGIN
+  PERFORM pg_temp.become('clerk_eng_east');
+
+  -- Every tab, against a Unit in a Region the caller cannot read.
+  SELECT count(*) INTO n FROM compressors WHERE unit_id = west_unit;
+  PERFORM pg_temp.ok(n = 0, 'UNIT-1 compressors of an unauthorized Unit are invisible');
+
+  SELECT count(*) INTO n FROM dispensers WHERE unit_id = west_unit;
+  PERFORM pg_temp.ok(n = 0, 'UNIT-2 dispensers of an unauthorized Unit are invisible');
+
+  SELECT count(*) INTO n FROM v_vessel_management WHERE unit_id = west_unit;
+  PERFORM pg_temp.ok(n = 0, 'UNIT-3 vessels and recovery tanks of an unauthorized Unit are invisible');
+
+  SELECT count(*) INTO n FROM v_gas_detector_management WHERE unit_id = west_unit;
+  PERFORM pg_temp.ok(n = 0, 'UNIT-4 gas detectors of an unauthorized Unit are invisible');
+
+  SELECT count(*) INTO n FROM v_hose_management WHERE unit_id = west_unit;
+  PERFORM pg_temp.ok(n = 0, 'UNIT-5 hoses of an unauthorized Unit are invisible');
+
+  SELECT count(*) INTO n FROM v_unit_srvs WHERE unit_id = west_unit;
+  PERFORM pg_temp.ok(n = 0, 'UNIT-6 relief valves of an unauthorized Unit are invisible');
+
+  -- The Unit itself produces no row either, so its name cannot be read.
+  SELECT count(*) INTO n FROM v_unit_summary WHERE unit_id = west_unit;
+  PERFORM pg_temp.ok(n = 0, 'UNIT-7 an unauthorized Unit produces NO summary row, so it cannot be named');
+
+  -- The counts the workspace shows must equal the rows the caller can list.
+  -- A summary that counted more than the tabs can show would leak a total.
+  SELECT storage_vessels INTO n FROM v_unit_summary WHERE unit_id = east_unit;
+  PERFORM pg_temp.ok(
+    n = (SELECT count(*) FROM v_vessel_management
+          WHERE unit_id = east_unit AND asset_type = 'storage_vessel'),
+    'UNIT-8 the Storage count equals the rows the Storage tab can actually list');
+
+  SELECT installed_srvs INTO n FROM v_unit_summary WHERE unit_id = east_unit;
+  PERFORM pg_temp.ok(n = (SELECT count(*) FROM installed_relief_valves WHERE unit_id = east_unit),
+    'UNIT-9 the SRV count equals the caller''s unit-confirmed valves');
+
+  RESET ROLE;
+END $$;
+
+-- The Unit SRV tab's visibility rule, asserted as an AUTHORIZATION property
+-- rather than only a schema one. Whatever a caller can see through v_unit_srvs
+-- must already satisfy the lifecycle rule; no role, not even admin, may reach a
+-- valve whose Unit is unproven through this view.
+DO $$
+DECLARE bad bigint;
+BEGIN
+  PERFORM pg_temp.become('clerk_admin');
+
+  SELECT count(*) INTO bad FROM v_unit_srvs WHERE unit_id IS NULL;
+  PERFORM pg_temp.ok(bad = 0, 'UNIT-10 no valve without a confirmed Unit is reachable through v_unit_srvs');
+
+  SELECT count(*) INTO bad FROM v_unit_srvs
+   WHERE mapping_status NOT IN ('resolved', 'needs_equipment_mapping');
+  PERFORM pg_temp.ok(bad = 0,
+    'UNIT-11 needs_station_mapping, needs_unit_mapping and conflict never reach a Unit tab');
+
+  -- A resolved valve has exactly ONE equipment parent. Two would make the
+  -- hierarchy ambiguous; none would make "resolved" meaningless.
+  SELECT count(*) INTO bad FROM installed_relief_valves
+   WHERE mapping_status = 'resolved'
+     AND (compressor_id IS NOT NULL)::int + (storage_vessel_id IS NOT NULL)::int
+       + (dispenser_id IS NOT NULL)::int <> 1;
+  PERFORM pg_temp.ok(bad = 0, 'UNIT-12 a resolved valve has exactly one equipment parent');
+
+  -- Warehouse stock has no Station or Unit at all, so it cannot be attributed
+  -- to one even by a query that tried.
+  SELECT count(*) INTO bad
+    FROM information_schema.columns
+   WHERE table_schema = 'public' AND table_name = 'warehouse_relief_valves'
+     AND column_name IN ('unit_id', 'station_id');
+  PERFORM pg_temp.ok(bad = 0,
+    'UNIT-13 warehouse valves carry no unit_id or station_id, so they cannot leak into a Unit');
+
+  RESET ROLE;
+END $$;
+
+-- Structural guarantees for every source the Unit workspace reads.
+DO $$
+DECLARE definer int; anon_grants int; write_grants int;
+BEGIN
+  SELECT count(*) INTO definer
+    FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace
+   WHERE ns.nspname = 'public'
+     AND c.relname IN ('v_unit_srvs','v_vessel_management','v_gas_detector_management','v_hose_management')
+     AND NOT coalesce((c.reloptions::text LIKE '%security_invoker=true%'), false);
+  PERFORM pg_temp.ok(definer = 0,
+    format('UNIT-14 every Unit workspace view is security_invoker (found %s that are not)', definer));
+
+  SELECT count(*) INTO anon_grants
+    FROM information_schema.role_table_grants
+   WHERE grantee = 'anon' AND table_schema = 'public'
+     AND table_name IN ('v_unit_srvs','v_vessel_management','v_gas_detector_management','v_hose_management');
+  PERFORM pg_temp.ok(anon_grants = 0, 'UNIT-15 anon holds no grant on any Unit workspace view');
+
+  -- Browsing is read-only. A writable aggregation view would be a second,
+  -- unpoliced write path into the equipment tables.
+  SELECT count(*) INTO write_grants
+    FROM information_schema.role_table_grants
+   WHERE table_schema = 'public'
+     AND table_name IN ('v_unit_srvs','v_vessel_management','v_gas_detector_management','v_hose_management')
+     AND grantee IN ('anon','authenticated','service_role','PUBLIC')
+     AND privilege_type IN ('INSERT','UPDATE','DELETE','TRUNCATE');
+  PERFORM pg_temp.ok(write_grants = 0,
+    format('UNIT-16 no application role may write through a Unit workspace view (found %s)', write_grants));
+END $$;
+
 DO $$ BEGIN RAISE EXCEPTION 'RLS_SUITE_ROLLBACK'; END $$;
 ROLLBACK;

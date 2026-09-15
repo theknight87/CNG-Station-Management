@@ -259,9 +259,15 @@ row is marked for review.
 Prompt 21. Canonical asset tables are still empty.*
 
 *Hierarchy browsing (Prompt 9) is built: `/regions`, `/regions/:regionId`, `/stations`,
-`/stations/:stationId` and the Unit navigation boundary — see `docs/regions-stations.md`. Full Unit
-Detail is Prompt 10. Migration 0028 fixed a latent defect in `cng_normalize_name()` that would have
-corrupted canonical Station and Unit identity at the Prompt 21 import.*
+`/stations/:stationId` — see `docs/regions-stations.md`. Migration 0028 fixed a latent defect in
+`cng_normalize_name()` that would have corrupted canonical Station and Unit identity at the
+Prompt 21 import.*
+
+*The Unit workspace (Prompt 10) is built: `/units/:unitId` with routed Overview, Compressor,
+Recovery Tank, Dispensers, Storage, Gas Detectors, Hoses and SRVs sections — see
+`docs/unit-workspace.md`. It required **no new migration**; every source already existed. The Unit
+SRV visibility rule is enforced in `v_unit_srvs` in SQL, not in the UI. Global SRV Management and
+the warehouse experience are Prompt 11.*
 
 - Documentation-first: architecture and data-mapping decisions are recorded in `docs/`
   before implementation.
@@ -391,7 +397,8 @@ These hold for every future phase.
 
 *Status: the foundation is built and browser-verified (Prompt 7) — see `docs/ui-foundation.md`;
 the operational dashboard is built on it (Prompt 8) — see `docs/dashboard.md`; the hierarchy
-browser is built on both (Prompt 9) — see `docs/regions-stations.md`. The **Cargas brand system**
+browser is built on both (Prompt 9) — see `docs/regions-stations.md`; the Unit workspace is built
+on all three (Prompt 10) — see `docs/unit-workspace.md`. The **Cargas brand system**
 was established during Prompt 9 and is authoritative — see §11.6 and `docs/ui-foundation.md` §13.
 It records which ui-ux-pro-max recommendations were accepted and which were rejected for
 conflicting with the rules below.*

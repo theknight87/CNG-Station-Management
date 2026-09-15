@@ -1,5 +1,6 @@
 import { useParams } from 'react-router-dom'
 
+import { usePublishBreadcrumbs } from '@/components/layout/breadcrumbContext'
 import { PageContainer, PageHeader, SectionHeader } from '@/components/layout/PageContainer'
 import { ErrorState, LoadingState, NotFound, NotImplemented } from '@/components/states/AppStates'
 import { Count, Fact, FactGrid } from '@/features/hierarchy/HierarchyPieces'
@@ -17,6 +18,11 @@ import { useRegions } from '@/features/hierarchy/useHierarchy'
 export function RegionDetailView() {
   const { regionId } = useParams<{ regionId: string }>()
   const { state, reload } = useRegions()
+  const loaded = state.status === 'ready' ? state.data.find((r) => r.region_id === regionId) : undefined
+
+  usePublishBreadcrumbs(
+    loaded ? [{ label: 'Regions', to: '/regions' }, { label: loaded.region_name }] : null,
+  )
 
   if (state.status === 'loading') return <PageContainer><LoadingState label="Loading Region" /></PageContainer>
   if (state.status === 'unconfigured')
