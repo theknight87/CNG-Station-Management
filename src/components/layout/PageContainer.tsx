@@ -50,15 +50,19 @@ export function SectionHeader({
   title,
   description,
   actions,
+  id,
 }: {
   title: string
   description?: string
   actions?: ReactNode
+  /** Lets an enclosing `section` use `aria-labelledby` on the VISIBLE heading,
+   * rather than duplicating it in a screen-reader-only one. */
+  id?: string
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-1.5">
       <div className="min-w-0">
-        <h2 className="truncate text-sm font-semibold tracking-tight">{title}</h2>
+        <h2 id={id} className="truncate text-sm font-semibold tracking-tight">{title}</h2>
         {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
       </div>
       {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}

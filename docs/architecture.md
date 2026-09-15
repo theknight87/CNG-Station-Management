@@ -705,7 +705,8 @@ Each phase ends in a deployable state.
 | **Prompt 5 — Clerk authentication + RLS and region authorization** | **COMPLETE, verified end to end in a real browser 2026-09-14** (`docs/authentication.md` §10) |
 | **Prompt 6 — safe import pipeline** | **COMPLETE, dry-run verified against all six workbooks** (`docs/import-pipeline.md`). No production import performed. |
 | **Prompt 7 — app shell, navigation and design foundation** | **COMPLETE, browser-verified at 1440/1024/390px** (`docs/ui-foundation.md`) |
-| Prompt 8 onward | not started |
+| **Prompt 8 — operational dashboard** | **COMPLETE, browser-verified; live database returns zeros as expected** (`docs/dashboard.md`) |
+| Prompt 9 onward | not started |
 
 **Phase 0 — Documentation and decisions**
 CLAUDE.md, architecture, file structure, risks. No code.

@@ -5,6 +5,16 @@ import { LogOut } from 'lucide-react'
 
 import '../src/index.css'
 import { AccountControl } from '@/components/layout/AccountControl'
+import {
+  DataQualityPanel,
+  DueMatrix,
+  RegionOverview,
+  SummaryStrip,
+  WarehousePanel,
+} from '@/features/dashboard/DashboardPanels'
+import { ATTENTION_STATUSES } from '@/features/dashboard/dueBuckets'
+import { dueTotal, mappingTotal } from '@/features/dashboard/useDashboard'
+import type { DueRow, MappingRow, RegionRow } from '@/features/dashboard/useDashboard'
 import { AppShell } from '@/components/layout/AppShell'
 import { DataToolbar, PageContainer, PageHeader, SectionHeader } from '@/components/layout/PageContainer'
 import { DateValue } from '@/components/data/DateValue'
@@ -40,8 +50,88 @@ import type { AppRole } from '@/types/domain'
  * Arabic/Latin string, a long identifier, a NULL, and a year-only date.
  */
 
+/**
+ * VISUAL FIXTURES — dev harness only.
+ *
+ * These exist so the populated dashboard can be inspected in a browser while
+ * the canonical tables are still empty. They are NOT production data: they are
+ * never written to Supabase, never imported by the application, and the
+ * production bundle is verified to exclude this file entirely.
+ *
+ * The real dashboard against the real database shows zeros, and that result is
+ * reported separately.
+ */
+const FIXTURE_REGIONS: RegionRow[] = [
+  { region_id: 'f1', region_code: 'east',  region_name: 'East',  sort_order: 1, stations: 42, units: 61, assets: 1180, overdue: 47, approaching_due: 133, unresolved_mapping: 612 },
+  { region_id: 'f2', region_code: 'west',  region_name: 'West',  sort_order: 2, stations: 40, units: 58, assets: 964,  overdue: 31, approaching_due: 98,  unresolved_mapping: 444 },
+  { region_id: 'f3', region_code: 'canal', region_name: 'Canal', sort_order: 3, stations: 18, units: 0,  assets: 233,  overdue: 9,  approaching_due: 22,  unresolved_mapping: 233 },
+  { region_id: 'f4', region_code: 'delta', region_name: 'Delta', sort_order: 4, stations: 75, units: 69, assets: 1402, overdue: 58, approaching_due: 171, unresolved_mapping: 690 },
+  { region_id: 'f5', region_code: 'alex',  region_name: 'Alex',  sort_order: 5, stations: 11, units: 0,  assets: 96,   overdue: 2,  approaching_due: 7,   unresolved_mapping: 96 },
+  { region_id: 'f6', region_code: 'upper', region_name: 'Upper', sort_order: 6, stations: 24, units: 0,  assets: 318,  overdue: 14, approaching_due: 41,  unresolved_mapping: 318 },
+]
+
+const FIXTURE_DUE: DueRow[] = [
+  { asset_kind: 'installed_relief_valve', due_status: 'overdue',   total: 118 },
+  { asset_kind: 'installed_relief_valve', due_status: 'due_today', total: 3 },
+  { asset_kind: 'installed_relief_valve', due_status: 'due_7',     total: 21 },
+  { asset_kind: 'installed_relief_valve', due_status: 'due_15',    total: 34 },
+  { asset_kind: 'installed_relief_valve', due_status: 'due_30',    total: 66 },
+  { asset_kind: 'installed_relief_valve', due_status: 'due_60',    total: 104 },
+  { asset_kind: 'installed_relief_valve', due_status: 'valid',     total: 2150 },
+  { asset_kind: 'installed_relief_valve', due_status: 'unknown',   total: 166 },
+  { asset_kind: 'storage_vessel',  due_status: 'overdue', total: 41 },
+  { asset_kind: 'storage_vessel',  due_status: 'due_30',  total: 18 },
+  { asset_kind: 'storage_vessel',  due_status: 'valid',   total: 603 },
+  { asset_kind: 'storage_vessel',  due_status: 'unknown', total: 9 },
+  { asset_kind: 'recovery_tank',   due_status: 'overdue', total: 26 },
+  { asset_kind: 'recovery_tank',   due_status: 'valid',   total: 495 },
+  { asset_kind: 'recovery_tank',   due_status: 'unknown', total: 7 },
+  { asset_kind: 'gas_detector',    due_status: 'overdue', total: 12 },
+  { asset_kind: 'gas_detector',    due_status: 'due_60',  total: 15 },
+  { asset_kind: 'gas_detector',    due_status: 'valid',   total: 149 },
+  { asset_kind: 'gas_detector',    due_status: 'unknown', total: 2 },
+  { asset_kind: 'hose',            due_status: 'due_15',  total: 6 },
+  { asset_kind: 'hose',            due_status: 'valid',   total: 65 },
+]
+
+const FIXTURE_MAPPING: MappingRow[] = [
+  { asset_kind: 'installed_relief_valve', mapping_status: 'needs_station_mapping',   total: 1599 },
+  { asset_kind: 'installed_relief_valve', mapping_status: 'needs_unit_mapping',      total: 262 },
+  { asset_kind: 'installed_relief_valve', mapping_status: 'needs_equipment_mapping', total: 801 },
+  { asset_kind: 'storage_vessel',         mapping_status: 'needs_station_mapping',   total: 433 },
+  { asset_kind: 'gas_detector',           mapping_status: 'conflict',                total: 3 },
+]
+
+function DashboardFixture() {
+  return (
+    <div className="space-y-4">
+      <SummaryStrip
+        assets={[
+          { asset_kind: 'station', total: 210 },
+          { asset_kind: 'unit', total: 188 },
+          { asset_kind: 'installed_relief_valve', total: 2662 },
+          { asset_kind: 'storage_vessel', total: 671 },
+          { asset_kind: 'recovery_tank', total: 528 },
+          { asset_kind: 'gas_detector', total: 178 },
+          { asset_kind: 'hose', total: 71 },
+        ]}
+        overdueTotal={dueTotal(FIXTURE_DUE, ['overdue'])}
+        attentionTotal={dueTotal(FIXTURE_DUE, ATTENTION_STATUSES)}
+        unresolvedTotal={mappingTotal(FIXTURE_MAPPING)}
+      />
+      <DueMatrix due={FIXTURE_DUE} />
+      <RegionOverview regions={FIXTURE_REGIONS} />
+      <div className="grid gap-4 xl:grid-cols-2">
+        <DataQualityPanel mapping={FIXTURE_MAPPING} />
+        <WarehousePanel warehouse={{ total: 2188, overdue: 37, approaching_due: 94 }} />
+      </div>
+    </div>
+  )
+}
+
 function Preview() {
   const [role, setRole] = useState<AppRole>('admin')
+  const view = new URLSearchParams(window.location.search).get('view')
 
   return (
     <AppShell
@@ -66,6 +156,8 @@ function Preview() {
       }
     >
       <PageContainer>
+        {view === 'dashboard' ? <DashboardFixture /> : null}
+        {view === 'dashboard' ? null : <>
         <PageHeader
           title="Shell preview"
           description="Dev-only harness. Renders the real shell and primitives with a stubbed account."
@@ -156,6 +248,7 @@ function Preview() {
           <ErrorState message="The database refused the request." onRetry={() => {}} />
           <PermissionDenied what="administration" />
         </div>
+        </>}
       </PageContainer>
     </AppShell>
   )

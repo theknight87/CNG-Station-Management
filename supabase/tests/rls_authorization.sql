@@ -592,5 +592,76 @@ BEGIN
     'SR-10 default privileges cannot re-grant service_role TRUNCATE/REFERENCES/TRIGGER');
 END $$;
 
+-- ===========================================================================
+-- 11. DASHBOARD AGGREGATION VIEWS (0027)
+-- ===========================================================================
+-- An aggregate is an authorization surface. A COUNT that includes rows the
+-- caller may not read leaks exactly the fact the policy exists to hide, so
+-- these assert that the summaries are scoped by the SAME RLS as the detail.
+DO $$
+DECLARE
+  n           bigint;
+  regions_seen int;
+  east_id     uuid;
+  west_id     uuid;
+BEGIN
+  SELECT id INTO east_id FROM regions WHERE code = 'east';
+  SELECT id INTO west_id FROM regions WHERE code = 'west';
+
+  -- The engineer in this suite is authorized for East only.
+  PERFORM pg_temp.become('clerk_eng_east');
+
+  SELECT count(*) INTO regions_seen FROM v_dashboard_region_summary;
+  PERFORM pg_temp.ok(regions_seen = 1,
+    format('DASH-1 region summary shows ONLY authorized regions (saw %s)', regions_seen));
+
+  SELECT count(*) INTO n FROM v_dashboard_region_summary WHERE region_id = west_id;
+  PERFORM pg_temp.ok(n = 0, 'DASH-2 an unauthorized region produces NO row, so its size cannot be inferred');
+
+  -- Asset counts must equal what the caller can actually SELECT, not the table total.
+  SELECT total INTO n FROM v_dashboard_asset_counts WHERE asset_kind = 'installed_relief_valve';
+  PERFORM pg_temp.ok(n = (SELECT count(*) FROM installed_relief_valves),
+    'DASH-3 asset counts match the caller''s own visible rows exactly');
+
+  SELECT coalesce(sum(total), 0) INTO n FROM v_dashboard_due_summary
+   WHERE asset_kind = 'installed_relief_valve';
+  PERFORM pg_temp.ok(n = (SELECT count(*) FROM installed_relief_valves),
+    'DASH-4 due buckets partition the caller''s rows: they sum to the visible total, no double counting');
+
+  RESET ROLE;
+
+  -- An admin sees every region.
+  PERFORM pg_temp.become('clerk_admin');
+  SELECT count(*) INTO regions_seen FROM v_dashboard_region_summary;
+  PERFORM pg_temp.ok(regions_seen = (SELECT count(*) FROM regions),
+    format('DASH-5 admin sees every region in the summary (saw %s)', regions_seen));
+  RESET ROLE;
+
+  -- A viewer with no region grant aggregates nothing, rather than everything.
+  PERFORM pg_temp.become('clerk_view_none');
+  SELECT count(*) INTO regions_seen FROM v_dashboard_region_summary;
+  PERFORM pg_temp.ok(regions_seen = 0,
+    format('DASH-6 an unscoped viewer aggregates NOTHING, not everything (saw %s)', regions_seen));
+  RESET ROLE;
+END $$;
+
+-- The views must never be SECURITY DEFINER, and anon must never reach them.
+DO $$
+DECLARE definer_views int; anon_grants int;
+BEGIN
+  SELECT count(*) INTO definer_views
+    FROM pg_class c
+    JOIN pg_namespace ns ON ns.oid = c.relnamespace
+   WHERE ns.nspname = 'public' AND c.relname LIKE 'v_dashboard_%'
+     AND NOT coalesce((c.reloptions::text LIKE '%security_invoker=true%'), false);
+  PERFORM pg_temp.ok(definer_views = 0,
+    format('DASH-7 every dashboard view is security_invoker (found %s that are not)', definer_views));
+
+  SELECT count(*) INTO anon_grants
+    FROM information_schema.role_table_grants
+   WHERE grantee = 'anon' AND table_schema = 'public' AND table_name LIKE 'v_dashboard_%';
+  PERFORM pg_temp.ok(anon_grants = 0, 'DASH-8 anon holds no grant on any dashboard view');
+END $$;
+
 DO $$ BEGIN RAISE EXCEPTION 'RLS_SUITE_ROLLBACK'; END $$;
 ROLLBACK;

@@ -384,7 +384,8 @@ These hold for every future phase.
 
 ## 11. UI/UX rules (durable, from Prompt 7 onward)
 
-*Status: the foundation is built and browser-verified (Prompt 7) — see `docs/ui-foundation.md`.
+*Status: the foundation is built and browser-verified (Prompt 7) — see `docs/ui-foundation.md`;
+the operational dashboard is built on it (Prompt 8) — see `docs/dashboard.md`.
 It records which ui-ux-pro-max recommendations were accepted and which were rejected for
 conflicting with the rules below.*
 
