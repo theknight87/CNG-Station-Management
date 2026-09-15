@@ -88,7 +88,6 @@ vi.mock('@/lib/supabase/client', () => {
 const { RegionsView } = await import('@/features/regions/RegionsView')
 const { StationsView } = await import('@/features/stations/StationsView')
 const { StationOverview } = await import('@/features/stations/StationOverview')
-const { UnitOverview } = await import('@/features/units/UnitOverview')
 
 const EAST = {
   region_id: 'r-east',
@@ -313,34 +312,6 @@ describe('Station detail', () => {
   })
 })
 
-describe('Unit boundary', () => {
-  const renderUnit = () =>
-    render(
-      <MemoryRouter initialEntries={['/units/u-1']}>
-        <Routes>
-          <Route path="/units/:unitId" element={<UnitOverview />} />
-        </Routes>
-      </MemoryRouter>,
-    )
-
-  it('shows equipment counts and links back to its Station', async () => {
-    replies.unit = { data: unit(), error: null }
-    renderUnit()
-    expect(await screen.findByText('Installed SRVs')).toBeDefined()
-    expect(screen.getAllByText('الماظة').length).toBeGreaterThan(0)
-  })
-
-  it('names Prompt 10 as the owner of the equipment tables rather than faking them', async () => {
-    replies.unit = { data: unit(), error: null }
-    renderUnit()
-    expect((await screen.findAllByText(/built in Prompt 10/i)).length).toBeGreaterThan(0)
-    // And it does not claim there is no data, because the counts above are real.
-    expect(screen.queryByText(/no real data to show/i)).toBeNull()
-  })
-
-  it('renders a NULL job number as "not recorded"', async () => {
-    replies.unit = { data: unit({ job_number: null }), error: null }
-    renderUnit()
-    expect(await screen.findAllByText(/not recorded/i)).not.toHaveLength(0)
-  })
-})
+// The Unit boundary block that used to live here was superseded by Prompt 10:
+// `UnitOverview` became the real Unit workspace, and it is covered in full by
+// src/features/units/__tests__/unitWorkspace.test.tsx.
