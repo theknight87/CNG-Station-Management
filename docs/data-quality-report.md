@@ -80,9 +80,16 @@ unit 1 of `الخمائل`, or a separate station. **Auto-matching would silentl
 equipment to the wrong physical asset.** Per data principle #8 these rows are imported into
 staging with their raw name and surfaced in Admin → Data Quality for human confirmation.
 
-> **Decision needed:** whether the governorate qualifier is decorative (making `ابنوب` and
-> `ابنوب اسيوط` the same site). If confirmed by an engineer, a suffix-stripping rule becomes
-> deterministic and clears a large share of category (a) at once.
+> **Decision made — no longer open.** The owner has explicitly confirmed that `ابنوب` and
+> `ابنوب اسيوط` are the same physical Station. That equivalence is authoritative for current and
+> future imports and needs no further confirmation.
+>
+> The owner **did not** authorize the suffix-stripping rule this paragraph originally proposed.
+> The confirmation covers that **exact pair and nothing else**: `ابو القمصان - بورسعيد`,
+> `ابو تيج- اسيوط`, `الادبيه - السويس` and every other suffixed name still require human
+> confirmation, and category (a) is **not** cleared in bulk. The rule lives as a row in
+> `owner_confirmed_station_aliases`; there is no pattern, regex or suffix rule anywhere in the
+> pipeline.
 
 ---
 

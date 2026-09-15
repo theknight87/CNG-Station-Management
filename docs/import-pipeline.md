@@ -7,8 +7,10 @@ refuses to do.
 machinery works: provenance, idempotency, dry-run, issue severity, and the safe commit strategy
 for Prompt 21.
 
-> **Status: built and verified in dry-run (Prompt 6). No production import has been performed.**
-> The final import of the six workbooks is Prompt 21.
+> **Status: Prompt 6 COMPLETE — PASS WITH DOCUMENTED DEFERRALS (2026-09-14).**
+> Built and verified in dry-run against all six workbooks. **No production import has been
+> performed**; canonical asset tables are empty, verified by count before and after. The final
+> import is Prompt 21.
 
 ---
 
@@ -127,6 +129,12 @@ Two, both exact-value lists mirroring their database tables. Neither is a patter
 
 Every application is counted in the report, per rule, with its source file and sheet.
 
+Both rules are **settled and authoritative** for current and future imports; neither needs further
+owner confirmation. A count of zero applications in a given run means only that the run's corpus
+did not contain the confirmed value — the Prompt 6 dry run applied `SS-4R3A` 48 times and the
+`ابنوب` pair 0 times, because `ابنوب اسيوط` does not occur in those six workbooks. A zero count
+never weakens a confirmed rule, and never makes it an open question.
+
 ## 8. The installed-SRV lifecycle
 
 The source has no Unit column and no equipment identifier, so **no installed SRV can arrive
@@ -177,3 +185,29 @@ The commit step is deliberately NOT built yet. When it is, it should:
 6. leave `needs_*_mapping` records exactly as staged — they are resolved by humans in
    Admin -> Data Quality, which is a product feature, not a migration script
 7. re-run `scripts/import/verify-invariants.ts` afterwards
+
+---
+
+## 12. Standing Data Quality work (NOT defects, NOT owner decisions)
+
+The dry run ends with unresolved records **by design**. They are the queue the Admin → Data
+Quality workflow exists to work, not a failure of the import.
+
+| Item | Count | Who resolves it |
+| --- | --- | --- |
+| Unmatched station names | **387 distinct** | a human, in Admin → Data Quality. 832 advisory proposals are available to speed the review; **0 were auto-accepted and none ever will be** |
+| Installed SRVs needing a Station | 1,599 | human confirmation of the Station |
+| Installed SRVs needing a Unit | 262 | human confirmation of the Unit |
+| Installed SRVs needing equipment | 801 | explicit human decision (D3); default distribution is permanently forbidden |
+| Year-only and invalid dates | 372 / 37 | visible as source information; they drive no alert |
+| Missing serials | 339 | non-blocking; the asset exists |
+
+**These must not be resolved automatically to close a phase.** Every one of the 387 names stays
+unresolved with its raw value preserved, because guessing would silently attach safety equipment to
+the wrong physical asset (data principle #8, quality report §2). The pipeline has no code path that
+promotes a proposal, and none may be added.
+
+Canal, Alex and Upper contribute a large share of the 387 for a structural reason: no source states
+their Station→Unit structure, so their names cannot match a canonical entity that does not yet
+exist. Their Stations are still created and still carry every attribute the sources prove
+(principle #19).

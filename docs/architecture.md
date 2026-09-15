@@ -417,19 +417,20 @@ confirmed it.
 
 #### Deterministic identity rules (decisions D1, D2)
 
-Two owner-confirmed rules may create aliases without human review, each recorded with its
-provenance in `station_alias.alias_source`:
+> **Superseded in part.** An earlier draft of this section described a general
+> `rule:governorate_suffix` that stripped any trailing governorate qualifier. The owner
+> subsequently narrowed D1 to an **exact-value equivalence** (CLAUDE.md §8), so no such general
+> rule exists, was ever implemented, or may be added. The table below is the current rule set.
 
 | `alias_source` | Rule | Guard |
 | --- | --- | --- |
-| `rule:governorate_suffix` | strip a trailing governorate qualifier (`ابنوب اسيوط` → `ابنوب`) | applied only when the remainder resolves to **exactly one** Station in that Region |
-| `rule:numbered_unit` | `<base> <n>` is Unit *n* of Station `<base>` (`الخمائل 1` → Unit 1 of `الخمائل`) | applied only when `<base>` resolves to **exactly one** Station |
+| `owner_confirmed` | an **exact pair** listed in `owner_confirmed_station_aliases` — currently only `ابنوب` = `ابنوب اسيوط` | exact value match; no pattern, no suffix, no similarity. Every other suffixed name is proposed and confirmed by a human |
+| `rule:numbered_unit` | `<base> <n>` is Unit *n* of Station `<base>` (`الخمائل 1` → Unit 1 of `الخمائل`) | **proposes** an alias when `<base>` resolves to exactly one Station; a human confirms it |
 
 Ambiguity never fires a rule: it produces a proposal plus an import issue. Because provenance is
-stored per alias, every rule-created alias can be listed, audited, and reversed as a set if the
-rule is later found wrong — which is the property that makes automating them acceptable at all.
+stored per alias, every rule-created alias can be listed, audited, and reversed as a set.
 
-`alias_source` values: `rule:governorate_suffix` · `rule:numbered_unit` · `human` ·
+`alias_source` values: `owner_confirmed` · `rule:numbered_unit` · `human` ·
 `import_exact_match`.
 
 ### The unit-unknown pattern (decision D7)

@@ -9,17 +9,29 @@ deterministic rule, that rule is recorded here so it can be audited later.
 
 ---
 
-## D1 — Governorate qualifiers are decorative *(2026-09-14)*
+## D1 — `ابنوب` = `ابنوب اسيوط`, as an exact pair *(2026-09-14, narrowed by the owner)*
 
-**Decision:** `ابنوب` and `ابنوب اسيوط` are the same site. A trailing governorate qualifier does
-not change station identity.
+**Decision (authoritative, settled):** `ابنوب` and `ابنوب اسيوط` are the same physical Station.
+This holds for current and future imports and requires no further confirmation.
 
-**Rule (deterministic).** Strip a trailing governorate qualifier — separated by space, `-`, or
-`/`, with or without surrounding whitespace — and match the remainder:
+**Scope — narrowed by the owner after this decision was first drafted.** The original draft
+generalized this into a rule that stripped any trailing governorate qualifier. **The owner did not
+authorize that.** The confirmation covers this **exact pair and nothing else**.
 
-- remainder matches **exactly one** canonical Station in the same Region → alias created with
-  `alias_source = 'rule:governorate_suffix'`, treated as confirmed
-- remainder matches **none or several** → alias **proposed**, not confirmed; human review
+**Rule (exact value, not a pattern).** The pair is a row in `owner_confirmed_station_aliases`.
+Resolution is by exact string equality:
+
+- the raw name is exactly `ابنوب اسيوط` → resolves to Station `ابنوب`, alias auto-confirmed with
+  `alias_source = 'owner_confirmed'`
+- anything else — including every other governorate-suffixed name — → **proposed**, never
+  confirmed; a human decides
+
+There is no suffix rule, no regex, no similarity threshold, and none may be added. Tests
+`RESOLVE-4` and `RESOLVE-5` in `src/import/__tests__/resolution.test.ts` assert both halves: the
+pair resolves, and `ابو القمصان اسيوط`, `ابو تيج- اسيوط`, `الادبيه - السويس`, `شبرا اسيوط` do not.
+
+Applied **0 times** in the Prompt 6 dry run, because `ابنوب اسيوط` does not occur in the
+six-workbook corpus. That is a property of the corpus, not of the rule.
 
 The rule is recorded on every alias it creates, so all of them can be listed, audited, and
 reversed as a group if the rule is later found wrong.

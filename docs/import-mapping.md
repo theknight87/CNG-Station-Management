@@ -103,11 +103,14 @@ unit-level naming, so one row does not equal one Station. Each row resolves thro
 > governorate-suffixed name — is only ever PROPOSED**, and a human confirms it. No suffix
 > stripping, pattern or similarity rule exists.
 
-**Decisions D1 and D2 apply first.** A trailing governorate qualifier is stripped
-(`ابنوب اسيوط` → `ابنوب`), and `<base> <n>` is read as Unit *n* of Station `<base>`
-(`الخمائل 1` → Unit 1 of `الخمائل`, which has two Units). Each rule fires only when its target
-resolves to exactly one Station in the Region; otherwise it proposes and raises an import issue.
-Both record `alias_source`, so every rule-created alias is auditable and reversible as a set.
+**Decisions D1 and D2 apply first, each within its narrowed scope.** D1 is an **exact-value
+equivalence**: the raw name `ابنوب اسيوط` resolves to Station `ابنوب`, auto-confirmed with
+`alias_source = 'owner_confirmed'`. It is authoritative for current and future imports. It is
+**not** a suffix-stripping rule — an earlier draft described one, the owner did not authorize it,
+and none exists; every other governorate-suffixed name is only ever proposed. D2 reads
+`<base> <n>` as Unit *n* of Station `<base>` (`الخمائل 1` → Unit 1 of `الخمائل`) and **proposes**
+an alias when `<base>` resolves to exactly one Station; a human confirms it. Both record
+`alias_source`, so every rule-created alias is auditable and reversible as a set.
 
 A **proposed** alias never attaches data and never creates an entity. Only a **confirmed** alias
 resolves. This is what keeps the ~100–156 unmatched names per file (quality report §2) from
@@ -424,9 +427,16 @@ on 2026-09-14; **no production import was performed** (that is Prompt 21).
 | Year-only dates | 332 | **372** | +40: 332 is the installed-SRV sheet alone (166 + 166). The extra 40 are the warehouse sheet's 20 + 20, which §6b of this document already records. Both figures are Prompt 2's; they count different scopes. |
 | Repair Kit rows | 8 361 | **0 read** | sheet never opened |
 
-**`ابنوب اسيوط` does not occur in any of the six workbooks** — only the bare `ابنوب`, once, in
-`Station data base.xlsx`. The owner-confirmed alias is implemented and unit-tested, and correctly
-applied **0 times** on this corpus. It is not dead code; this source set simply does not exercise it.
+**The owner-confirmed alias `ابنوب` = `ابنوب اسيوط` is settled and authoritative** for this and
+every future import. It applied **0 times** in this dry run for one reason only: the string
+`ابنوب اسيوط` does not occur anywhere in the six-workbook corpus (only the bare `ابنوب`, once, in
+`Station data base.xlsx`). That is a fact about this corpus, not about the rule. The rule is
+implemented, unit-tested (RESOLVE-4) and stays in force; no further owner confirmation is needed,
+and nothing about the zero count weakens it.
+
+It remains an **exact-value equivalence**. It is not, and must never become, a governorate-suffix
+or Arabic-suffix stripping rule — test RESOLVE-5 asserts that `ابو القمصان اسيوط`,
+`ابو تيج- اسيوط`, `الادبيه - السويس` and `شبرا اسيوط` still resolve to nothing.
 
 ---
 
