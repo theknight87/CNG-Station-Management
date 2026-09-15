@@ -47,3 +47,7 @@ yarn-error.log*
 coverage/
 .wrangler/
 artifacts/
+
+# Python bytecode from vendored skill scripts
+__pycache__/
+*.pyc
