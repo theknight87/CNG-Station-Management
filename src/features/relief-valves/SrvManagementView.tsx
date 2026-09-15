@@ -4,8 +4,8 @@ export function SrvManagementView() {
   return (
     <PagePlaceholder
       title="SRV Management"
-      description="Every Safety Relief Valve across all Regions and Stations, resolved and unresolved."
-      plannedFor="Phase 4 — one installed_srv table behind both this page and the Unit SRVs tab."
+      description="Every Safety Relief Valve across all Regions and Stations, installed and warehouse."
+      plannedFor="planned for Prompt 12 — the global SRV module"
     >
           <p className="text-sm text-muted-foreground">
           This page will show resolved and unresolved SRVs together. Unresolved records

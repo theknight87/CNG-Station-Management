@@ -5,7 +5,7 @@ export function DashboardView() {
     <PagePlaceholder
       title="Dashboard"
       description="Due and overdue rollups across all Regions, Stations and Units."
-      plannedFor="Phase 9 — dashboard rollups over the derived views, once data exists."
+      plannedFor="planned for Prompt 8 — dashboard rollups computed from imported data"
      />
   )
 }

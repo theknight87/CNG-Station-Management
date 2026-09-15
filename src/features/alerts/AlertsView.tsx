@@ -4,8 +4,8 @@ export function AlertsView() {
   return (
     <PagePlaceholder
       title="Alerts"
-      description="Items approaching or past their next due date."
-      plannedFor="Phase 8 — notifications, with Days Left derived dynamically."
+      description="Due, overdue and upcoming calibration and inspection alerts."
+      plannedFor="planned for Prompt 17 — the alert engine"
      />
   )
 }

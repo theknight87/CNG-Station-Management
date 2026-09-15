@@ -13,7 +13,9 @@ import { NotFoundPage } from '@/pages/NotFoundPage'
 import { RecoveryTanksPage } from '@/pages/RecoveryTanksPage'
 import { RegionsPage } from '@/pages/RegionsPage'
 import { ReportsPage } from '@/pages/ReportsPage'
+import { SettingsPage } from '@/pages/SettingsPage'
 import { SrvManagementPage } from '@/pages/SrvManagementPage'
+import { StationsPage } from '@/pages/StationsPage'
 import { StationPage } from '@/pages/StationPage'
 import { StoragePage } from '@/pages/StoragePage'
 import { UnitPage } from '@/pages/UnitPage'
@@ -51,10 +53,14 @@ export const router = createBrowserRouter([
       </AuthGate>
     ),
     children: [
-      { index: true, element: <DashboardPage /> },
+      // `/` is not a page of its own: the shell's home IS the dashboard, and a
+      // named route keeps breadcrumbs and active navigation honest.
+      { index: true, element: <Navigate to="/dashboard" replace /> },
+      { path: 'dashboard', element: <DashboardPage /> },
 
       // Physical hierarchy
       { path: 'regions', element: <RegionsPage /> },
+      { path: 'stations', element: <StationsPage /> },
       { path: 'stations/:stationId', element: <StationPage /> },
       {
         path: 'units/:unitId',
@@ -77,9 +83,12 @@ export const router = createBrowserRouter([
 
       { path: 'alerts', element: <AlertsPage /> },
       { path: 'reports', element: <ReportsPage /> },
+      { path: 'settings', element: <SettingsPage /> },
 
-      // Admin
-      { path: 'admin', element: <Navigate to="/admin/users" replace /> },
+      // Admin. The landing route is a page, not a redirect: an engineer or
+      // viewer who reaches it must see the permission state, and a redirect
+      // would bounce them somewhere that says nothing.
+      { path: 'admin', element: <AdminPage /> },
       { path: 'admin/users', element: <AdminPage /> },
       { path: 'admin/data-quality', element: <AdminPage /> },
       { path: 'admin/import', element: <AdminPage /> },

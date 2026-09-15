@@ -4,8 +4,8 @@ export function ReportsView() {
   return (
     <PagePlaceholder
       title="Reports"
-      description="Compliance and maintenance reporting."
-      plannedFor="Phase 9 — reporting."
+      description="Compliance and asset reports across Regions and Stations."
+      plannedFor="planned for Prompt 19 — reporting"
      />
   )
 }

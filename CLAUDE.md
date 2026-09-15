@@ -384,6 +384,10 @@ These hold for every future phase.
 
 ## 11. UI/UX rules (durable, from Prompt 7 onward)
 
+*Status: the foundation is built and browser-verified (Prompt 7) — see `docs/ui-foundation.md`.
+It records which ui-ux-pro-max recommendations were accepted and which were rejected for
+conflicting with the rules below.*
+
 ### 11.1 Always use the UI/UX review skill
 
 **From Prompt 7 onward, proactively invoke the UI/UX design-review skill for every user-facing

@@ -1,61 +1,26 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
 
-import { cn } from '@/lib/utils'
-import { NAV_SECTIONS } from './navigation'
+import { AppShell } from '@/components/layout/AppShell'
+import { ClerkAccountControl } from '@/components/layout/AccountControl'
+import { crumbsFromPath } from '@/components/layout/breadcrumbPaths'
+import { useAppUser } from '@/hooks/useAppUser'
 
+/**
+ * The authenticated layout: the shell, wired to the real identity and the real
+ * role.
+ *
+ * The role comes from `app_users`, which is the authorization authority
+ * (CLAUDE.md §10). What it drives here is navigation VISIBILITY only — the
+ * database refuses unauthorized reads regardless of what is rendered.
+ */
 export function AppLayout() {
-  const appName = import.meta.env.VITE_APP_NAME ?? 'CNG Station Management'
+  const location = useLocation()
+  const appUser = useAppUser()
+  const role = appUser.status === 'active' ? appUser.user.role : null
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <aside className="hidden w-64 shrink-0 border-r bg-card md:block">
-        <div className="flex h-14 items-center border-b px-5">
-          <span className="text-sm font-semibold tracking-tight">{appName}</span>
-        </div>
-
-        <nav className="space-y-6 p-4">
-          {NAV_SECTIONS.map((section) => (
-            <div key={section.heading}>
-              <p className="px-2 pb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                {section.heading}
-              </p>
-              <ul className="space-y-0.5">
-                {section.items.map((item) => (
-                  <li key={item.to}>
-                    <NavLink
-                      to={item.to}
-                      end={item.to === '/'}
-                      className={({ isActive }) =>
-                        cn(
-                          'block rounded-md px-2 py-1.5 text-sm transition-colors',
-                          isActive
-                            ? 'bg-accent font-medium text-accent-foreground'
-                            : 'text-muted-foreground hover:bg-accent/60 hover:text-accent-foreground',
-                        )
-                      }
-                    >
-                      {item.label}
-                    </NavLink>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </nav>
-      </aside>
-
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 items-center justify-between border-b px-6">
-          <span className="text-sm font-semibold md:hidden">{appName}</span>
-          <span className="hidden text-sm text-muted-foreground md:inline">
-            Equipment, maintenance and safety-relief compliance
-          </span>
-        </header>
-
-        <main className="flex-1 overflow-y-auto p-6">
-          <Outlet />
-        </main>
-      </div>
-    </div>
+    <AppShell role={role} crumbs={crumbsFromPath(location.pathname)} account={<ClerkAccountControl role={role} />}>
+      <Outlet />
+    </AppShell>
   )
 }

@@ -4,8 +4,8 @@ export function RegionsView() {
   return (
     <PagePlaceholder
       title="Regions"
-      description="The six canonical Regions and their Stations."
-      plannedFor="Phase 3 — hierarchy browsing."
+      description="The six canonical Regions and the Stations within them."
+      plannedFor="planned for Prompt 9 — the hierarchy browser"
      />
   )
 }

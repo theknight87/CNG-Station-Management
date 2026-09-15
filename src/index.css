@@ -2,46 +2,108 @@
 @tailwind components;
 @tailwind utilities;
 
+/**
+ * Design tokens — industrial engineering, not SaaS marketing (CLAUDE.md §11.3).
+ *
+ * Palette direction from ui-ux-pro-max ("Industrial slate + stock green"),
+ * reworked so colour only ever carries meaning. The skill's "Exaggerated
+ * Minimalism" style (oversized type, massive whitespace) was rejected: §11.4
+ * rules out huge typography and whitespace that costs data density.
+ */
+
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222 47% 11%;
+    /* --- Surfaces ------------------------------------------------------- */
+    --background: 210 40% 98%;        /* #F8FAFC — the working ground */
+    --foreground: 222 47% 11%;        /* #0F172A */
     --card: 0 0% 100%;
     --card-foreground: 222 47% 11%;
-    --primary: 221 83% 45%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
+
+    /* Slate, not blue. This is a tool, not a brand. */
+    --primary: 215 25% 27%;           /* #334155 */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 215 19% 35%;         /* #475569 */
+    --secondary-foreground: 0 0% 100%;
+
     --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
-    --accent: 210 40% 96%;
+    --muted-foreground: 215 16% 42%;  /* darkened for 4.5:1 on --background */
+    --accent: 214 32% 93%;
     --accent-foreground: 222 47% 11%;
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 221 83% 45%;
-    --radius: 0.5rem;
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 214 20% 88%;
+    --input: 214 20% 84%;
+    --ring: 215 25% 27%;
+
+    /* --- Radius: restrained. Not every surface is a pill (§11.4). -------- */
+    --radius: 0.25rem;
+
+    /* --- Semantic status (§15) -----------------------------------------
+     * Every status ALSO carries an icon and a word. Colour is never the only
+     * signal, and there is deliberately no rainbow: six states, muted tones.
+     */
+    --status-ok: 158 64% 28%;         /* current / within date */
+    --status-ok-bg: 152 46% 94%;
+    --status-due-soon: 32 81% 34%;    /* approaching due */
+    --status-due-soon-bg: 45 93% 93%;
+    --status-overdue: 0 72% 42%;      /* overdue / critical */
+    --status-overdue-bg: 0 86% 96%;
+    --status-unmapped: 250 30% 40%;   /* unresolved mapping */
+    --status-unmapped-bg: 250 60% 96%;
+    --status-conflict: 280 35% 38%;   /* source evidence disagrees */
+    --status-conflict-bg: 280 55% 96%;
+    --status-inactive: 215 14% 40%;   /* inactive / informational */
+    --status-inactive-bg: 210 30% 95%;
+
+    /* --- Layout dimensions ---------------------------------------------- */
+    /* 16rem, not 15rem: at 15rem "Gas Detector Management" overflowed its row
+     * by 6px and ellipsed. Browser-measured — 189px of text in 183px of space.
+     * A truncated navigation label is a worse trade than 16px of chrome. */
+    --sidebar-width: 16rem;
+    --sidebar-width-collapsed: 3.25rem;
+    --header-height: 3rem;
+
+    /* --- Table density (§13) -------------------------------------------- */
+    --table-row-height: 2.125rem;
+    --table-cell-x: 0.625rem;
+    --table-cell-y: 0.3125rem;
   }
 
   .dark {
-    --background: 222 47% 11%;
-    --foreground: 210 40% 98%;
-    --card: 222 47% 13%;
-    --card-foreground: 210 40% 98%;
-    --primary: 217 91% 60%;
+    --background: 222 47% 9%;
+    --foreground: 210 40% 96%;
+    --card: 222 40% 12%;
+    --card-foreground: 210 40% 96%;
+
+    --primary: 213 27% 84%;
     --primary-foreground: 222 47% 11%;
-    --secondary: 217 33% 18%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217 33% 18%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 217 33% 18%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 63% 51%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217 33% 20%;
-    --input: 217 33% 20%;
-    --ring: 217 91% 60%;
+    --secondary: 215 19% 65%;
+    --secondary-foreground: 222 47% 11%;
+
+    --muted: 217 30% 16%;
+    --muted-foreground: 215 20% 70%;
+    --accent: 217 30% 20%;
+    --accent-foreground: 210 40% 96%;
+    --destructive: 0 63% 58%;
+    --destructive-foreground: 222 47% 11%;
+
+    --border: 217 25% 22%;
+    --input: 217 25% 26%;
+    --ring: 213 27% 70%;
+
+    --status-ok: 152 52% 62%;
+    --status-ok-bg: 158 40% 14%;
+    --status-due-soon: 40 84% 64%;
+    --status-due-soon-bg: 36 45% 15%;
+    --status-overdue: 0 80% 70%;
+    --status-overdue-bg: 0 45% 16%;
+    --status-unmapped: 250 60% 78%;
+    --status-unmapped-bg: 250 35% 18%;
+    --status-conflict: 280 55% 76%;
+    --status-conflict-bg: 280 30% 18%;
+    --status-inactive: 215 18% 68%;
+    --status-inactive-bg: 215 20% 18%;
   }
 
   * {
@@ -50,6 +112,44 @@
 
   body {
     @apply bg-background text-foreground;
+    /* System stacks only. ui-ux-pro-max recommended Fira Sans/Fira Code; the
+     * webfont dependency was rejected (§17) and the MOOD kept: a UI sans for
+     * prose, a mono for technical identifiers. No network request, no CLS. */
+    font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+      'Helvetica Neue', Arial, 'Noto Sans Arabic', 'Segoe UI Arabic', sans-serif;
     font-feature-settings: 'rlig' 1, 'calt' 1;
+    font-size: 14px;   /* dense working default; headings scale up, not down */
+    line-height: 1.5;
+  }
+
+  /* Serials, part numbers, job numbers, pressures: monospaced so a digit
+   * transposition is visible and columns align (§11.3, principle #11). */
+  .font-technical {
+    font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
+      'Liberation Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  /* Any column of figures that must line up vertically. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Focus is always visible. Removing it is the single most common a11y
+   * regression, so it is enforced here rather than per component. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }

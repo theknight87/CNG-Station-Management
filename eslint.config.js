@@ -4,6 +4,9 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 
+// The dev-only preview harness is not part of the application bundle, so the
+// react-refresh rule (which assumes a module boundary the harness entry does
+// not have) does not apply to it.
 export default tseslint.config(
   { ignores: ['dist', 'node_modules', 'supabase/functions/**'] },
   {
@@ -43,5 +46,9 @@ export default tseslint.config(
   {
     files: ['vite.config.ts', 'tailwind.config.ts', 'eslint.config.js'],
     languageOptions: { globals: globals.node },
+  },
+  {
+    files: ['dev/**/*.tsx'],
+    rules: { 'react-refresh/only-export-components': 'off' },
   },
 )

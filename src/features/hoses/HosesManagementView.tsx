@@ -4,8 +4,8 @@ export function HosesManagementView() {
   return (
     <PagePlaceholder
       title="Hoses Management"
-      description="Aggregate view of hoses across all Stations."
-      plannedFor="Phase 5 — global management modules."
+      description="Hoses with their working pressure, test pressure and hydrotest dates."
+      plannedFor="planned for Prompt 15"
      />
   )
 }
