@@ -461,11 +461,139 @@ filtering.
 
 | Item | Why | Owner |
 | --- | --- | --- |
-| The one controlled test email | implementation complete; the build environment denies egress to `api.resend.com` (§17) | user runs the documented curl |
-| Live Web Push | implementation complete; needs `VITE_VAPID_PUBLIC_KEY` in Cloudflare Pages, then a real browser opt-in (§17) | user configuration |
+| The one controlled test email | implementation complete and **deployed**; the build environment still denies egress to `api.resend.com`, and sending requires presenting `CNG_ALERT_INVOKE_SECRET`, which is deliberately never read here (§21) | user runs the documented curl |
+| Live Web Push | implementation complete; `VITE_VAPID_PUBLIC_KEY` is set in Cloudflare Pages but Vite bakes `VITE_*` at BUILD time, so a redeploy is required, then a real browser opt-in (§21) | user configuration |
 | Verified Resend sending domain | without one, Resend permits sending only to the account owner | user configuration |
 | External recipient automation | no recipient policy exists; nobody is subscribed silently | a later prompt |
 | Bulk read / acknowledge | would need server-side re-authorization of every id and partial-failure reporting | a later prompt |
 | Resolve / suppress actions | `state` is now server-only; these need their own audited function | a later prompt |
 | Mapping mutation | unchanged — still forgeable elsewhere | a later prompt |
 | The 1,104 staged blocker rows | staging only; generate no alerts | Prompt 21 |
+
+## 21. Prompt 15.2 — final live verification
+
+This section records what was **LIVE VERIFIED against the hosted project**, what is
+**IMPLEMENTED and AUTOMATED-TEST VERIFIED only**, and what **still requires a manual step**.
+Nothing here was simulated, and no secret value was requested, printed, echoed or inspected.
+
+### 21.1 Hosted project identity — confirmed before any write
+
+`ypkggegquetvpsflkaxg` = `cng-station-management`, organisation `hlzsgygfczzdubcvmkjh`,
+`ACTIVE_HEALTHY`, region `eu-central-1`. It is the **only** project visible to the connector and
+it matches `supabase/config.toml`. No Coding System resource was listed, read or touched.
+
+### 21.2 The hosted database was five migrations behind — now reconciled
+
+The hosted schema stood at **29** migrations against the repository's **34**. In other words the
+entire alert engine did not exist in production, and **the migration 0033 acknowledgement fix was
+unapplied there** — the vulnerability of §14 was still live in the hosted project while the
+repository considered it closed. Migrations **0030–0034** were applied. This is the strongest
+argument in this project so far for the rule that a repository-side PASS is not a production
+fact.
+
+| Verified in production after applying | Result |
+| --- | --- |
+| migrations applied | **34** |
+| `v_alert_inbox`, `v_hose_registry`, `alert_reads` | present |
+| `cng_generate_alerts`, `cng_enqueue_alert_deliveries`, `cng_save_push_subscription` | present |
+| `authenticated` UPDATE columns on `alerts` (`role_column_grants`) | **0** — §14 closed in production |
+| `authenticated` table-level write grants on `alerts` | **0** |
+| `cng_generate_alerts` EXECUTE by `authenticated` | **0** (`service_role` only) |
+| the three delivery functions EXECUTE by `authenticated` | **0** (`service_role` only) |
+| cron job `cng-generate-alerts` | **1**, `0 1 * * *`, calling the SQL function in-database |
+| `cng_business_date()` | `2026-09-16` (Africa/Cairo) |
+
+### 21.3 Both Edge Functions deployed
+
+`generate-alerts` and `send-notifications` are **ACTIVE**, version 1, `verify_jwt = false` —
+correct, because each authenticates its caller itself with the invoke secret rather than with a
+browser JWT. Before deployment two documentation defects were corrected: `deno.json` imported a
+`web-push` module the function never uses, and the file header implied a push-sending capability
+that does not exist here. The header now says plainly: **email only; Web Push SENDING is not
+implemented in this function.**
+
+### 21.4 Secret PRESENCE proved without reading any secret
+
+`curl` to the project host is still answered **403 at CONNECT** by this environment's network
+policy — re-checked once, not retried in a loop. The check was therefore made **from inside the
+hosted database**, where the request originates on Supabase's own network:
+
+- `pg_net` was enabled temporarily, one unauthenticated `POST` was sent to each function, and the
+  extension was **dropped again** afterwards. The architecture does not need database-side
+  outbound HTTP — `pg_cron` calls the SQL function in-database — so leaving it enabled would have
+  widened the surface for a diagnostic. Nothing of it remains.
+
+Both functions answered **HTTP 401 `{"error":"unauthorized"}`**. That single status carries two
+proofs, because of the deliberate order of the checks in `index.ts`:
+
+1. **Configuration is present.** The missing-configuration branch returns **503
+   `not_configured`** and runs *before* the header is examined. A 401 therefore proves
+   `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and `CNG_ALERT_INVOKE_SECRET` are all set.
+2. **Neither function is an open endpoint.** A caller with no secret is refused, from a caller on
+   Supabase's own network with a valid TLS path — the realistic attack position, not a synthetic
+   one.
+
+**What this deliberately does NOT prove:** the presence of `RESEND_API_KEY`,
+`CNG_ALERT_FROM_EMAIL` and `CNG_ALERT_TEST_RECIPIENT`. Those are checked *after* the secret, so
+they cannot be probed without holding the secret. That ordering is correct and was not relaxed to
+make verification easier: an unauthenticated caller must not be able to enumerate which parts of a
+system are configured.
+
+### 21.5 The one test email — NOT SENT, and not faked
+
+Sending requires presenting `CNG_ALERT_INVOKE_SECRET` in the request. The secret exists only as an
+Edge Function secret; this session may not read it, and there is no path to a send that does not
+either read it or weaken the authentication that makes the endpoint safe. **Neither was done.**
+The live email is therefore a **documented deferral**, executed by the user with the exact command
+already recorded in §17. Its recipient still resolves **server-side** from
+`CNG_ALERT_TEST_RECIPIENT`; the request body may not name a destination.
+
+`efares0@gmail.com` remains a **test-only** address. It appears in no migration, no view, no
+default, no seed and no frontend file — verified by repository search — and no recipient policy was
+created from it.
+
+### 21.6 Web Push — a build-time gap, stated precisely
+
+`VITE_VAPID_PUBLIC_KEY` is now set in Cloudflare Pages. **Vite inlines `VITE_*` values at BUILD
+time, not at run time**, so a deployment produced before the variable existed does not contain it
+and will keep reporting "Push notifications are not configured for this deployment". The required
+action is one **redeploy** of the Cloudflare Pages project `cng-station-management` (Deployments →
+Retry deployment / redeploy the production branch), after which `/alerts` → **Enable
+notifications** → accept the browser prompt completes the subscription. No Cloudflare API access is
+available from this environment and no DNS or unrelated Cloudflare setting was touched.
+
+A real browser subscription remains **unverified**: headless Chromium reports
+`Notification.permission === 'denied'` and ignores Playwright's `grantPermissions` for
+notifications. That limitation is asserted explicitly in the suite rather than worked around, and
+the granted path is covered by unit tests. **No push message was sent, and none was claimed.**
+
+### 21.7 Supabase security advisors
+
+Three `WARN` findings, all `authenticated`-callable `SECURITY DEFINER` functions:
+`cng_acknowledge_alert`, `cng_current_role`, `cng_has_region_grant`. All three are **intentional
+and already documented**: each pins `search_path`, none takes a user-supplied identity parameter
+(`cng_acknowledge_alert` takes an alert id and derives the actor from the session), and each exists
+precisely so the client cannot do the work directly. No `ERROR`-level finding was returned. Nothing
+was silenced.
+
+### 21.8 State of the hosted data
+
+Unchanged by this prompt and recorded for the Prompt-21 baseline: `alerts` 0, `alert_reads` 0,
+`notification_deliveries` 0, `notification_preferences` 0, `push_subscriptions` 0,
+`alert_rules` 30, `app_users` 1. The canonical asset tables remain empty, so generation has nothing
+eligible to act on and **no alert was generated to manufacture a demonstration**. The 1,104 staged
+Prompt-21 blocker rows were not read, modified or resolved.
+
+### 21.9 Verification Integrity Gate
+
+Run directly, exit code taken as the verdict, no output filtered:
+
+| Measure | Baseline (15.1) | This run | Verdict |
+| --- | --- | --- | --- |
+| frontend tests | 399 | **399** (21 files) | equal |
+| schema assertions | 146 | **146** | equal |
+| authorization assertions | 277 | **277** | equal |
+| migrations from zero | 34 | **34** | equal |
+| build / lint / tests / brand | exit 0 | **exit 0** | PASS |
+
+No count decreased. Prompt 15.2 changed no application code, so equality is the expected result.

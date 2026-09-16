@@ -1,5 +1,10 @@
 /**
- * Notification delivery for CNG Station Management — email (Resend) and Web Push.
+ * Notification delivery for CNG Station Management — EMAIL (Resend).
+ *
+ * SCOPE: email only. Web Push SENDING is not implemented here; the browser
+ * subscription path exists (see cng_save_push_subscription and the /alerts
+ * opt-in), but nothing in this function delivers a push message. Saying so
+ * plainly matters more than implying a capability that is not here.
  *
  * ARCHITECTURE, PRESERVED FROM PROMPT 15:
  *

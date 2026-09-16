@@ -320,6 +320,25 @@ has no Resend API key, no verified CNG sender and no VAPID pair, and none was in
 Resend ACCOUNT may be shared with the Coding System, its CREDENTIALS may not, and no cross-project
 dependency exists.*
 
+*Final live verification (Prompt 15.2) is done — see `docs/alerts-notifications.md` §21. The
+hosted database was found **five migrations behind the repository (29 vs 34)**: the alert engine did
+not exist in production and **the 0033 acknowledgement fix was unapplied there**, so the §14
+vulnerability was still live in the hosted project while the repository considered it closed.
+Migrations 0030-0034 were applied and the production posture re-proved: 0 `authenticated` UPDATE
+columns on `alerts`, generation and the delivery functions granted to `service_role` only, and the
+`cng-generate-alerts` cron job live at `0 1 * * *` calling the SQL function in-database. Both Edge
+Functions are deployed ACTIVE with `verify_jwt = false`, which is correct because each
+authenticates its caller with the invoke secret. **Secret PRESENCE was proved without reading any
+secret**: curl is still 403-blocked at CONNECT, so an unauthenticated POST was sent from inside the
+hosted database (pg_net enabled temporarily and dropped again); both functions answered **401**,
+which proves core configuration is present — the not_configured branch returns 503 and runs first —
+and that neither is an open endpoint. **THE TEST EMAIL WAS NOT SENT AND NOT FAKED**: sending
+requires presenting `CNG_ALERT_INVOKE_SECRET`, which this session may not read, and no
+authentication was weakened to reach a send. **Web Push is a BUILD-TIME gap**: `VITE_*` values are
+inlined by Vite at build time, so the Cloudflare Pages variable requires a REDEPLOY to take effect.
+`efares0@gmail.com` stays test-only — it appears in no migration, view, default, seed or frontend
+file.*
+
 *Notification delivery (Prompt 15.1) is built: migration **0034** plus the `send-notifications`
 Edge Function and a Web Push opt-in — see `docs/alerts-notifications.md` §17. The
 Alert/Delivery separation is unchanged and now asserted: a delivery failure leaves the alert
@@ -404,6 +423,7 @@ These rules are permanent and apply to every future prompt.
 | 14 | 356 | 102 | 222 |
 | 15 | 389 | 129 | 265 |
 | 15.1 | 399 | 146 | 277 |
+| 15.2 | 399 | 146 | 277 |
 
 Update this table when a prompt is accepted, so the next one has a baseline to compare
 against.
