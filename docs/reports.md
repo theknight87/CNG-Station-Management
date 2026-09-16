@@ -262,3 +262,16 @@ only.
 * **Mapping corrections from Reports** — explicitly forbidden. Reports is a read
   surface; corrections stay in `/admin/data-quality`, which an admin reaches by
   a link.
+
+## Deployment status
+
+| | |
+| --- | --- |
+| Main | `792df36` (fast-forward merge, no rebase, no force push) |
+| Supabase project | `cng-station-management`, ref `ypkggegquetvpsflkaxg` |
+| Migrations | 41 before → **43** after (0042 `report_due_compliance`, 0043 `report_data_quality`) |
+| Data created | none — every asset table, staging table, `import_issues`, `import_mapping_decisions` and `alerts` are 0 rows |
+| Cloudflare | **not observed** — 403 at CONNECT for `api.cloudflare.com` and `cng-station-management.pages.dev` |
+| `/reports` in a browser | **NOT LIVE VERIFIED** — owner acceptance pending |
+
+Production security verification is recorded in CLAUDE.md §7 under the Prompt 20 deployment note.

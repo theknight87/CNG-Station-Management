@@ -644,7 +644,9 @@ absence could render as an installed detector AND a NULL identity column leaves 
 without a stable key. `v_report_gas_detectors` applies the filter IN THE DATABASE (GDR-2/3/5); the
 due report is unchanged (GDR-6). One pre-existing assertion was corrected: MGR-6 counted
 `import_issues = 1` absolutely and so tracked a suite-wide fixture total rather than the access it
-means to assert. **NOT DEPLOYED and NOT LIVE VERIFIED.***
+means to assert.
+
+**PROMPT 20 IS DEPLOYED (Prompt 20 merge + deployment).** Main is at `792df36` by fast-forward merge. Production (`cng-station-management`, ref `ypkggegquetvpsflkaxg`) went from **41 to 43 migrations**: 0042 `report_due_compliance` then 0043 `report_data_quality`, applied sequentially, each succeeding. Verified IN PRODUCTION by catalog query: all three report views exist with `security_invoker = true`, `authenticated` holds SELECT and **no write grant** on them (the 9 write grants first observed were `postgres`, the view owner's implicit privileges present on every view in the schema — a defective assertion, not a defective deployment), 0 `authenticated` UPDATE columns on `alerts`, the claim functions remain `service_role` only, `cng_mark_all_alerts_read` is still SECURITY INVOKER, `cng_admin_decide_staged_mapping` is still admin-gated, and 0 public tables lack RLS. **NO DATA WAS CREATED**: every asset table, staging, `import_issues`, `import_mapping_decisions` and `alerts` are 0 rows; `app_users` is 1 and `audit_logs` 1, both pre-existing. A read-only probe as `authenticated` with no verified subject returned 0 rows from every report view and was discarded by a deliberate `RAISE`. **CLOUDFLARE IS NOT OBSERVED**: this environment answers 403 at CONNECT for `api.cloudflare.com` and `cng-station-management.pages.dev`, and the Cloudflare tooling available here covers Workers/D1/KV/R2, not Pages — the push to `main` is confirmed at the GitHub remote, but the Pages build is NOT verified. **THE FRONTEND IS NOT LIVE VERIFIED**: `/reports` needs owner browser acceptance.***
 
 ### Prompt-21 import blockers (must be resolved before the production import)
 
