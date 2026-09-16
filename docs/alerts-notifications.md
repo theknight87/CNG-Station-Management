@@ -463,7 +463,7 @@ filtering.
 | Item | Why | Owner |
 | --- | --- | --- |
 | The one controlled test email | implementation complete and **deployed**; the build environment still denies egress to `api.resend.com`, and sending requires presenting `CNG_ALERT_INVOKE_SECRET`, which is deliberately never read here (§21) | user runs the documented curl |
-| Live Web Push | implementation complete, but **there is no deployed site at all**: the CNG Cloudflare Pages project has never been created (§22) | user creates the Pages project |
+| Live Web Push | the site is deployed and the subscribe lifecycle defect is FIXED (§23); a real end-to-end push message has still never been sent | user confirms the opt-in in a real browser |
 | Verified Resend sending domain | without one, Resend permits sending only to the account owner | user configuration |
 | External recipient automation | no recipient policy exists; nobody is subscribed silently | a later prompt |
 | Bulk read / acknowledge | would need server-side re-authorization of every id and partial-failure reporting | a later prompt |
@@ -672,9 +672,96 @@ exists and has deployed successfully:
 
 | Item | Status |
 | --- | --- |
-| CNG Cloudflare Pages project exists | **NO** |
-| `*.pages.dev` URL | **none** |
+| CNG Cloudflare Pages project exists | **YES, since Prompt 15.2B** — `cng-station-management.pages.dev` (§23) |
+| `*.pages.dev` URL | `https://cng-station-management.pages.dev` |
 | SPA routing at `/`, `/dashboard`, `/alerts`, `/regions` | **unverified against a deployment** (`_redirects` is correct in the build output) |
 | Clerk auth against the CNG application | **unverified** |
 | Frontend talks only to `ypkggegquetvpsflkaxg` | **unverified live**; it is what `VITE_SUPABASE_URL` will select, and no other project is referenced in the source |
 | No Coding System dependency | **verified in the repository** (no reference found); unverified live, there being nothing live |
+
+## 23. Prompt 15.2B — a real production defect in the push subscribe lifecycle
+
+### 23.1 The report
+
+The isolated Cloudflare Pages project now exists and serves
+`https://cng-station-management.pages.dev` — which supersedes §22's "not deployed" status and made
+the first genuinely live test of Web Push possible. It failed. Clicking **Enable notifications** on
+`/alerts` returned:
+
+```
+Failed to execute 'subscribe' on 'PushManager':
+Subscription failed - no active Service Worker
+```
+
+### 23.2 Root cause — a lifecycle race, not a configuration error
+
+`navigator.serviceWorker.register()` resolves as soon as the **registration** exists. Its worker
+may still be `installing`. `pushManager.subscribe()` requires an **active** worker. The old code
+subscribed on the very next line:
+
+```ts
+const registration = await navigator.serviceWorker.register('/sw.js')
+const subscription = await registration.pushManager.subscribe({ ... })   // ← races activation
+```
+
+On a browser that had never registered the worker, the click lost that race. On a later visit,
+with a worker already activated, the same code worked. **That intermittency is what made it look
+like a configuration problem** — and it is why the VAPID keys and the Cloudflare environment
+variables were examined and found correct rather than changed. Neither was touched.
+
+### 23.3 The fix
+
+`registerActiveServiceWorker()` resolves only once the worker is ACTIVE:
+
+- `registration.active` is checked first, so the ordinary repeat-visit path waits for nothing;
+- otherwise it awaits `navigator.serviceWorker.ready`, which is the correct lifecycle signal —
+  it resolves with the registration for the page's scope once that registration has an active
+  worker;
+- the wait is **bounded at 15s**. `ready` never rejects, so without a bound a browser that never
+  activates the worker would leave the button reading "Enabling…" forever. A stated failure is more
+  honest than an indefinite spinner.
+
+`public/sw.js` now also calls `skipWaiting()` on install and `clients.claim()` on activate, so a
+newly deployed worker does not sit behind an old one and the first load after registration is
+controlled. **This is safe here only because the worker caches nothing and intercepts no fetch**,
+so taking over early cannot serve a stale build.
+
+### 23.4 The other lifecycle questions, checked rather than assumed
+
+| Question | Finding |
+| --- | --- |
+| Is `sw.js` in the production build? | **Yes.** `public/sw.js` → `dist/sw.js`, confirmed in the build output, with the new handlers present. |
+| Is the scope right? | **Yes.** It is served from the site root, so registering `/sw.js` yields the default scope `/`, covering every route including `/alerts`. |
+| Does registration succeed? | Yes — and a missing or non-JavaScript `/sw.js` would REJECT `register()`, surfacing as a stated error rather than a hang. |
+| Controller/activation after first registration | The page no longer needs to be *controlled* to subscribe — only an ACTIVE worker is required — but `clients.claim()` now makes control immediate too. |
+| Are repeated clicks safe? | **Yes.** An in-flight guard makes a second click a no-op. The disabled button is UX; the guard is the guarantee. |
+| Is an existing subscription reused? | **Yes.** `getSubscription()` is consulted before `subscribe()`. Re-subscribing would mint a new endpoint and strand the row saved against the old one. Re-saving is still correct because `cng_save_push_subscription` upserts on the endpoint. |
+| Is a denied permission handled? | Unchanged: it is a settled answer, shown plainly, never retried and never re-prompted. |
+
+### 23.5 Security is unchanged
+
+Permission is still requested **only** from an explicit click, and never on load.
+`cng_save_push_subscription` still takes no user parameter, so the owner is derived from the
+session and one user still cannot register, read or delete another's subscription. **No RLS policy,
+grant or database function was modified — this fix is entirely client-side lifecycle code.** The
+VAPID pair was not regenerated and no Cloudflare variable was changed.
+
+### 23.6 The regression test was proved to fail against the old code
+
+A test that passes either way proves nothing, so this one was run against the defect before being
+accepted. The suite models the real first-registration sequence: `register()` resolves with
+`active: null` and `navigator.serviceWorker.ready` settles only when the test chooses.
+
+With the old `register()`-then-subscribe line restored, **2 of 16 tests failed** — *"does not call
+subscribe() while the worker is still installing"* and *"a second click while the first is in
+flight starts nothing new"*. With the fix, 16/16 pass.
+
+Six tests were added (399 → **405**), covering: no subscribe before ACTIVE; no wait when already
+active; the bounded-failure path; direct return when active; idempotent repeat clicks; and reuse of
+an existing subscription.
+
+### 23.7 Still not verified
+
+**No push message has ever been delivered end to end.** This fix makes subscribing work; sending is
+a separate layer that remains architected but unsent (§17, §21.5), and the one controlled test
+email is still outstanding.

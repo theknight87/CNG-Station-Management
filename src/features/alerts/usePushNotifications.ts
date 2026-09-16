@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useSupabaseClient } from '@/lib/supabase/client'
 
@@ -14,6 +14,13 @@ import { useSupabaseClient } from '@/lib/supabase/client'
  * bundle by design: the browser needs it to create a subscription. Its private
  * counterpart lives only in Edge Function secrets and never appears in any
  * `VITE_*` variable, in source, or in the bundle.
+ *
+ * SUBSCRIBING REQUIRES AN *ACTIVE* SERVICE WORKER, NOT MERELY A REGISTERED
+ * ONE. `register()` resolves as soon as the registration object exists, while
+ * its worker may still be `installing`. Calling `pushManager.subscribe()` at
+ * that moment fails with "Subscription failed - no active Service Worker" —
+ * which is why the first click on a fresh browser failed and a later one, with
+ * a worker already activated, appeared to work. The wait is therefore explicit.
  *
  * THE SUBSCRIPTION IS SAVED BY THE DATABASE, NOT BY THE CLIENT.
  * `cng_save_push_subscription` fills `app_user_id` from the session, so a
@@ -69,6 +76,44 @@ function keyToBase64(key: ArrayBuffer | null): string {
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
+/**
+ * Register the service worker and resolve only once it is ACTIVE.
+ *
+ * This is the fix for "Subscription failed - no active Service Worker".
+ * `navigator.serviceWorker.ready` resolves with the registration for this
+ * page's scope once that registration has an active worker, so it is the
+ * correct lifecycle signal. `registration.active` is checked first because on
+ * every visit after the first the worker is already active and there is nothing
+ * to wait for.
+ *
+ * The wait is BOUNDED. `ready` never rejects, so without a bound a browser that
+ * never activates the worker would leave the button spinning forever. A stated
+ * failure is more honest than an indefinite "Enabling…".
+ */
+export async function registerActiveServiceWorker(
+  timeoutMs = 15_000,
+): Promise<ServiceWorkerRegistration> {
+  // A missing or non-JavaScript /sw.js rejects here, which surfaces as a real
+  // error rather than an endless wait.
+  const registration = await navigator.serviceWorker.register('/sw.js')
+  if (registration.active) return registration
+
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () => reject(new Error('The notification service worker did not start in this browser.')),
+          timeoutMs,
+        )
+      }),
+    ])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
+}
+
 export function pushSupported(): boolean {
   return (
     typeof window !== 'undefined' &&
@@ -84,6 +129,13 @@ export function usePushNotifications(): {
 } {
   const supabase = useSupabaseClient()
   const [state, setState] = useState<PushState>({ status: 'idle' })
+  /**
+   * Guards against a second click landing while the first is still in flight.
+   * The button is disabled while working, but a disabled button is UX, not a
+   * guarantee — a keyboard repeat or a programmatic call must not start a
+   * second registration/subscribe race.
+   */
+  const inFlight = useRef(false)
 
   // Reflect what is already true WITHOUT prompting: reading the permission
   // value and an existing subscription asks the user nothing.
@@ -117,6 +169,7 @@ export function usePushNotifications(): {
   }, [])
 
   const enable = useCallback(async () => {
+    if (inFlight.current) return
     if (!pushSupported()) {
       setState({ status: 'unsupported' })
       return
@@ -131,20 +184,32 @@ export function usePushNotifications(): {
       return
     }
 
+    inFlight.current = true
     setState({ status: 'working' })
     try {
-      // Only now, and only because the user clicked.
+      // Only now, and only because the user clicked. Asked BEFORE the worker is
+      // registered so a user who declines gets no service worker at all.
       const permission = await Notification.requestPermission()
       if (permission !== 'granted') {
         setState({ status: 'denied' })
         return
       }
 
-      const registration = await navigator.serviceWorker.register('/sw.js')
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicKey),
-      })
+      // Waits for activation. Subscribing before this resolves is the defect
+      // this replaces.
+      const registration = await registerActiveServiceWorker()
+
+      // IDEMPOTENT. A browser has at most one subscription per registration, so
+      // an existing one is reused rather than replaced: re-subscribing would
+      // mint a new endpoint and strand the row already saved for the old one.
+      // Re-saving is still correct — `cng_save_push_subscription` upserts on the
+      // endpoint and reactivates it, and derives the owner from the session.
+      const subscription =
+        (await registration.pushManager.getSubscription()) ??
+        (await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey),
+        }))
 
       const json = subscription.toJSON() as { endpoint?: string; keys?: Record<string, string> }
       const { error } = await supabase.rpc('cng_save_push_subscription', {
@@ -160,6 +225,8 @@ export function usePushNotifications(): {
       setState({ status: 'subscribed' })
     } catch (e) {
       setState({ status: 'error', message: e instanceof Error ? e.message : 'Could not enable notifications.' })
+    } finally {
+      inFlight.current = false
     }
   }, [supabase])
 

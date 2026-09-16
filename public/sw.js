@@ -10,6 +10,25 @@
  * server decides who receives a push; this file only renders what arrives.
  */
 
+/**
+ * Activate promptly.
+ *
+ * Subscribing needs an ACTIVE worker, and the page waits for one. These two
+ * handlers keep that wait short and keep it from stalling on an update: without
+ * skipWaiting a newly deployed worker sits in `waiting` behind the old one, and
+ * without claim() the first page load after registration stays uncontrolled.
+ *
+ * This is safe here ONLY because this worker caches nothing and intercepts no
+ * fetch, so taking over early cannot serve a stale build.
+ */
+self.addEventListener('install', () => {
+  self.skipWaiting()
+})
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim())
+})
+
 self.addEventListener('push', (event) => {
   let payload = {}
   try {

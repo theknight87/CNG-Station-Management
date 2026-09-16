@@ -1,8 +1,9 @@
 # Cloudflare Pages deployment — CNG Station Management
 
-**Status: the project does not exist yet. This application has never been deployed.**
-Written in Prompt 15.2A. See `docs/alerts-notifications.md` §22 for how the earlier, incorrect
-claim arose.
+**Status: DEPLOYED.** The isolated project now exists and serves
+`https://cng-station-management.pages.dev`. Written in Prompt 15.2A while it did not yet exist
+(see `docs/alerts-notifications.md` §22 for how the earlier, incorrect claim arose) and updated in
+Prompt 15.2B. The settings below are what the project is built with; keep them.
 
 ---
 

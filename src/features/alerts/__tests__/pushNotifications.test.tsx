@@ -15,6 +15,10 @@ import userEvent from '@testing-library/user-event'
  * 3. **Only the PUBLIC VAPID key is used in the browser.** The private key must
  *    appear nowhere in frontend code.
  * 4. Denied is a settled answer, not an error to retry.
+ * 5. **subscribe() cannot run before the service worker is ACTIVE.** This is the
+ *    production defect of Prompt 15.2B: `register()` resolves while the worker
+ *    may still be `installing`, and subscribing then fails with "Subscription
+ *    failed - no active Service Worker".
  */
 
 const rpc = vi.hoisted(() => ({ calls: [] as { fn: string; args: Record<string, unknown> }[], error: null as null | { message: string } }))
@@ -29,15 +33,41 @@ vi.mock('@/lib/supabase/client', () => ({
 }))
 
 const { EnableNotifications } = await import('@/features/alerts/EnableNotifications')
-const { urlBase64ToUint8Array } = await import('@/features/alerts/usePushNotifications')
+const { urlBase64ToUint8Array, registerActiveServiceWorker } = await import(
+  '@/features/alerts/usePushNotifications'
+)
 
 const permission = vi.hoisted(() => ({ value: 'default' as NotificationPermission, requested: 0 }))
-const subscribeArgs = vi.hoisted(() => ({ last: null as Record<string, unknown> | null }))
+const subscribeArgs = vi.hoisted(() => ({ last: null as Record<string, unknown> | null, count: 0 }))
+const sw = vi.hoisted(() => ({
+  registerCount: 0,
+  /** Resolves the pending activation in `activation: 'deferred'` mode. */
+  activate: () => {},
+}))
 
-function installPushEnvironment(opts: { existing?: boolean } = {}) {
+/**
+ * @param activation how the worker reaches the ACTIVE state:
+ *   - `immediate`: already active, as on every visit after the first;
+ *   - `deferred`: `register()` resolves with an INACTIVE worker and
+ *     `navigator.serviceWorker.ready` settles only when the test calls
+ *     `sw.activate()` — the real first-registration sequence, and the one the
+ *     production bug raced against;
+ *   - `never`: activation never completes.
+ */
+function installPushEnvironment(
+  opts: {
+    existing?: boolean
+    /** false = nothing registered yet when the page probes on mount. */
+    probeRegistration?: boolean
+    activation?: 'immediate' | 'deferred' | 'never'
+  } = {},
+) {
+  const activation = opts.activation ?? 'immediate'
   permission.value = 'default'
   permission.requested = 0
   subscribeArgs.last = null
+  subscribeArgs.count = 0
+  sw.registerCount = 0
 
   const subscription = {
     endpoint: 'https://push.example.test/abc123',
@@ -45,15 +75,32 @@ function installPushEnvironment(opts: { existing?: boolean } = {}) {
     getKey: () => null,
   }
 
-  const registration = {
+  const registration: Record<string, unknown> = {
+    // `null` until activation completes — exactly what the browser reports
+    // while the worker is still installing.
+    active: activation === 'immediate' ? { state: 'activated' } : null,
     pushManager: {
       getSubscription: () => Promise.resolve(opts.existing ? subscription : null),
       subscribe: (args: Record<string, unknown>) => {
+        subscribeArgs.count += 1
         subscribeArgs.last = args
         return Promise.resolve(subscription)
       },
     },
   }
+
+  const ready =
+    activation === 'immediate'
+      ? Promise.resolve(registration)
+      : new Promise<unknown>((resolve) => {
+          if (activation === 'deferred') {
+            sw.activate = () => {
+              registration.active = { state: 'activated' }
+              resolve(registration)
+            }
+          }
+          // 'never': the promise is simply never settled.
+        })
 
   vi.stubGlobal('Notification', {
     get permission() {
@@ -69,8 +116,13 @@ function installPushEnvironment(opts: { existing?: boolean } = {}) {
   Object.defineProperty(navigator, 'serviceWorker', {
     configurable: true,
     value: {
-      getRegistration: () => Promise.resolve(registration),
-      register: () => Promise.resolve(registration),
+      getRegistration: () =>
+        Promise.resolve(opts.probeRegistration === false ? undefined : registration),
+      register: () => {
+        sw.registerCount += 1
+        return Promise.resolve(registration)
+      },
+      ready,
     },
   })
   vi.stubGlobal('PushManager', function PushManager() {})
@@ -173,5 +225,100 @@ describe('Configuration states', () => {
     const bytes = urlBase64ToUint8Array('AQAB')
     expect(bytes).toBeInstanceOf(Uint8Array)
     expect(Array.from(bytes)).toEqual([1, 0, 1])
+  })
+})
+
+/**
+ * THE PRODUCTION DEFECT (Prompt 15.2B).
+ *
+ * Reported from https://cng-station-management.pages.dev/alerts as:
+ *
+ *     Failed to execute 'subscribe' on 'PushManager':
+ *     Subscription failed - no active Service Worker
+ *
+ * `navigator.serviceWorker.register()` resolves as soon as the REGISTRATION
+ * exists; its worker may still be `installing`. `pushManager.subscribe()`
+ * requires an ACTIVE worker. The old code subscribed immediately after
+ * registering, so a first click on a fresh browser raced activation and lost —
+ * while a later click, with a worker already activated, appeared to work. That
+ * intermittency is what made it look like a configuration problem.
+ */
+describe('Service worker must be ACTIVE before subscribing', () => {
+  it('does not call subscribe() while the worker is still installing', async () => {
+    installPushEnvironment({ activation: 'deferred' })
+    render(<EnableNotifications />)
+    await userEvent.click(await screen.findByRole('button', { name: /enable notifications/i }))
+
+    // Registration has happened and permission was granted, but activation has
+    // not completed. Give the microtask queue every chance to run ahead.
+    await Promise.resolve()
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(sw.registerCount).toBe(1)
+    expect(permission.requested).toBe(1)
+    // THE assertion this whole file exists for: no subscribe before ACTIVE.
+    expect(subscribeArgs.count).toBe(0)
+    expect(rpc.calls).toHaveLength(0)
+    expect(await screen.findByRole('button', { name: /enabling/i })).toBeDefined()
+
+    // Now let the worker activate. Only then may subscribe() run.
+    sw.activate()
+    expect(await screen.findByText(/notifications are enabled/i)).toBeDefined()
+    expect(subscribeArgs.count).toBe(1)
+  })
+
+  it('subscribes without waiting when the worker is already active', async () => {
+    // The repeat-visit path must not be slowed down by the fix.
+    installPushEnvironment({ activation: 'immediate' })
+    render(<EnableNotifications />)
+    await userEvent.click(await screen.findByRole('button', { name: /enable notifications/i }))
+    expect(await screen.findByText(/notifications are enabled/i)).toBeDefined()
+    expect(subscribeArgs.count).toBe(1)
+  })
+
+  it('returns the registration directly when it is already active', async () => {
+    installPushEnvironment({ activation: 'immediate' })
+    const reg = await registerActiveServiceWorker()
+    expect((reg as unknown as { active: unknown }).active).toBeTruthy()
+  })
+
+  it('reports a bounded failure instead of spinning forever if activation never completes', async () => {
+    installPushEnvironment({ activation: 'never' })
+    // Called directly with a short bound: the production default is 15s, and a
+    // test must not wait for it. `ready` never settles here.
+    await expect(registerActiveServiceWorker(20)).rejects.toThrow(/did not start/i)
+  })
+})
+
+describe('Repeated clicks and existing subscriptions', () => {
+  it('a second click while the first is in flight starts nothing new', async () => {
+    installPushEnvironment({ activation: 'deferred' })
+    render(<EnableNotifications />)
+    const button = await screen.findByRole('button', { name: /enable notifications/i })
+    await userEvent.click(button)
+    // The button is disabled while working, but that is UX, not a guarantee —
+    // call the handler again the way a keyboard repeat or a stray event would.
+    await userEvent.click(await screen.findByRole('button', { name: /enabling/i }))
+
+    sw.activate()
+    expect(await screen.findByText(/notifications are enabled/i)).toBeDefined()
+    // One registration, one subscription, one save. Not two of anything.
+    expect(sw.registerCount).toBe(1)
+    expect(subscribeArgs.count).toBe(1)
+    expect(rpc.calls.filter((c) => c.fn === 'cng_save_push_subscription')).toHaveLength(1)
+  })
+
+  it('reuses an existing subscription rather than minting a second endpoint', async () => {
+    // Nothing registered when the page probed, so the control is offered; the
+    // browser has nonetheless retained a subscription from a previous session.
+    installPushEnvironment({ existing: true, probeRegistration: false })
+    render(<EnableNotifications />)
+    await userEvent.click(await screen.findByRole('button', { name: /enable notifications/i }))
+    expect(await screen.findByText(/notifications are enabled/i)).toBeDefined()
+
+    // Re-subscribing would strand the row saved against the old endpoint.
+    expect(subscribeArgs.count).toBe(0)
+    const call = rpc.calls.find((c) => c.fn === 'cng_save_push_subscription')
+    expect(call?.args.p_endpoint).toBe('https://push.example.test/abc123')
   })
 })

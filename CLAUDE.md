@@ -356,6 +356,26 @@ key never do — a static build inlines whatever it is given, so "encrypted" the
 Full instructions: `docs/deployment-cloudflare.md`. Cloudflare is NOT LIVE VERIFIED and must not be
 marked so until the independent project exists and has deployed.*
 
+*Web Push service-worker lifecycle fix (Prompt 15.2B) — the application IS now deployed at
+`cng-station-management.pages.dev` (its own isolated Pages project; `cargas-coding-system` remains
+untouched), which superseded the 15.2A status and exposed a REAL RUNTIME DEFECT reported from
+production: clicking **Enable notifications** failed with *"Subscription failed - no active Service
+Worker"*. **Root cause**: `navigator.serviceWorker.register()` resolves as soon as the REGISTRATION
+exists, while its worker may still be `installing`; `pushManager.subscribe()` requires an ACTIVE
+worker. The old code subscribed on the next line, so a first click on a fresh browser raced
+activation and lost, while a later click — with a worker already activated — appeared to work. That
+intermittency is why it looked like a configuration problem; **the VAPID keys and the Cloudflare
+variables were never wrong and were not changed.** The fix waits for activation via
+`registerActiveServiceWorker()` (`registration.active` first, else `navigator.serviceWorker.ready`,
+BOUNDED at 15s so a browser that never activates reports a stated failure instead of spinning). The
+worker now also `skipWaiting()`s and `clients.claim()`s — safe ONLY because it caches nothing and
+intercepts no fetch. `enable()` is now idempotent: an in-flight guard makes a second click start
+nothing, and an EXISTING subscription is REUSED rather than re-subscribed, which would mint a new
+endpoint and strand the saved row. **Security is unchanged**: permission is still requested only
+from an explicit click, `cng_save_push_subscription` still takes no user parameter, and no RLS or
+grant was touched. The regression test was **proved to fail against the old code** before being
+accepted.*
+
 *Notification delivery (Prompt 15.1) is built: migration **0034** plus the `send-notifications`
 Edge Function and a Web Push opt-in — see `docs/alerts-notifications.md` §17. The
 Alert/Delivery separation is unchanged and now asserted: a delivery failure leaves the alert
@@ -441,6 +461,7 @@ These rules are permanent and apply to every future prompt.
 | 15 | 389 | 129 | 265 |
 | 15.1 | 399 | 146 | 277 |
 | 15.2 | 399 | 146 | 277 |
+| 15.2B | 405 | 146 | 277 |
 
 Update this table when a prompt is accepted, so the next one has a baseline to compare
 against.
