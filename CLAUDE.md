@@ -282,6 +282,23 @@ or dropped. No authoritative calibration interval exists anywhere (`alert_rules`
 only), so none is hard-coded and the gap is documented. Mapping mutation stays deferred for the
 same attribution reason as Prompts 11 and 12.*
 
+*Hoses Management (Prompt 14) is built: `/manage/hoses` — see `docs/hoses-management.md`.
+**One additive migration**, 0030, creating `v_hose_registry` (`security_invoker`);
+`v_hose_management` is untouched and still serves the Prompt-10 Unit tab. It is the only
+registry organised around IDENTITY first, because a hose is individually traceable. Three
+facts were verified empirically: `station_id` is NOT NULL, so `needs_station_mapping` is
+unreachable and the 49 staged hose rows are a **THIRD Prompt-21 blocker (total now 1,104)**;
+`unit_id` is nullable but `resolved` requires it, so Unit mapping is PENDING, never
+permanently optional; and `dispenser_id` exists, making the chain
+`Region → Station → Unit → Dispenser → Hose`. **No UNIQUE constraint was added on
+`serial_number`** — duplicates are REPORTED, never enforced away, and `serial_duplicate` is
+computed under the caller's RLS so a cross-region serial collision is shown to an admin but
+never to a regional viewer, who would otherwise learn of a row they may not read. NULL
+serials are never duplicates of one another. Terminology follows the schema: "Last test" /
+"Next test", never relabelled "Calibration". No authoritative test interval exists anywhere,
+so none is hard-coded. Mapping mutation stays deferred for the same attribution reason as
+Prompts 11-13.*
+
 ### Prompt-21 import blockers (must be resolved before the production import)
 
 | Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |
@@ -289,6 +306,8 @@ same attribution reason as Prompts 11 and 12.*
 | Storage Vessels | 433 | `storage_vessels.station_id` is NOT NULL | Prompt 12 |
 | Recovery Tanks | 403 | `recovery_tanks.station_id` is NOT NULL | Prompt 12 |
 | Gas Detectors | 219 | `gas_detectors.station_id` is NOT NULL | Prompt 13 |
+| Hoses | 49 | `hoses.station_id` is NOT NULL | Prompt 14 |
+| **Total** | **1,104** | | |
 
 Do not resolve these by relaxing a constraint, by fabricating a Station mapping, or by dropping
 the staged rows. The resolution is a Prompt-21 decision.
@@ -343,6 +362,7 @@ These rules are permanent and apply to every future prompt.
 | 11 | 245 | 72 | 149 |
 | 12 | 270 | 72 | 166 |
 | 13 | 316 | 82 | 197 |
+| 14 | 356 | 102 | 222 |
 
 Update this table when a prompt is accepted, so the next one has a baseline to compare
 against.

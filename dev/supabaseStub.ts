@@ -472,6 +472,132 @@ const DETECTOR_REGISTRY = [
   },
 ]
 
+
+/* ------------------------------------------------------------------ *
+ * Prompt 14 - Global Hoses Management fixtures.
+ *
+ * A hose is individually traceable, so these concentrate on IDENTITY: an
+ * exact serial, a leading-zero serial that must survive verbatim, a NULL
+ * serial, a `not_yet_assigned` serial, a very long serial, and a genuine
+ * DUPLICATE pair that must be reported and never merged. Plus the usual
+ * traps: a year-only date that must never become a countdown, a long Arabic
+ * description, a NULL description, every due bucket, and a hose recorded at
+ * Station level whose Unit is genuinely unknown.
+ *
+ * `needs_station_mapping` is deliberately ABSENT: `hoses.station_id` is NOT
+ * NULL, so no such row can exist. Inventing one here would show a state the
+ * real database cannot hold.
+ * ------------------------------------------------------------------ */
+
+const HOSE_STATIONS = [
+  { station_id: 's-1', station_name: 'شبرا 1', region_id: 'r-west', region_name: 'West' },
+  { station_id: 's-0', station_name: 'الماظة', region_id: 'r-east', region_name: 'East' },
+  { station_id: 's-2', station_name: 'Alex Depot 7', region_id: 'r-alex', region_name: 'Alex' },
+]
+
+const HOSE_DUE_CYCLE = ['valid', 'overdue', 'due_7', 'due_30', 'due_60', 'due_today', 'due_15']
+
+function hoseRow(i: number, over: Record<string, unknown> = {}) {
+  const st = HOSE_STATIONS[i % HOSE_STATIONS.length]
+  const due = HOSE_DUE_CYCLE[i % HOSE_DUE_CYCLE.length]
+  const serial = `HS-${String(2024000 + i)}`
+  return {
+    id: `hs-${i}`,
+    region_id: st.region_id, region_name: st.region_name,
+    station_id: st.station_id, station_name: st.station_name,
+    unit_id: 'u-1', unit_name: 'الماظة 1',
+    dispenser_id: i % 3 === 0 ? 'd-1' : null,
+    dispenser_name: i % 3 === 0 ? 'Dispenser 1' : null,
+    mapping_status: 'resolved', needs_mapping: false,
+    description: i % 5 === 0 ? null : 'خرطوم تعبئة عالي الضغط',
+    serial_number: serial, serial_number_raw: serial, serial_status: 'assigned',
+    serial_missing: false, serial_duplicate: false,
+    working_pressure_raw: '250', working_pressure_value: 250, working_pressure_unit: 'BAR',
+    test_pressure_raw: '375', test_pressure_value: 375, test_pressure_unit: 'BAR',
+    last_test_date: '2025-09-18', last_test_precision: 'exact_date', last_test_display: '18 Sep 2025',
+    next_test_date: '2026-09-18', next_test_precision: 'exact_date', next_test_display: '18 Sep 2026',
+    days_left: 2, due_status: due,
+    source_status_raw: null, needs_review: false, notes: null,
+    source_file: 'HOSES.xlsx', source_sheet: 'Sheet1', source_row: 10 + i,
+    ...over,
+  }
+}
+
+const HOSE_REGISTRY = [
+  // The East + Overdue + missing-serial intersection target.
+  hoseRow(1, {
+    id: 'hs-east-overdue-noserial',
+    region_id: 'r-east', region_name: 'East', station_id: 's-0', station_name: 'الماظة',
+    due_status: 'overdue', days_left: -9,
+    next_test_date: '2026-09-07', next_test_display: '7 Sep 2026',
+    serial_number: null, serial_number_raw: null, serial_status: 'unknown',
+    serial_missing: true, serial_duplicate: false,
+  }),
+  // A genuine DUPLICATE pair. Both rows are kept; neither is merged.
+  hoseRow(2, {
+    id: 'hs-dup-a', serial_number: 'HS-DUP-77', serial_number_raw: 'HS-DUP-77',
+    serial_duplicate: true, serial_missing: false,
+  }),
+  hoseRow(3, {
+    id: 'hs-dup-b', serial_number: 'HS-DUP-77', serial_number_raw: 'HS-DUP-77',
+    serial_duplicate: true, serial_missing: false,
+  }),
+  // A leading-zero serial. Never padded, never stripped, never numeric-cast.
+  hoseRow(4, {
+    id: 'hs-leadingzero', serial_number: '0007412', serial_number_raw: '0007412',
+  }),
+  // The source states no serial has been issued yet - a fact, not a gap.
+  hoseRow(5, {
+    id: 'hs-notyet', serial_number: null, serial_number_raw: null,
+    serial_status: 'not_yet_assigned', serial_missing: true,
+  }),
+  // A very long identifier.
+  hoseRow(6, {
+    id: 'hs-long',
+    serial_number: 'HS-CNG-2019-000044170-REV-A-LONG-IDENTIFIER',
+    serial_number_raw: 'HS-CNG-2019-000044170-REV-A-LONG-IDENTIFIER',
+  }),
+  // A long Arabic description, to prove it neither breaks the row nor is
+  // parsed into a manufacturer.
+  hoseRow(7, {
+    id: 'hs-longdesc',
+    description: 'خرطوم تعبئة غاز طبيعي مضغوط عالي الضغط للمحطة رقم اثنين مع وصلة سريعة الفصل ومقاومة للاحتكاك',
+  }),
+  // Unit genuinely unknown: recorded at Station level only.
+  hoseRow(8, {
+    id: 'hs-needs-unit', mapping_status: 'needs_unit_mapping', needs_mapping: true,
+    unit_id: null, unit_name: null, dispenser_id: null, dispenser_name: null,
+  }),
+  hoseRow(9, {
+    id: 'hs-conflict', mapping_status: 'conflict', needs_mapping: true,
+    notes: 'Two source files disagree on the Unit.',
+  }),
+  // A year-only next test. NEVER a countdown, never 1 Jan or 31 Dec.
+  hoseRow(10, {
+    id: 'hs-yearonly', due_status: 'unknown', days_left: null,
+    next_test_date: null, next_test_precision: 'year_only', next_test_display: '2027',
+  }),
+  // No date at all, with the preserved Arabic source status beside it.
+  hoseRow(11, {
+    id: 'hs-nodate', due_status: 'unknown', days_left: null,
+    next_test_date: null, next_test_precision: 'unknown', next_test_display: null,
+    source_status_raw: 'منتهي',
+  }),
+  // A PSI hose beside the BAR ones: units are never converted.
+  hoseRow(12, {
+    id: 'hs-psi',
+    working_pressure_raw: '3600', working_pressure_value: 3600, working_pressure_unit: 'PSI',
+    test_pressure_raw: '5400', test_pressure_value: 5400, test_pressure_unit: 'PSI',
+  }),
+  // No pressure proven at all: the number is not dressed in a guessed unit.
+  hoseRow(13, {
+    id: 'hs-nopressure',
+    working_pressure_raw: null, working_pressure_value: null, working_pressure_unit: null,
+    test_pressure_raw: null, test_pressure_value: null, test_pressure_unit: null,
+  }),
+  ...Array.from({ length: 58 }, (_, k) => hoseRow(k + 14)),
+]
+
 type Reply = { data: unknown; error: { message: string } | null; count?: number }
 
 const FAILURE = { message: 'permission denied for view v_station_summary' }
@@ -486,7 +612,8 @@ function builder(table: string) {
   let head = false
   const filters: { region?: string; overdue?: boolean; unresolved?: boolean; search?: string; stationId?: string; unitId?: string; assetType?: string; mappingStatus?: string;
     parentKind?: string; availability?: string; dueStatus?: string; dueIn?: string[]; parentId?: string;
-    presence?: string; areaType?: string } = {}
+    presence?: string; areaType?: string;
+    serialMissing?: boolean; serialDuplicate?: boolean } = {}
   // PostgREST applies .order() calls IN SEQUENCE - the first is the primary
   // key, later ones are tie-breaks. An earlier version of this stub overwrote
   // a single column instead, so a sort by Assets silently became a sort by
@@ -647,6 +774,43 @@ function builder(table: string) {
       if (head) return { data: null, error: null, count: list.length }
       return { data: list.slice(from, to + 1), error: null, count: list.length }
     }
+    // Global Hoses Management (Prompt 14). Reads v_hose_registry, which the
+    // Prompt-10 Unit tab does not use - that tab still reads v_hose_management.
+    if (table === 'v_hose_registry') {
+      if (scenario === 'empty') return { data: [], error: null, count: 0 }
+      let list: Record<string, unknown>[] = HOSE_REGISTRY.slice()
+      if (scenario === 'scoped') list = list.filter((r) => r.region_id === 'r-east')
+      if (filters.region) list = list.filter((r) => r.region_id === filters.region)
+      if (filters.stationId) list = list.filter((r) => r.station_id === filters.stationId)
+      if (filters.mappingStatus) list = list.filter((r) => r.mapping_status === filters.mappingStatus)
+      if (filters.dueStatus) list = list.filter((r) => r.due_status === filters.dueStatus)
+      if (filters.dueIn) list = list.filter((r) => filters.dueIn!.includes(String(r.due_status)))
+      if (filters.serialMissing !== undefined) list = list.filter((r) => r.serial_missing === filters.serialMissing)
+      if (filters.serialDuplicate !== undefined) list = list.filter((r) => r.serial_duplicate === filters.serialDuplicate)
+      if (filters.search) {
+        const q = filters.search.toLowerCase()
+        list = list.filter((r) =>
+          ['serial_number', 'description', 'station_name', 'unit_name']
+            .some((k) => String(r[k] ?? '').toLowerCase().includes(q)),
+        )
+      }
+      list.sort((a, b) => {
+        for (const { col, asc } of orders) {
+          const x = a[col] as string | number | null
+          const y = b[col] as string | number | null
+          if (x === y) continue
+          // NULLs last, matching nullsFirst:false on the real query.
+          if (x === null || x === undefined) return 1
+          if (y === null || y === undefined) return -1
+          const cmp = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'ar')
+          if (cmp !== 0) return asc ? cmp : -cmp
+        }
+        return 0
+      })
+      // A head count is still a FILTERED count in PostgREST.
+      if (head) return { data: null, error: null, count: list.length }
+      return { data: list.slice(from, to + 1), error: null, count: list.length }
+    }
     // Unit workspace equipment. `emptytab` proves an empty tab is distinct
     // from a failed one; `error` proves a failure never renders as empty.
     if (EQUIPMENT_TABLES.has(table)) {
@@ -684,6 +848,8 @@ function builder(table: string) {
       if (col === 'due_status') filters.dueStatus = value
       if (col === 'detector_presence') filters.presence = value
       if (col === 'area_type') filters.areaType = value
+      if (col === 'serial_missing') filters.serialMissing = String(value) === 'true'
+      if (col === 'serial_duplicate') filters.serialDuplicate = String(value) === 'true'
       return chain
     },
     gt: (col: string) => {

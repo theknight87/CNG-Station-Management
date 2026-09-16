@@ -41,6 +41,7 @@ import { StationsView } from '@/features/stations/StationsView'
 import { SrvWorkspace } from '@/features/relief-valves/SrvWorkspace'
 import { VesselWorkspace } from '@/features/vessels/VesselWorkspace'
 import { GasDetectorsView } from '@/features/gas-detectors/GasDetectorsView'
+import { HosesManagementView } from '@/features/hoses/HosesManagementView'
 import { VesselRegistrySection } from '@/features/vessels/sections/VesselRegistrySection'
 import { InstalledSrvSection } from '@/features/relief-valves/sections/InstalledSrvSection'
 import { WarehouseSrvSection } from '@/features/relief-valves/sections/WarehouseSrvSection'
@@ -71,7 +72,7 @@ function HierarchyFixture({ view }: { view: string }) {
   return null
 }
 
-const HIERARCHY_VIEWS = ['regions', 'region', 'stations', 'station', 'unit', 'srvs', 'vessels', 'detectors']
+const HIERARCHY_VIEWS = ['regions', 'region', 'stations', 'station', 'unit', 'srvs', 'vessels', 'detectors', 'hoses']
 
 /**
  * DEV-ONLY visual verification harness. NOT part of the application build.
@@ -180,6 +181,7 @@ function previewEntry(): string {
     return `/manage/vessels/${tab ?? 'storage'}`
   }
   if (v === 'detectors') return '/manage/gas-detectors'
+  if (v === 'hoses') return '/manage/hoses'
   if (v === 'srvs') {
     const tab = new URLSearchParams(window.location.search).get('tab')
     return `/manage/srvs/${tab ?? 'installed'}`
@@ -254,6 +256,7 @@ function Preview() {
             <Route path="recovery" element={<VesselRegistrySection assetType="recovery_tank" />} />
           </Route>
           <Route path="/manage/gas-detectors" element={<GasDetectorsView />} />
+          <Route path="/manage/hoses" element={<HosesManagementView />} />
           <Route path="*" element={<HierarchyFixture view={view} />} />
         </Routes>
       ) : (

@@ -133,6 +133,32 @@ INSERT INTO gas_detector_presence (station_id, region_id, unit_id, detector_pres
 SELECT 'e5700000-0000-0000-0000-0000000000f1', r_west, 'e5700000-0000-0000-0000-0000000000f2',
        'not_installed', 'Not exist in the station', 'open', 'Open Area' FROM f;
 
+
+-- Hoses (Prompt 14). East and West, resolved and unit-unresolved, plus a
+-- duplicated serial that spans the region boundary on purpose.
+INSERT INTO hoses (id, station_id, region_id, unit_id, mapping_status, description, serial_number, serial_status)
+SELECT 'e5700000-0000-0000-0000-0000000000e9', 'e5700000-0000-0000-0000-0000000000e1', r_east,
+       'e5700000-0000-0000-0000-0000000000e2', 'resolved', 'TESTDATA east hose', 'TESTDATA-EAST-HOSE', 'assigned' FROM f;
+INSERT INTO hoses (id, station_id, region_id, unit_id, mapping_status, description, serial_number, serial_status)
+SELECT 'e5700000-0000-0000-0000-0000000000f9', 'e5700000-0000-0000-0000-0000000000f1', r_west,
+       'e5700000-0000-0000-0000-0000000000f2', 'resolved', 'TESTDATA west hose', 'TESTDATA-WEST-HOSE', 'assigned' FROM f;
+-- Station proven, Unit NOT. No unit is guessed for it anywhere.
+INSERT INTO hoses (id, station_id, region_id, unit_id, mapping_status, serial_number, serial_status)
+SELECT 'e5700000-0000-0000-0000-0000000000ea', 'e5700000-0000-0000-0000-0000000000e1', r_east,
+       NULL, 'needs_unit_mapping', 'TESTDATA-EAST-HOSE-NOUNIT', 'assigned' FROM f;
+-- No serial at all.
+INSERT INTO hoses (id, station_id, region_id, unit_id, mapping_status, serial_number)
+SELECT 'e5700000-0000-0000-0000-0000000000eb', 'e5700000-0000-0000-0000-0000000000e1', r_east,
+       NULL, 'needs_unit_mapping', NULL FROM f;
+-- THE CROSS-REGION SERIAL COLLISION. One copy in East, one in West. Neither
+-- region's reader may learn of the other's existence through the duplicate flag.
+INSERT INTO hoses (id, station_id, region_id, unit_id, mapping_status, serial_number, serial_status)
+SELECT 'e5700000-0000-0000-0000-0000000000ec', 'e5700000-0000-0000-0000-0000000000e1', r_east,
+       NULL, 'needs_unit_mapping', 'TESTDATA-CROSS-DUP', 'assigned' FROM f;
+INSERT INTO hoses (id, station_id, region_id, unit_id, mapping_status, serial_number, serial_status)
+SELECT 'e5700000-0000-0000-0000-0000000000fc', 'e5700000-0000-0000-0000-0000000000f1', r_west,
+       NULL, 'needs_unit_mapping', 'TESTDATA-CROSS-DUP', 'assigned' FROM f;
+
 INSERT INTO warehouse_relief_valves (id, availability_status, serial_number)
 VALUES ('e5700000-0000-0000-0000-0000000000a5', 'available_calibrated', 'TESTDATA-WH-1');
 
@@ -1430,6 +1456,169 @@ BEGIN
   PERFORM pg_temp.ok(n = 0,
     'GD-30 a resolved detector always carries a confirmed Unit, so a Unit tab cannot show an unresolved one');
   RESET ROLE;
+END $$;
+
+
+-- ---------------------------------------------------------------------------
+-- Hoses Management (Prompt 14)
+--
+-- The registry widens WHAT is listed, never WHO may see it. Every assertion
+-- below runs as a real role through the real policies.
+-- ---------------------------------------------------------------------------
+DO $$
+DECLARE n bigint; cols int;
+BEGIN
+  ---------------------------------------------------------------- viewer, East
+  PERFORM pg_temp.become('clerk_view_east');
+
+  SELECT count(*) INTO n FROM v_hose_registry;
+  PERFORM pg_temp.ok(n = 4, 'HOSE-1 an East viewer sees only the 4 East hoses, not the 2 West ones');
+
+  -- Naming the West row directly changes nothing: RLS filters, it does not hide.
+  SELECT count(*) INTO n FROM v_hose_registry WHERE id = 'e5700000-0000-0000-0000-0000000000f9';
+  PERFORM pg_temp.ok(n = 0, 'HOSE-2 a West hose cannot be named directly by an East viewer (IDOR)');
+
+  SELECT count(*) INTO n FROM hoses WHERE id = 'e5700000-0000-0000-0000-0000000000f9';
+  PERFORM pg_temp.ok(n = 0, 'HOSE-3 nor through the hoses table itself');
+
+  -- Search is retrieval, not an authorization bypass.
+  SELECT count(*) INTO n FROM v_hose_registry WHERE serial_number ILIKE '%TESTDATA-WEST-HOSE%';
+  PERFORM pg_temp.ok(n = 0, 'HOSE-4 search cannot surface an unauthorized hose by serial');
+
+  SELECT count(*) INTO n FROM v_hose_registry WHERE description ILIKE '%west hose%';
+  PERFORM pg_temp.ok(n = 0, 'HOSE-5 nor by description');
+
+  SELECT count(*) INTO n FROM v_hose_registry WHERE station_name ILIKE '%WEST%';
+  PERFORM pg_temp.ok(n = 0, 'HOSE-6 nor by station name');
+
+  -- The count behind pagination is RLS-scoped too.
+  SELECT count(*) INTO n FROM v_hose_registry WHERE mapping_status = 'needs_unit_mapping';
+  PERFORM pg_temp.ok(n = 3, 'HOSE-7 a filtered count counts only authorized rows');
+
+  -- Filters narrow an authorized set; they never widen it.
+  SELECT count(*) INTO n FROM v_hose_registry WHERE serial_missing;
+  PERFORM pg_temp.ok(n = 1, 'HOSE-8 the missing-serial filter reaches only East rows');
+
+  -- THE ONE THAT MATTERS MOST FOR THIS FEATURE.
+  --
+  -- 'TESTDATA-CROSS-DUP' exists once in East and once in West. If the duplicate
+  -- flag were computed over the whole table, an East viewer would be told their
+  -- hose is a duplicate - disclosing that a West record they may not read
+  -- exists. Because the view is security_invoker, the window function sees only
+  -- this caller's rows, so the flag is correctly FALSE. A narrower, honest
+  -- signal beats a complete one that leaks.
+  SELECT count(*) INTO n FROM v_hose_registry
+   WHERE serial_number = 'TESTDATA-CROSS-DUP' AND serial_duplicate;
+  PERFORM pg_temp.ok(n = 0,
+    'HOSE-9 a cross-region serial collision is NOT reported as a duplicate, so it cannot leak the other region''s row');
+
+  SELECT count(*) INTO n FROM v_hose_registry WHERE serial_number = 'TESTDATA-CROSS-DUP';
+  PERFORM pg_temp.ok(n = 1, 'HOSE-10 and the East viewer sees only their own copy of that serial');
+
+  -- Detail expansion is the same query, so it leaks nothing extra.
+  SELECT count(*) INTO n FROM v_hose_registry
+   WHERE id = 'e5700000-0000-0000-0000-0000000000f9' AND source_file IS NOT NULL;
+  PERFORM pg_temp.ok(n = 0, 'HOSE-11 expanding a detail cannot expose an unauthorized record''s provenance');
+
+  -- A viewer is read-only. NOTE: authenticated HOLDS the UPDATE grant, so this
+  -- raises no privilege error - the row fails the policy's USING clause and
+  -- nothing matches. Zero rows changed IS the security property.
+  UPDATE hoses SET mapping_status = 'resolved'
+   WHERE id = 'e5700000-0000-0000-0000-0000000000ea';
+  GET DIAGNOSTICS n = ROW_COUNT;
+  PERFORM pg_temp.ok(n = 0,
+    'HOSE-12 a viewer changes no row when resolving a mapping in their own region');
+
+  RESET ROLE;
+
+  --------------------------------------------------------------- engineer, East
+  PERFORM pg_temp.become('clerk_eng_east');
+
+  UPDATE hoses SET unit_id = 'e5700000-0000-0000-0000-0000000000f2'
+   WHERE id = 'e5700000-0000-0000-0000-0000000000f9';
+  GET DIAGNOSTICS n = ROW_COUNT;
+  PERFORM pg_temp.ok(n = 0, 'HOSE-13 an East engineer changes no row on a West hose');
+
+  RESET ROLE;
+  SELECT count(*) INTO n FROM hoses
+   WHERE id = 'e5700000-0000-0000-0000-0000000000f9'
+     AND unit_id = 'e5700000-0000-0000-0000-0000000000f2';
+  PERFORM pg_temp.ok(n = 1,
+    'HOSE-14 the West hose still carries its own Unit, unchanged by the attempt');
+
+  ---------------------------------------------------------------- viewer, West
+  PERFORM pg_temp.become('clerk_view_east');
+  SELECT count(*) INTO n FROM v_hose_registry WHERE region_name = 'West';
+  PERFORM pg_temp.ok(n = 0, 'HOSE-15 no West row reaches an East reader through the registry view');
+  RESET ROLE;
+
+  ------------------------------------------------------------------------ anon
+  PERFORM pg_temp.become(NULL);
+  SET LOCAL ROLE anon;
+  PERFORM pg_temp.ok(pg_temp.denied('SELECT count(*) FROM hoses'),
+    'HOSE-16 anon cannot read hoses');
+  PERFORM pg_temp.ok(pg_temp.denied('SELECT count(*) FROM v_hose_registry'),
+    'HOSE-17 anon cannot read the hose registry view');
+  RESET ROLE;
+END $$;
+
+-- An admin sees the whole picture, which is what makes HOSE-9 a scoping result
+-- rather than an accident of the fixture.
+DO $$
+DECLARE n bigint;
+BEGIN
+  PERFORM pg_temp.become('clerk_admin');
+  SELECT count(*) INTO n FROM v_hose_registry WHERE serial_number = 'TESTDATA-CROSS-DUP' AND serial_duplicate;
+  PERFORM pg_temp.ok(n = 2,
+    'HOSE-18 an admin, who may read both regions, DOES see the collision reported as a duplicate');
+
+  -- The Prompt-10 Unit tab must keep its Unit scoping.
+  SELECT count(*) INTO n FROM v_hose_registry WHERE unit_id IS NULL AND mapping_status = 'resolved';
+  PERFORM pg_temp.ok(n = 0,
+    'HOSE-19 a resolved hose always carries a confirmed Unit, so a Unit tab cannot show an unresolved one');
+  RESET ROLE;
+END $$;
+
+-- Structural guarantees for the view the registry reads.
+DO $$
+DECLARE definer int; anon_grants int; write_grants int; uniq int;
+BEGIN
+  SELECT count(*) INTO definer
+    FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace
+   WHERE ns.nspname = 'public' AND c.relname = 'v_hose_registry'
+     AND NOT coalesce((c.reloptions::text LIKE '%security_invoker=true%'), false);
+  PERFORM pg_temp.ok(definer = 0, 'HOSE-20 the hose registry view is security_invoker');
+
+  SELECT count(*) INTO anon_grants
+    FROM information_schema.role_table_grants
+   WHERE grantee = 'anon' AND table_schema = 'public' AND table_name = 'v_hose_registry';
+  PERFORM pg_temp.ok(anon_grants = 0, 'HOSE-21 anon holds no grant on the hose registry view');
+
+  SELECT count(*) INTO write_grants
+    FROM information_schema.role_table_grants
+   WHERE table_schema = 'public' AND table_name = 'v_hose_registry'
+     AND grantee IN ('anon', 'authenticated', 'service_role', 'PUBLIC')
+     AND privilege_type IN ('INSERT', 'UPDATE', 'DELETE', 'TRUNCATE');
+  PERFORM pg_temp.ok(write_grants = 0,
+    format('HOSE-22 the read-only hose view cannot be written through (found %s)', write_grants));
+
+  -- The Prompt-10 view is untouched and still serves the Unit tab.
+  PERFORM pg_temp.ok(
+    EXISTS (SELECT 1 FROM pg_views WHERE schemaname = 'public' AND viewname = 'v_hose_management'),
+    'HOSE-23 v_hose_management still exists unchanged for the Unit Hoses tab');
+
+  -- No UNIQUE constraint was added on serial_number.
+  SELECT count(*) INTO uniq FROM pg_indexes
+   WHERE tablename = 'hoses' AND indexdef ILIKE '%UNIQUE%' AND indexdef ILIKE '%serial_number%';
+  PERFORM pg_temp.ok(uniq = 0,
+    'HOSE-24 no UNIQUE constraint was added on hose serial_number');
+
+  -- Mapping attribution is still forgeable and unaudited, which is why the
+  -- mapping mutation UI stays deferred (prompt 14 section 24).
+  SELECT count(*) INTO uniq FROM pg_trigger
+   WHERE tgrelid = 'hoses'::regclass AND NOT tgisinternal AND tgname ILIKE '%audit%';
+  PERFORM pg_temp.ok(uniq = 0,
+    'HOSE-25 hoses has no audit trigger, so mapping attribution is not yet trustworthy');
 END $$;
 
 DO $$ BEGIN RAISE EXCEPTION 'RLS_SUITE_ROLLBACK'; END $$;

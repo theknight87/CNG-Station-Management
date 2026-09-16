@@ -828,4 +828,164 @@ SELECT pg_temp.assert(
            WHERE tablename = 'gas_detector_presence' AND indexname = 'gdp_station_unit_uq'),
   'GDS10: presence evidence is unique per station and unit');
 
+
+-- ---------------------------------------------------------------------------
+-- Hose constraints and identity (Prompt 14).
+--
+-- A hose is an individually traceable item, so these defend IDENTITY as much
+-- as hierarchy: what the database will and will not store about a serial.
+-- ---------------------------------------------------------------------------
+
+-- HS1: MANDATORY canonical-compatibility check (prompt 14 section 5).
+-- station_id is NOT NULL, so a Station-unconfirmed hose cannot be stored.
+-- Prompt 6 staged 49 hose rows in that state: a Prompt-21 import blocker.
+SELECT pg_temp.assert_rejected($q$
+  INSERT INTO hoses (station_id, region_id, mapping_status)
+  SELECT NULL, id, 'needs_station_mapping' FROM regions LIMIT 1$q$,
+  'HS1: BLOCKER - a station-unconfirmed hose cannot enter the canonical table');
+
+-- HS2: the Unit-mapping model. unit_id IS nullable, so a hose may legitimately
+-- belong to a Station with its Unit still unresolved. This is ACCEPTED - it is
+-- the normal pending state, not an error.
+CREATE TEMP TABLE hs2 AS SELECT id AS station_id, region_id FROM stations ORDER BY id LIMIT 1;
+INSERT INTO hoses (station_id, region_id, unit_id, mapping_status, serial_number)
+SELECT station_id, region_id, NULL, 'needs_unit_mapping', 'HS-TEST-0001' FROM hs2;
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM hoses WHERE serial_number = 'HS-TEST-0001' AND unit_id IS NULL) = 1,
+  'HS2: a hose may belong to a Station with its Unit unresolved');
+
+-- HS3: but a RESOLVED hose must carry a confirmed Unit. That is what keeps the
+-- Prompt-10 Unit tab honest.
+SELECT pg_temp.assert_rejected($q$
+  INSERT INTO hoses (station_id, region_id, unit_id, mapping_status)
+  SELECT station_id, region_id, NULL, 'resolved' FROM hs2$q$,
+  'HS3: a resolved hose must carry a confirmed Unit');
+
+-- HS4: and needs_unit_mapping means the Unit really is absent.
+SELECT pg_temp.assert_rejected($q$
+  INSERT INTO hoses (station_id, region_id, unit_id, mapping_status)
+  SELECT u.station_id, u.region_id, u.id, 'needs_unit_mapping' FROM units u LIMIT 1$q$,
+  'HS4: needs_unit_mapping means the Unit really is absent');
+
+-- HS5: the hierarchy has a level the other registries do not - a Dispenser -
+-- and it cannot be attached before the Unit is known.
+SELECT pg_temp.assert_rejected($q$
+  INSERT INTO hoses (station_id, region_id, unit_id, dispenser_id, mapping_status)
+  SELECT station_id, region_id, NULL, gen_random_uuid(), 'needs_unit_mapping' FROM hs2$q$,
+  'HS5: a Dispenser cannot be attached to a hose whose Unit is unknown');
+
+-- HS6: identifiers are TEXT, so a leading zero survives storage verbatim.
+INSERT INTO hoses (station_id, region_id, mapping_status, serial_number, serial_number_raw)
+SELECT station_id, region_id, 'needs_unit_mapping', '0007412', '0007412' FROM hs2;
+SELECT pg_temp.assert(
+  (SELECT serial_number FROM hoses WHERE serial_number_raw = '0007412') = '0007412'
+  AND (SELECT data_type FROM information_schema.columns
+        WHERE table_name = 'hoses' AND column_name = 'serial_number') = 'text',
+  'HS6: a hose serial is TEXT and its leading zeros survive exactly');
+
+-- HS7: a missing serial is storable. A hose is never blocked, and never given
+-- a generated identifier, because the source recorded none.
+INSERT INTO hoses (station_id, region_id, mapping_status, serial_number)
+SELECT station_id, region_id, 'needs_unit_mapping', NULL FROM hs2;
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM hoses WHERE serial_number IS NULL) >= 1,
+  'HS7: a hose with no recorded serial is a valid record, not a blocked one');
+
+-- HS8: there is NO UNIQUE constraint on serial_number, and none was added.
+-- Uniqueness is operationally desirable but the source does not prove it, and
+-- a constraint would reject valid historical rows at the Prompt-21 import.
+SELECT pg_temp.assert(
+  NOT EXISTS (
+    SELECT 1 FROM pg_indexes
+     WHERE tablename = 'hoses' AND indexdef ILIKE '%UNIQUE%' AND indexdef ILIKE '%serial_number%'),
+  'HS8: no UNIQUE constraint on hose serial_number - duplicates are reported, never rejected');
+
+-- HS9: so duplicates are genuinely storable, and both rows are kept.
+INSERT INTO hoses (station_id, region_id, mapping_status, serial_number)
+SELECT station_id, region_id, 'needs_unit_mapping', 'HS-DUP-77' FROM hs2;
+INSERT INTO hoses (station_id, region_id, mapping_status, serial_number)
+SELECT station_id, region_id, 'needs_unit_mapping', 'HS-DUP-77' FROM hs2;
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM hoses WHERE serial_number = 'HS-DUP-77') = 2,
+  'HS9: two hoses may carry the same serial and both are retained');
+
+-- HS10: and the registry view REPORTS that condition.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM v_hose_registry WHERE serial_number = 'HS-DUP-77' AND serial_duplicate) = 2
+  AND (SELECT serial_duplicate FROM v_hose_registry WHERE serial_number = 'HS-TEST-0001') = false,
+  'HS10: v_hose_registry flags a duplicated serial and leaves a unique one unflagged');
+
+-- HS11: several NULL serials are several UNKNOWNS, not one repeated value.
+-- Conflating them would invent a duplicate the evidence does not support
+-- (principle #16).
+INSERT INTO hoses (station_id, region_id, mapping_status, serial_number)
+SELECT station_id, region_id, 'needs_unit_mapping', NULL FROM hs2;
+SELECT pg_temp.assert(
+  NOT EXISTS (SELECT 1 FROM v_hose_registry WHERE serial_number IS NULL AND serial_duplicate),
+  'HS11: NULL serials are never duplicates of one another');
+
+-- HS12: missing and duplicate are separate reported conditions.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM v_hose_registry WHERE serial_missing AND serial_duplicate) = 0
+  AND (SELECT count(*) FROM v_hose_registry WHERE serial_missing) >= 2,
+  'HS12: serial_missing and serial_duplicate are distinct and never both true');
+
+-- HS13: a date and its precision cannot disagree, so a year-only next test can
+-- never leak into an exact countdown.
+SELECT pg_temp.assert_rejected($q$
+  INSERT INTO hoses (station_id, region_id, mapping_status, next_test_date, next_test_precision)
+  SELECT station_id, region_id, 'needs_unit_mapping', DATE '2027-01-01', 'year_only' FROM hs2$q$,
+  'HS13: a year_only next test cannot carry an exact date');
+
+SELECT pg_temp.assert_rejected($q$
+  INSERT INTO hoses (station_id, region_id, mapping_status, last_test_date, last_test_precision)
+  SELECT station_id, region_id, 'needs_unit_mapping', NULL, 'exact_date' FROM hs2$q$,
+  'HS14: an exact_date last-test precision cannot stand without a date');
+
+-- HS15: only an exact date drives a countdown; a year-only one yields none.
+INSERT INTO hoses (station_id, region_id, mapping_status, serial_number, next_test_raw, next_test_precision)
+SELECT station_id, region_id, 'needs_unit_mapping', 'HS-YEAR-1', '2027', 'year_only' FROM hs2;
+SELECT pg_temp.assert(
+  (SELECT days_left IS NULL AND due_status = 'unknown'
+     FROM v_hose_registry WHERE serial_number = 'HS-YEAR-1'),
+  'HS15: a year-only next test yields no countdown and never reads as within date');
+
+-- HS16: a hose cannot be filed under a region its station does not belong to.
+SELECT pg_temp.assert_rejected($q$
+  INSERT INTO hoses (station_id, region_id, mapping_status)
+  SELECT s.id, r.id, 'needs_unit_mapping'
+    FROM stations s, regions r WHERE r.id <> s.region_id LIMIT 1$q$,
+  'HS16: a hose cannot be filed under a foreign region');
+
+-- HS17: the schema says TEST, not calibration. The UI wording follows it.
+SELECT pg_temp.assert(
+  EXISTS (SELECT 1 FROM information_schema.columns
+           WHERE table_name = 'hoses' AND column_name = 'next_test_date')
+  AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'hoses' AND column_name ILIKE '%calibration%'),
+  'HS17: hoses carry test dates, not calibration dates');
+
+-- HS18: no manufacturer or model column exists, so neither may be displayed.
+SELECT pg_temp.assert(
+  NOT EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name = 'hoses' AND column_name IN ('manufacturer', 'model')),
+  'HS18: hoses carry a free-text description, not manufacturer and model');
+
+-- HS19: no hydrostatic-specific column exists anywhere. The alert vocabulary
+-- calls the subject hose_hydrotest, but no table names it, so the UI does not
+-- claim the source said "hydrostatic".
+SELECT pg_temp.assert(
+  NOT EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema = 'public' AND column_name ILIKE '%hydro%'),
+  'HS19: no hydrostatic-named column exists; the schema wording is "test"');
+
+-- HS20: there is no authoritative test INTERVAL anywhere, so none may be
+-- hard-coded in the UI. alert_rules carries thresholds only.
+SELECT pg_temp.assert(
+  NOT EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema = 'public'
+                 AND (column_name ILIKE '%interval%' OR column_name ILIKE '%frequency%'
+                      OR column_name ILIKE '%period%' OR column_name ILIKE '%months%')),
+  'HS20: no authoritative test interval is represented anywhere in the schema');
+
 ROLLBACK;

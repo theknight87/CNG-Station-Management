@@ -941,3 +941,47 @@ audit trigger and its mapping columns are client-writable, so attribution is for
 unrecorded.
 
 See `docs/gas-detector-management.md`.
+
+
+## Hoses Management (Prompt 14)
+
+`/manage/hoses` is the company-wide hose registry, and the sixth feature to share
+`RegistryTable`. Unlike the other registries it is organised around **identity** first:
+a hose is an individually traceable item, so Serial leads and serial quality is a
+first-class signal.
+
+It added **one migration**, `0030_hose_registry_view.sql` — `v_hose_registry`,
+`security_invoker`, additive. `v_hose_management` (0011) is untouched and still serves
+the Prompt-10 Unit Hoses tab.
+
+The new view exists for one reason: `serial_duplicate` needs a window function over the
+whole visible set, which a 50-row page cannot compute and which client-side detection
+would require fetching every hose to answer. Its RLS semantics matter and are asserted
+both ways: because the view is `security_invoker`, the window runs over the caller's own
+rows, so a serial collision spanning East and West is reported to an admin but NOT to a
+regional viewer — telling them would disclose a record they may not read. NULL serials
+are never duplicates of one another.
+
+Three schema facts shape the screen, all verified empirically rather than assumed:
+
+- **`hoses.station_id` is NOT NULL**, so `needs_station_mapping` is unreachable. This is
+  a THIRD Prompt-21 import blocker (49 rows), taking the known total to 1,104.
+- **`unit_id` is nullable, but `resolved` requires it.** A hose may be stored against a
+  Station with its Unit pending — that insert was run and accepted — while
+  `hoses_resolved_ck` forbids calling such a row resolved. Unit mapping is pending, never
+  permanently optional.
+- **`dispenser_id` exists**, so the chain is `Region → Station → Unit → Dispenser → Hose`
+  — one level deeper than the other asset registries. A dispenser cannot be attached
+  before the Unit is known.
+
+No `UNIQUE` constraint was added on `serial_number`: duplicates are reported, never
+enforced away, because the source does not prove uniqueness and a constraint would reject
+valid historical rows at import. Terminology follows the schema — `last_test_date` /
+`next_test_date` are "Last test" / "Next test", never relabelled "Calibration"; no column
+anywhere is named "hydro", though `alert_subject` calls the subject `hose_hydrotest`.
+
+As with detectors, no authoritative test interval exists anywhere, so none is hard-coded
+and the gap is documented. Mapping mutation remains deferred for the fourth prompt
+running.
+
+See `docs/hoses-management.md`.
