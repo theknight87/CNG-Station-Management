@@ -1,11 +1,14 @@
-import { PagePlaceholder } from '@/components/PagePlaceholder'
+import { PageContainer, PageHeader } from '@/components/layout/PageContainer'
+import { NotificationPreferences } from '@/features/alerts/NotificationPreferences'
 
 export function SettingsPage() {
   return (
-    <PagePlaceholder
-      title="Settings"
-      description="Personal preferences and notification channels for your own account."
-      plannedFor="planned for Prompt 18, alongside notification delivery"
-    />
+    <PageContainer>
+      <PageHeader
+        title="Settings"
+        description="Notification channels for your own account. These apply only to you."
+      />
+      <NotificationPreferences />
+    </PageContainer>
   )
 }

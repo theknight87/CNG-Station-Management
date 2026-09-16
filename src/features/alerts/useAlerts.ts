@@ -298,6 +298,7 @@ export function useAlertSummary(nonce = 0): { state: Loadable<AlertSummary>; rel
  */
 export function useAlertActions(): {
   markRead: (id: string, read: boolean) => Promise<string | null>
+  markAllRead: () => Promise<string | null>
   acknowledge: (id: string) => Promise<string | null>
 } {
   const supabase = useSupabaseClient()
@@ -313,6 +314,21 @@ export function useAlertActions(): {
     [supabase],
   )
 
+  /**
+   * Marks every alert the CALLER can see as read, server-side in one statement.
+   *
+   * Doing this client-side would mean one RPC per row and would mark only the
+   * page currently loaded — "mark all as read" that silently means "mark these
+   * fifty" is worse than not offering it. The function is SECURITY INVOKER, so
+   * the set is bounded by the same RLS that bounds the inbox, and it is read
+   * state only: nothing is acknowledged.
+   */
+  const markAllRead = useCallback(async (): Promise<string | null> => {
+    if (!supabase) return 'Not connected'
+    const { error } = await supabase.rpc('cng_mark_all_alerts_read')
+    return error ? error.message : null
+  }, [supabase])
+
   const acknowledge = useCallback(
     async (id: string): Promise<string | null> => {
       if (!supabase) return 'Not connected'
@@ -322,5 +338,43 @@ export function useAlertActions(): {
     [supabase],
   )
 
-  return { markRead, acknowledge }
+  return { markRead, markAllRead, acknowledge }
+}
+
+/**
+ * How many alerts the caller has not read.
+ *
+ * A HEAD-only count: no rows cross the wire, and `v_alert_inbox` is
+ * security_invoker so the number is already scoped to the caller's Regions —
+ * the badge can never hint at an alert they may not read.
+ *
+ * It is fetched ONCE per mount and on demand, never polled. A background poll
+ * on every screen would cost a request a second for a number that changes
+ * daily, and a count that silently reads zero on a failed request is worse than
+ * no badge at all — so a failure leaves the count null and the badge hidden.
+ */
+export function useUnreadAlertCount(): { count: number | null; refresh: () => void } {
+  const supabase = useSupabaseClient()
+  const [count, setCount] = useState<number | null>(null)
+  const [nonce, setNonce] = useState(0)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      if (!supabase) return
+      const { count: n, error } = await supabase
+        .from('v_alert_inbox')
+        .select('id', { count: 'exact', head: true })
+        .eq('is_read', false)
+      if (cancelled) return
+      setCount(error ? null : (n ?? 0))
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [supabase, nonce])
+
+  const refresh = useCallback(() => setNonce((n) => n + 1), [])
+  return { count, refresh }
 }

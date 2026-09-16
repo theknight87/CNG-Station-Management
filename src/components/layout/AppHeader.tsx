@@ -21,12 +21,15 @@ export function AppHeader({
   sidebarCollapsed,
   onToggleSidebar,
   onOpenMobileNav,
+  notifications,
   account,
 }: {
   crumbs: Crumb[]
   sidebarCollapsed: boolean
   onToggleSidebar: () => void
   onOpenMobileNav: () => void
+  /** The notification bell. Supplied by the app; absent in the preview harness. */
+  notifications?: ReactNode
   account?: ReactNode
 }) {
   return (
@@ -59,6 +62,8 @@ export function AppHeader({
       <div className="min-w-0 flex-1">
         <Breadcrumbs crumbs={crumbs} />
       </div>
+
+      {notifications ? <div className="shrink-0">{notifications}</div> : null}
 
       <div className="shrink-0">{account}</div>
     </header>

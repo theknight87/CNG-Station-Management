@@ -72,3 +72,35 @@ self.addEventListener('notificationclick', (event) => {
     }),
   )
 })
+
+/**
+ * The browser replaced this subscription.
+ *
+ * Chrome and Firefox fire this when a subscription is rotated or expired. The
+ * OLD endpoint is dead from that moment, so the page must re-register rather
+ * than keep pushing into a hole — which is what produces the 404/410 that
+ * deactivates the row server-side.
+ *
+ * The worker deliberately does NOT save the new subscription itself. Saving
+ * goes through `cng_save_push_subscription`, which derives the owning user from
+ * the caller's session, and a service worker has no session. Re-subscribing
+ * here without an owner would either fail or, worse, need an unauthenticated
+ * write path. So the worker resubscribes to keep the browser's own state
+ * coherent and leaves persistence to the next page load, where the user's
+ * identity is real.
+ */
+self.addEventListener('pushsubscriptionchange', (event) => {
+  const applicationServerKey =
+    (event.oldSubscription && event.oldSubscription.options &&
+      event.oldSubscription.options.applicationServerKey) || undefined
+  if (!applicationServerKey) return
+  event.waitUntil(
+    self.registration.pushManager
+      .subscribe({ userVisibleOnly: true, applicationServerKey })
+      .catch(() => {
+        // Nothing safe to do from here. The next visit to /alerts re-subscribes
+        // through the authenticated path and the stale row is deactivated by
+        // the server on its next 404/410.
+      }),
+  )
+})

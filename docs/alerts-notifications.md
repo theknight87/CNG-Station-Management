@@ -943,3 +943,100 @@ and live-verified. Production stands at 35 migrations with `send-notifications` 
 Still deferred, and unchanged by this prompt: production recipient policy (nobody is subscribed
 without opting in), bulk read/acknowledge, resolve/suppress actions, mapping mutation, and the
 1,104 staged Prompt-21 blocker rows.
+
+## 26. Prompts 16-18 reconciliation
+
+### 26.1 Why this section exists
+
+The authoritative Prompt Pack separates notification work into **Prompt 16 (Email)**,
+**Prompt 17 (Web Push)** and **Prompt 18 (In-App)**. The implementation did not follow that
+order: Prompt 15 and its extensions 15.1-15.3C delivered most of all three together, because
+alerts, delivery and channels are one system and building them apart would have meant building
+the same tables three times.
+
+This section reconciles the two. It is a **gap check, not a rebuild** — nothing working was
+refactored because another shape would have been cleaner.
+
+### 26.2 Live verification, restated
+
+| Capability | Status |
+| --- | --- |
+| Email delivery | **VERIFIED LIVE END-TO-END** |
+| Web Push subscription | **VERIFIED LIVE** |
+| Web Push server delivery | **VERIFIED LIVE END-TO-END** |
+| Notification click → `/alerts` | **VERIFIED LIVE** |
+
+Nothing else in this section is claimed as live-verified. The gaps closed below are covered by
+automated tests and the gate, and have **not** been exercised against production.
+
+### 26.3 What the audit found
+
+Nine requirements were already satisfied and needed nothing. Six were **PARTIAL or MISSING** and
+were implemented; two are **DEFERRED BY DESIGN** with the reasoning recorded rather than left as
+silent omissions.
+
+**Gap 1 — the message had almost no context (Prompt 16).** An email said the subject, the
+station, the threshold and the due date. It could not say the Region, the Unit, the asset's
+serial, when the work was last done, or how many days remain — all facts the system holds. The
+delivery claim functions simply never carried them. Migration **0036** widens both claim
+functions identically, so email and push describe the same alert with the same words. An
+unrecorded field is **omitted**, never rendered `N/A` or `-` (§11.5).
+
+**Gap 2 — no deep link.** The email said "Open the Alerts page"; it contained no URL. It now
+carries one, built from a new `CNG_APP_URL` Edge Function variable. **When that variable is
+absent the old sentence is used** — a wrong or stale host in an operational email is worse than
+no link, so none is guessed.
+
+**Gap 3 — no way to turn notifications off (Prompt 17).** `enable()` existed; nothing undid it.
+`disable()` now unsubscribes the browser **and** deletes the stored row: doing only one leaves
+the server pushing into a dead endpoint until a 404/410 eventually deactivates it. The DELETE
+names no user — `push_subs_all` RLS binds it to the caller's own rows.
+
+**Gap 4 — no `pushsubscriptionchange` handler.** Browsers rotate subscriptions; the old endpoint
+dies at that moment. `sw.js` now re-subscribes to keep the browser's own state coherent. It
+deliberately does **not** persist the new subscription: saving goes through
+`cng_save_push_subscription`, which derives the owner from the caller's session, and a service
+worker has no session. Persistence waits for the next page load, where identity is real.
+
+**Gap 5 — no notification bell or unread count (Prompt 18).** `AlertBell` sits in the header.
+It is a **link, not a dropdown**: a popover would be a second, smaller alerts inbox with its own
+filters and column order, and a second place to keep correct. The count is **unread, never
+unacknowledged** — a badge counting acknowledgements would invite the reading that clearing it
+discharges the duty. It is fetched head-only and **never polled**; when the count cannot be read
+the badge is hidden rather than showing a confident `0`.
+
+**Gap 6 — no "mark all as read".** `cng_mark_all_alerts_read()` is SECURITY INVOKER, so
+`alerts_select` bounds the set to the caller's Regions. Client-side iteration would have marked
+only the loaded page — "mark all" that silently means "mark these fifty" is worse than not
+offering it. It touches `alert_reads` alone: `RECON-3` and `RECON-4` assert it acknowledges
+nothing and changes no alert state.
+
+**Gap 7 — preferences were unreachable.** `notification_preferences` and its RLS existed from
+migration 0009, but `/settings` was a placeholder reading *"planned for Prompt 18"*. It now
+carries a real per-channel preference screen. **Nobody is subscribed by default**, and the screen
+says so rather than showing two switches and leaving the default to be inferred.
+
+### 26.4 Deferred by design, with reasons
+
+**Region targeting is not a preference.** Prompt 16 lists it; it is deliberately absent.
+Which Regions reach a user comes from `user_region_access` — their authorization — and
+`cng_enqueue_alert_deliveries` already applies it. A preference able to WIDEN that would be a
+privilege escalation wearing a settings control, and one able only to narrow it is a convenience
+not worth the ambiguity. The screen states this on-screen instead of hiding the omission.
+
+**Per-subject (asset-type) targeting is schema-supported but not exposed.** The `subject` column
+and the enqueue function honour it today; only the channel-level default row is editable. A
+per-subject override needs a precedence UI that makes "SRV calibration overrides my default"
+legible, and half-building that would be worse than the current honest scope.
+
+### 26.5 Closure
+
+| Prompt | Status |
+| --- | --- |
+| 15 | **CLOSED** (§25) |
+| 16 — Email | **CLOSED** |
+| 17 — Web Push | **CLOSED** |
+| 18 — In-App | **CLOSED** |
+
+Deferred and unchanged: production recipient policy, bulk acknowledge (deliberately never
+offered), resolve/suppress actions, mapping mutation, and the 1,104 staged Prompt-21 blocker rows.

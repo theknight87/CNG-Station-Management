@@ -22,6 +22,7 @@ import userEvent from '@testing-library/user-event'
  */
 
 const rpc = vi.hoisted(() => ({ calls: [] as { fn: string; args: Record<string, unknown> }[], error: null as null | { message: string } }))
+const deletes = vi.hoisted(() => ({ calls: [] as { table: string; column: string; value: unknown }[] }))
 
 vi.mock('@/lib/supabase/client', () => ({
   useSupabaseClient: () => ({
@@ -29,6 +30,14 @@ vi.mock('@/lib/supabase/client', () => ({
       rpc.calls.push({ fn, args })
       return Promise.resolve({ data: 'sub-1', error: rpc.error })
     },
+    from: (table: string) => ({
+      delete: () => ({
+        eq: (column: string, value: unknown) => {
+          deletes.calls.push({ table, column, value })
+          return Promise.resolve({ error: null })
+        },
+      }),
+    }),
   }),
 }))
 
@@ -39,6 +48,7 @@ const { urlBase64ToUint8Array, registerActiveServiceWorker } = await import(
 
 const permission = vi.hoisted(() => ({ value: 'default' as NotificationPermission, requested: 0 }))
 const subscribeArgs = vi.hoisted(() => ({ last: null as Record<string, unknown> | null, count: 0 }))
+const unsubscribed = vi.hoisted(() => ({ count: 0 }))
 const sw = vi.hoisted(() => ({
   registerCount: 0,
   /** Resolves the pending activation in `activation: 'deferred'` mode. */
@@ -69,8 +79,13 @@ function installPushEnvironment(
   subscribeArgs.count = 0
   sw.registerCount = 0
 
+  unsubscribed.count = 0
   const subscription = {
     endpoint: 'https://push.example.test/abc123',
+    unsubscribe: () => {
+      unsubscribed.count += 1
+      return Promise.resolve(true)
+    },
     toJSON: () => ({ endpoint: 'https://push.example.test/abc123', keys: { p256dh: 'PPP', auth: 'AAA' } }),
     getKey: () => null,
   }
@@ -131,6 +146,7 @@ function installPushEnvironment(
 beforeEach(() => {
   rpc.calls = []
   rpc.error = null
+  deletes.calls = []
   // A syntactically valid base64url string. Not a real key, and not a secret:
   // the VAPID PUBLIC key is browser-visible by design.
   vi.stubEnv('VITE_VAPID_PUBLIC_KEY', 'BFakePublicKeyForTestsOnly-not-a-secret')
@@ -320,5 +336,44 @@ describe('Repeated clicks and existing subscriptions', () => {
     expect(subscribeArgs.count).toBe(0)
     const call = rpc.calls.find((c) => c.fn === 'cng_save_push_subscription')
     expect(call?.args.p_endpoint).toBe('https://push.example.test/abc123')
+  })
+})
+
+/**
+ * TURNING NOTIFICATIONS OFF (Prompt 17 reconciliation).
+ *
+ * Opting out must be as reachable as opting in, and it has two halves: the push
+ * service must be told to stop, AND the stored row must go. Doing only one
+ * leaves messages being sent into a dead endpoint until a 404/410 eventually
+ * deactivates it.
+ */
+describe('Unsubscribing', () => {
+  it('unsubscribes the browser AND removes the stored subscription', async () => {
+    installPushEnvironment({ existing: true })
+    render(<EnableNotifications />)
+
+    await userEvent.click(await screen.findByRole('button', { name: /turn off/i }))
+
+    // Back to the opt-in state, with nothing stored.
+    expect(await screen.findByRole('button', { name: /enable notifications/i })).toBeDefined()
+    expect(unsubscribed.count).toBe(1)
+    expect(deletes.calls).toHaveLength(1)
+    expect(deletes.calls[0].table).toBe('push_subscriptions')
+    expect(deletes.calls[0].column).toBe('endpoint')
+  })
+
+  it('never names a user when deleting — RLS binds the row to its owner', async () => {
+    installPushEnvironment({ existing: true })
+    render(<EnableNotifications />)
+    await userEvent.click(await screen.findByRole('button', { name: /turn off/i }))
+    expect(JSON.stringify(deletes.calls)).not.toMatch(/app_user|user_id|clerk/i)
+  })
+
+  it('asks for no permission when turning off', async () => {
+    installPushEnvironment({ existing: true })
+    render(<EnableNotifications />)
+    await userEvent.click(await screen.findByRole('button', { name: /turn off/i }))
+    await screen.findByRole('button', { name: /enable notifications/i })
+    expect(permission.requested).toBe(0)
   })
 })

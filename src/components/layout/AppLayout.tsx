@@ -1,6 +1,7 @@
 import { Outlet, useLocation } from 'react-router-dom'
 
 import { AppShell } from '@/components/layout/AppShell'
+import { AlertBell } from '@/features/alerts/AlertBell'
 import { ClerkAccountControl } from '@/components/layout/AccountControl'
 import { BreadcrumbProvider } from '@/components/layout/BreadcrumbProvider'
 import { crumbsFromPath } from '@/components/layout/breadcrumbPaths'
@@ -26,6 +27,7 @@ export function AppLayout() {
     <BreadcrumbProvider>
       {(override) => (
         <AppShell
+          notifications={<AlertBell />}
           role={role}
           crumbs={override ?? crumbsFromPath(location.pathname)}
           account={<ClerkAccountControl role={role} />}

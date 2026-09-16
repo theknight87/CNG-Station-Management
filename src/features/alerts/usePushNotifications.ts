@@ -126,6 +126,7 @@ export function pushSupported(): boolean {
 export function usePushNotifications(): {
   state: PushState
   enable: () => Promise<void>
+  disable: () => Promise<void>
 } {
   const supabase = useSupabaseClient()
   const [state, setState] = useState<PushState>({ status: 'idle' })
@@ -230,5 +231,47 @@ export function usePushNotifications(): {
     }
   }, [supabase])
 
-  return { state, enable }
+  /**
+   * Turn notifications off for THIS browser.
+   *
+   * Two halves, and both matter. `subscription.unsubscribe()` tells the push
+   * service to stop, and deleting the row stops the server trying: leaving
+   * either half undone means messages sent into a dead endpoint until a 404/410
+   * eventually deactivates it.
+   *
+   * The DELETE carries no user id — `push_subs_all` RLS confines it to the
+   * caller's own rows, so one user can never unsubscribe another. Browser
+   * PERMISSION is deliberately not revoked: the Push API cannot, and a user who
+   * turns notifications off here should be able to turn them back on with one
+   * click rather than through browser settings.
+   */
+  const disable = useCallback(async () => {
+    if (inFlight.current) return
+    if (!supabase) {
+      setState({ status: 'error', message: 'Not connected to the database.' })
+      return
+    }
+    inFlight.current = true
+    setState({ status: 'working' })
+    try {
+      const registration = await navigator.serviceWorker.getRegistration()
+      const subscription = await registration?.pushManager.getSubscription()
+      if (subscription) {
+        const endpoint = subscription.endpoint
+        await subscription.unsubscribe()
+        const { error } = await supabase.from('push_subscriptions').delete().eq('endpoint', endpoint)
+        if (error) {
+          setState({ status: 'error', message: error.message })
+          return
+        }
+      }
+      setState({ status: 'idle' })
+    } catch (e) {
+      setState({ status: 'error', message: e instanceof Error ? e.message : 'Could not turn notifications off.' })
+    } finally {
+      inFlight.current = false
+    }
+  }, [supabase])
+
+  return { state, enable, disable }
 }

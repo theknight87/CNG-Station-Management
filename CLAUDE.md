@@ -414,6 +414,27 @@ provider body. Two regression tests assert that invariant AT ITS SOURCE rather t
 acknowledgement semantics, VAPID keys, subscription architecture and the schema are untouched.
 Production: 35 migrations, `send-notifications` v3 and `generate-alerts` v1 ACTIVE, cron live.*
 
+***PROMPTS 16, 17 AND 18 ARE CLOSED by reconciliation** — see `docs/alerts-notifications.md`
+§26. The Prompt Pack separates Email (16), Web Push (17) and In-App (18); the implementation
+delivered most of all three inside Prompt 15-15.3C, because alerts, delivery and channels are one
+system. This was a GAP CHECK, NOT A REBUILD: nothing working was refactored. Nine requirements
+already passed; **six were PARTIAL or MISSING and were implemented** — message context (Region,
+Unit, serial, last completed date, days remaining, all previously unavailable to the sender), an
+email DEEP LINK via a new `CNG_APP_URL` Edge Function variable (absent => the old sentence, never
+a guessed host), push UNSUBSCRIBE (browser + stored row; doing one alone leaves the server pushing
+into a dead endpoint), a `pushsubscriptionchange` handler (re-subscribes but does NOT persist —
+`cng_save_push_subscription` needs a session a worker does not have), a notification BELL with an
+UNREAD count (a LINK not a dropdown, to avoid a second smaller inbox; unread NEVER
+unacknowledged; hidden rather than showing a confident 0 when unreadable), and MARK ALL AS READ
+(`cng_mark_all_alerts_read`, SECURITY INVOKER so RLS bounds the set; asserts it acknowledges
+nothing). `/settings` is no longer a placeholder: notification preferences are reachable, and
+NOBODY IS SUBSCRIBED BY DEFAULT. **Two DEFERRED BY DESIGN with reasons recorded**: Region is NOT a
+preference (it is authorization — a preference able to widen it would be privilege escalation in a
+settings control), and per-subject targeting is schema-supported but unexposed pending a
+precedence UI. **One migration, 0036** — additive; the two delivery claim functions are DROPped and
+recreated only because PostgreSQL cannot widen a RETURNS TABLE in place, and both stay
+`service_role` only. Live verification is UNCHANGED and nothing new is claimed as live-verified.*
+
 *Notification delivery (Prompt 15.1) is built: migration **0034** plus the `send-notifications`
 Edge Function and a Web Push opt-in — see `docs/alerts-notifications.md` §17. The
 Alert/Delivery separation is unchanged and now asserted: a delivery failure leaves the alert
@@ -502,6 +523,7 @@ These rules are permanent and apply to every future prompt.
 | 15.2B | 405 | 146 | 277 |
 | 15.3 | 416 | 146 | 302 |
 | 15.3C | 418 | 146 | 302 |
+| 16-18 | 431 | 146 | 311 |
 
 Update this table when a prompt is accepted, so the next one has a baseline to compare
 against.

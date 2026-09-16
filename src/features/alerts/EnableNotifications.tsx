@@ -19,7 +19,7 @@ import { usePushNotifications } from '@/features/alerts/usePushNotifications'
  * push is unsupported or unconfigured is worse than one that says why.
  */
 export function EnableNotifications() {
-  const { state, enable } = usePushNotifications()
+  const { state, enable, disable } = usePushNotifications()
 
   // Nothing actionable in these two cases, so say so quietly rather than
   // offering a button that cannot work.
@@ -40,10 +40,17 @@ export function EnableNotifications() {
 
   if (state.status === 'subscribed') {
     return (
-      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Check className="h-3.5 w-3.5 text-status-ok" aria-hidden="true" />
-        Notifications are enabled in this browser.
-      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Check className="h-3.5 w-3.5 text-status-ok" aria-hidden="true" />
+          Notifications are enabled in this browser.
+        </p>
+        {/* Opting out must be as easy as opting in, and in the same place. */}
+        <Button variant="outline" size="sm" className="h-7" onClick={() => void disable()}>
+          <BellOff className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+          Turn off
+        </Button>
+      </div>
     )
   }
 

@@ -41,11 +41,14 @@ function readCollapsed(): boolean {
 export function AppShell({
   role,
   crumbs,
+  notifications,
   account,
   children,
 }: {
   role: AppRole | null
   crumbs: Crumb[]
+  /** The notification bell. Injected for the same reason as `account`. */
+  notifications?: ReactNode
   /** The account control. Supplied by the app; stubbed in the preview harness. */
   account?: ReactNode
   children: ReactNode
@@ -125,6 +128,7 @@ export function AppShell({
           sidebarCollapsed={collapsed}
           onToggleSidebar={toggleSidebar}
           onOpenMobileNav={() => setMobileOpen(true)}
+          notifications={notifications}
           account={account}
         />
 

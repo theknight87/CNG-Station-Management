@@ -68,6 +68,12 @@ const TEST_RECIPIENT = Deno.env.get('CNG_ALERT_TEST_RECIPIENT')
 const VAPID_PUBLIC_KEY = Deno.env.get('VAPID_PUBLIC_KEY')
 /** NEVER logged, returned, or stored. Read once, used to sign, discarded. */
 const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY')
+/**
+ * The deployed application's base URL, used to build a deep link into the alert.
+ * Absent => the message says where to look instead of carrying a broken link.
+ * Never guessed: a wrong link in an operational email is worse than none.
+ */
+const APP_URL = Deno.env.get('CNG_APP_URL')
 /** RFC 8292 `sub`. Falls back to the sending identity rather than inventing one. */
 const VAPID_SUBJECT =
   Deno.env.get('CNG_VAPID_SUBJECT') ?? (FROM_EMAIL ? `mailto:${FROM_EMAIL}` : undefined)
@@ -115,19 +121,60 @@ const THRESHOLD_TEXT: Record<string, string> = {
   due_60: 'is due within 60 days',
 }
 
+const ASSET_TEXT: Record<string, string> = {
+  installed_relief_valve: 'Installed relief valve',
+  storage_vessel: 'Storage vessel',
+  recovery_tank: 'Recovery tank',
+  gas_detector: 'Gas detector',
+  hose: 'Hose',
+}
+
+/**
+ * One line per fact the alert actually carries.
+ *
+ * A field the source never proved is OMITTED, never rendered as "N/A", "-" or
+ * "Unknown" (CLAUDE.md §11.5 / data principle #3). An engineer reading this
+ * must be able to tell "no serial recorded" from "serial is the string N/A".
+ */
+function alertFacts(row: Record<string, unknown>): string[] {
+  const line = (label: string, value: unknown): string | null =>
+    value === null || value === undefined || value === '' ? null : `${label}: ${value}`
+
+  const days = typeof row.days_left === 'number' ? row.days_left : null
+  return [
+    line('Asset type', ASSET_TEXT[String(row.asset_type)] ?? row.asset_type),
+    line('Serial', row.asset_serial),
+    line('Region', row.region_name),
+    line('Station', row.station_name),
+    line('Unit', row.unit_name),
+    line('Last completed', row.last_done_on),
+    line('Next due', row.due_date),
+    days === null
+      ? null
+      : days < 0
+        ? `Days overdue: ${Math.abs(days)}`
+        : `Days remaining: ${days}`,
+  ].filter((l): l is string => l !== null)
+}
+
 /** Plain, factual wording. No severity is asserted that the data does not carry. */
 function alertEmail(row: Record<string, unknown>): { subject: string; text: string } {
   const subj = SUBJECT_TEXT[String(row.subject)] ?? String(row.subject)
   const when = THRESHOLD_TEXT[String(row.threshold)] ?? String(row.threshold)
   const where = row.station_name ? ` at ${row.station_name}` : ''
+  // A deep link only when the deployment told us its URL. An invented or stale
+  // host in an operational email is worse than a sentence telling you where to go.
+  const link = APP_URL
+    ? [``, `Open this alert: ${APP_URL.replace(/\/$/, '')}/alerts`]
+    : [``, `Open the Alerts page in CNG Station Management for the full record.`]
   return {
     subject: `CNG Station Management — ${subj} ${when}`,
     text: [
       `${subj}${where} ${when}.`,
       ``,
-      `Due date: ${row.due_date}`,
+      ...alertFacts(row),
+      ...link,
       ``,
-      `Open the Alerts page in CNG Station Management for the full record.`,
       `This message reports a scheduled due date. It is not a statement about equipment safety.`,
     ].join('\n'),
   }
@@ -185,10 +232,16 @@ interface PushTarget { endpoint: string; p256dh: string; auth: string }
 function alertPush(row: Record<string, unknown>): { title: string; body: string } {
   const subj = SUBJECT_TEXT[String(row.subject)] ?? String(row.subject)
   const when = THRESHOLD_TEXT[String(row.threshold)] ?? String(row.threshold)
-  const where = row.station_name ? ` at ${row.station_name}` : ''
+  // A notification is glanceable, so it carries WHERE and WHICH — the two facts
+  // that decide whether this is yours — and leaves the rest to the Alerts page.
+  // An unrecorded field is omitted rather than padded with a placeholder.
+  const where = [row.station_name, row.unit_name].filter(Boolean).join(' · ')
+  const serial = row.asset_serial ? ` (${row.asset_serial})` : ''
   return {
     title: 'CNG Station Management',
-    body: `${subj}${where} ${when}. Due ${row.due_date}.`,
+    body: [`${subj}${serial} ${when}.`, where, `Due ${row.due_date}.`]
+      .filter(Boolean)
+      .join(' — '),
   }
 }
 

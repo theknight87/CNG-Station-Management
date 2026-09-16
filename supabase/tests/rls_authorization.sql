@@ -2183,5 +2183,86 @@ BEGIN
     'WPUSH-24 email and web_push are distinct channels for the same alert');
 END $$;
 
+-- ===========================================================================
+-- PROMPT 16-18 RECONCILIATION (migration 0036).
+--
+-- "Mark all as read" is the one bulk action in the notification stack, so the
+-- two things it must never do are exactly what these assert: reach beyond the
+-- caller's Regions, and acknowledge anything.
+-- ===========================================================================
+DO $$
+DECLARE
+  v_eng    uuid;
+  v_alert  uuid;
+  n        integer;
+  v_ack_before  integer;
+  v_open_before integer;
+BEGIN
+  SELECT id INTO v_eng FROM app_users WHERE clerk_user_id = 'clerk_eng_east';
+  -- Snapshot BEFORE, because earlier scenarios in this suite legitimately
+  -- acknowledge alerts. An absolute count would measure the suite, not the
+  -- action under test.
+  SELECT count(*) INTO v_ack_before FROM alerts WHERE acknowledged_at IS NOT NULL;
+  SELECT count(*) INTO v_open_before FROM alerts WHERE state = 'open';
+
+  ----------------------------------------------------------------------- anon
+  PERFORM pg_temp.as_anon();
+  PERFORM pg_temp.ok(pg_temp.denied('SELECT cng_mark_all_alerts_read()'),
+    'RECON-1 anon cannot mark alerts read');
+  RESET ROLE;
+
+  -------------------------------------------------------------- authenticated
+  PERFORM pg_temp.become('clerk_eng_east');
+  PERFORM cng_mark_all_alerts_read();
+  RESET ROLE;
+  -- Verified as superuser: the fixture table and every region are visible here,
+  -- so the assertion sees what the ENGINEER could not.
+  -- Bounded by alerts_select: an East engineer can only have read East alerts.
+  SELECT count(*) INTO n
+    FROM alert_reads ar
+    JOIN alerts a ON a.id = ar.alert_id
+    JOIN stations s ON s.id = a.station_id
+   WHERE ar.app_user_id = v_eng
+     AND s.region_id <> (SELECT r_east FROM f);
+  PERFORM pg_temp.ok(n = 0,
+    'RECON-2 mark-all-read never marks an alert outside the caller''s Regions');
+
+  -- READ IS NOT ACKNOWLEDGEMENT. The bulk action must leave every alert
+  -- un-acknowledged and in its original state.
+  SELECT count(*) INTO n FROM alerts WHERE acknowledged_at IS NOT NULL;
+  PERFORM pg_temp.ok(n = v_ack_before, 'RECON-3 mark-all-read acknowledges nothing');
+  SELECT count(*) INTO n FROM alerts WHERE state = 'open';
+  PERFORM pg_temp.ok(n = v_open_before, 'RECON-4 and changes no alert state');
+
+  -- Another user's read state is untouched and unreadable.
+  PERFORM pg_temp.become('clerk_eng_west');
+  SELECT count(*) INTO n FROM alert_reads;
+  PERFORM pg_temp.ok(n = 0,
+    'RECON-5 one user''s bulk read never appears in another user''s read state');
+  RESET ROLE;
+
+
+  -- The widened delivery claim functions stay service_role only: they now carry
+  -- serials and Region names, so a browser reaching them would be worse.
+  PERFORM pg_temp.become('clerk_admin');
+  PERFORM pg_temp.ok(pg_temp.denied($q$SELECT cng_next_pending_deliveries('email', 5)$q$),
+    'RECON-6 not even an ADMIN may claim email deliveries after the widening');
+  PERFORM pg_temp.ok(pg_temp.denied($q$SELECT cng_next_pending_push_deliveries(5)$q$),
+    'RECON-7 nor push deliveries');
+  RESET ROLE;
+
+  -- A user may manage their OWN preferences and nobody else's.
+  PERFORM pg_temp.become('clerk_eng_east');
+  INSERT INTO notification_preferences (app_user_id, channel, is_enabled)
+  VALUES (v_eng, 'email', true);
+  SELECT count(*) INTO n FROM notification_preferences;
+  PERFORM pg_temp.ok(n = 1, 'RECON-8 a user sees only their own notification preferences');
+  PERFORM pg_temp.ok(pg_temp.denied($q$
+    INSERT INTO notification_preferences (app_user_id, channel, is_enabled)
+    VALUES ((SELECT id FROM app_users WHERE clerk_user_id = 'clerk_admin'), 'email', true)$q$),
+    'RECON-9 and cannot create a preference for another user');
+  RESET ROLE;
+END $$;
+
 DO $$ BEGIN RAISE EXCEPTION 'RLS_SUITE_ROLLBACK'; END $$;
 ROLLBACK;

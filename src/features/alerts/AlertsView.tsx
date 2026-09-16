@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { Search, X } from 'lucide-react'
+import { CheckCheck, Search, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
@@ -80,7 +80,7 @@ export function AlertsView() {
   const [nonce, setNonce] = useState(0)
   const { state, reload } = useAlerts(query)
   const { state: summary, reload: reloadSummary } = useAlertSummary(nonce)
-  const { markRead, acknowledge } = useAlertActions()
+  const { markRead, markAllRead, acknowledge } = useAlertActions()
   const [actionError, setActionError] = useState<string | null>(null)
   const regions = useRegions()
 
@@ -120,6 +120,18 @@ export function AlertsView() {
     [markRead, refresh],
   )
 
+  /**
+   * Marks everything the viewer may see as read — server-side, so it is not
+   * quietly limited to the rows currently loaded. It is READ STATE ONLY;
+   * nothing here acknowledges anything, and the Acknowledged column is
+   * unchanged by it.
+   */
+  const onMarkAllRead = useCallback(async () => {
+    const err = await markAllRead()
+    setActionError(err)
+    if (!err) refresh()
+  }, [markAllRead, refresh])
+
   const onAcknowledge = useCallback(
     async (row: AlertRow) => {
       const err = await acknowledge(row.id)
@@ -141,7 +153,18 @@ export function AlertsView() {
       <PageHeader
         title="Alerts"
         description="Calibration, inspection and test alerts raised for assets you are authorized to see."
-        actions={<EnableNotifications />}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Read is not acknowledgement, so this button says exactly what it
+                does and never offers to acknowledge in bulk — that is a
+                per-alert operational act. */}
+            <Button variant="outline" size="sm" className="h-7" onClick={() => void onMarkAllRead()}>
+              <CheckCheck className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+              Mark all as read
+            </Button>
+            <EnableNotifications />
+          </div>
+        }
       />
 
       <div className="flex min-w-0 flex-col gap-3">
