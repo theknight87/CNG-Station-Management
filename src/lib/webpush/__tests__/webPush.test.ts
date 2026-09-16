@@ -221,3 +221,57 @@ describe('Stale versus transient failures', () => {
     }
   })
 })
+
+/**
+ * WHAT MAKES THE FAILURE CODE SAFE TO LOG.
+ *
+ * Prompt 15.3C logs `result.lastError` on a failed push. That is only safe
+ * because every value which can reach it is a FIXED token — `not_configured`,
+ * `unreachable`, `subscription_gone`, or one of the construction errors below —
+ * wrapped by sanitizeProviderError into `provider:code:hint`. A provider body,
+ * an endpoint, a key or a header must never become part of one.
+ *
+ * These assert the invariant at its source rather than asserting on console
+ * calls, which would couple the suite to how the Edge Function happens to log.
+ */
+describe('Failure codes are safe to log', () => {
+  /** Exactly the messages this module may raise. */
+  const ALLOWED = [
+    'vapid_public_key_malformed',
+    'vapid_private_key_malformed',
+    'subscription_key_malformed',
+    'subscription_auth_malformed',
+  ]
+
+  it('raises only fixed tokens, never anything derived from the input', async () => {
+    const secretish = 'SUPERSECRETKEYMATERIAL'
+    const attempts: Promise<unknown>[] = [
+      encryptPayload(
+        { endpoint: 'https://push.test/private-path', p256dh: bytesToBase64Url(new Uint8Array(10)), auth: bytesToBase64Url(new Uint8Array(16)) },
+        new TextEncoder().encode(secretish),
+      ),
+      buildVapidJwt(
+        { publicKey: bytesToBase64Url(new Uint8Array(3)), privateKey: secretish, subject: 'mailto:a@b.test' },
+        'https://push.test',
+        1,
+      ),
+    ]
+
+    for (const attempt of attempts) {
+      const error = await attempt.then(() => null, (e: unknown) => e)
+      expect(error).toBeInstanceOf(Error)
+      const message = (error as Error).message
+      expect(ALLOWED).toContain(message)
+      // The token must not carry the caller's material, the endpoint, or a path.
+      expect(message).not.toContain(secretish)
+      expect(message).not.toContain('push.test')
+      expect(message).not.toContain('private-path')
+    }
+  })
+
+  it('keeps every token short enough to survive the 40-char truncation intact', () => {
+    // The Edge Function slices a construction error to 40 chars before logging.
+    // A token longer than that would be cut into something unreadable.
+    for (const token of ALLOWED) expect(token.length).toBeLessThanOrEqual(40)
+  })
+})

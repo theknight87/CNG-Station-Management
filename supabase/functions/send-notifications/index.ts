@@ -353,7 +353,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
         test: true,
       })
       if (result.delivered === 0) {
-        console.error('send-notifications: push test send failed')
+        // The sanitized code is the ONLY record of why a test failed: a test
+        // send writes no delivery row, so without this line the reason exists
+        // solely in the HTTP response and is lost the moment it is not read.
+        // `lastError` is already reduced to provider:code:hint by
+        // sanitizeProviderError — never an endpoint, key, header or provider
+        // body — which is what makes it safe to log at all.
+        console.error('send-notifications: push test send failed', result.lastError)
         return json({ mode: 'test', channel, sent: false, error: result.lastError }, 502)
       }
       console.log('send-notifications: push test send accepted')
@@ -407,7 +413,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
         p_error: ok ? null : result.lastError,
       })
       if (ok) pushSent += 1
-      else pushFailed += 1
+      else {
+        pushFailed += 1
+        // Persisted on the delivery row too; logged so a run can be diagnosed
+        // without querying, and sanitized by the same single path.
+        console.error('send-notifications: push delivery failed', result.lastError)
+      }
     }
 
     console.log(`send-notifications: push sent=${pushSent} failed=${pushFailed} skipped=${pushSkipped}`)

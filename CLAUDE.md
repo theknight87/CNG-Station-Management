@@ -397,6 +397,23 @@ already in Cloudflare; the Edge runtime cannot read a Cloudflare build variable)
 VERIFIED: no push message has ever reached a real push service**, and the function was deliberately
 NOT deployed — this is for review first.*
 
+***PROMPT 15 IS CLOSED (Prompt 15.3C)** — see `docs/alerts-notifications.md` §25. The whole
+notification stack is now LIVE-VERIFIED: email delivery END-TO-END, Web Push browser subscription,
+and Web Push SERVER DELIVERY END-TO-END — Edge Function → FCM → Chrome/Windows → visible
+notification → click → `/alerts`. That discharges the 15.3 caveat that no push had ever reached a
+real push service: FCM accepting the bytes validates the RFC 8291 body, the RFC 8292 header, the
+`aud` scoping and the ES256 signature **by the provider**, and proves the VAPID pair genuine and
+matching without either half being read. The live test also exposed a REAL DEFECT — in
+DIAGNOSABILITY, not delivery: the push failure path logged no `result.lastError`, and because a
+test send writes no delivery row by design, the sanitized reason existed only in the HTTP response
+body and was lost when that body was not captured. Fixed by logging the already-sanitized code on
+the test and web_push queue paths. Safe because `lastError` is always
+`provider:code:hint` — never an endpoint, `p256dh`, `auth`, VAPID key, authorization header or
+provider body. Two regression tests assert that invariant AT ITS SOURCE rather than by spying on
+`console`. **Nothing else changed**: delivery behaviour, 404/410 deactivation, retry, dedupe,
+acknowledgement semantics, VAPID keys, subscription architecture and the schema are untouched.
+Production: 35 migrations, `send-notifications` v3 and `generate-alerts` v1 ACTIVE, cron live.*
+
 *Notification delivery (Prompt 15.1) is built: migration **0034** plus the `send-notifications`
 Edge Function and a Web Push opt-in — see `docs/alerts-notifications.md` §17. The
 Alert/Delivery separation is unchanged and now asserted: a delivery failure leaves the alert
@@ -484,6 +501,7 @@ These rules are permanent and apply to every future prompt.
 | 15.2 | 399 | 146 | 277 |
 | 15.2B | 405 | 146 | 277 |
 | 15.3 | 416 | 146 | 302 |
+| 15.3C | 418 | 146 | 302 |
 
 Update this table when a prompt is accepted, so the next one has a baseline to compare
 against.

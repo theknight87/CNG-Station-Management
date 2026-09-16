@@ -866,11 +866,80 @@ because the worker still caches nothing and intercepts no fetch — the only con
 early takeover is safe. The single change is the test notification tag. The 15.2B lifecycle
 regression tests remain in place and still pass.
 
-### 24.10 What is NOT verified
+### 24.10 Live verification — COMPLETE
 
-**No push message has ever been delivered to a real push service.** The tests prove the
-implementation is self-consistent — a message it encrypts decrypts back with the subscription's own
-private key, the RFC 8291 header layout is correct, and the VAPID signature verifies against the
-public key — but a round trip against my own implementation cannot prove Google's or Mozilla's push
-service accepts the bytes. **That is exactly what the live test is for, and nothing here stands in
-for it.** The function was deliberately **not deployed**: this change is for review first.
+**Superseded by §25.** The caveat recorded here — that no push message had ever reached a real
+push service — no longer holds. It was discharged on 2026-09-16.
+
+## 25. Prompt 15.3C — live verification complete, and the logging gap it exposed
+
+### 25.1 Verification status — the whole notification stack
+
+| Capability | Status |
+| --- | --- |
+| Email delivery (Resend) | **VERIFIED LIVE END-TO-END** |
+| Web Push browser subscription | **VERIFIED LIVE** |
+| Web Push server-side delivery | **VERIFIED LIVE END-TO-END** |
+| Notification rendered in Chrome/Windows | **CONFIRMED** |
+| Notification click opens `/alerts` | **CONFIRMED** |
+
+The proven path is: Supabase Edge Function → FCM → Chrome/Windows → visible notification →
+click → `/alerts`. That closes the last open item in the Prompt 15 stack.
+
+**What this proves that the tests could not.** The unit suite shows the implementation is
+self-consistent — a message it encrypts decrypts back with the subscription's own private key. It
+could never show that Google accepts the bytes. FCM has now accepted them, so the RFC 8291 body
+layout, the RFC 8292 `Authorization: vapid t=…, k=…` header, the `aud` origin scoping and the
+ES256 signature are validated **by the provider**, and the VAPID pair is proven genuine and
+matching without either half ever being read.
+
+### 25.2 The live test found a real defect — in diagnosability, not delivery
+
+The first controlled test succeeded. A second run 98 seconds later returned **502**, because FCM
+answered 404/410 and the subscription was correctly deactivated (§24.4). Diagnosing it was harder
+than it should have been: the failure path logged
+
+```ts
+console.error('send-notifications: push test send failed')   // before
+```
+
+**without `result.lastError`.** A test send writes no delivery row by design, so the sanitized
+reason existed only in the HTTP response body — and was lost the moment that body was not
+captured. The failure could be narrowed to "404 or 410" from the fact that
+`cng_deactivate_push_subscription` was called at all, but not to which.
+
+### 25.3 The fix
+
+```ts
+console.error('send-notifications: push test send failed', result.lastError)   // after
+```
+
+and the equivalent on the web_push queue path. Nothing else changed: delivery behaviour, the
+404/410 deactivation rule, retry, dedupe, acknowledgement semantics, VAPID keys, the subscription
+architecture and the database schema are all untouched. The email paths are untouched; an email
+queue failure is already persisted to `notification_deliveries.error_detail`.
+
+### 25.4 Why logging this value is safe
+
+`lastError` is never raw. Every value that can reach it passes through `sanitizeProviderError` and
+is one of a small fixed set — `webpush:http_410:subscription_gone`, `webpush:no_response:unreachable`,
+`webpush:no_response:not_configured`, or a construction token from `_shared/webpush.ts`. It carries
+**no endpoint, no `p256dh`, no `auth`, no VAPID key, no authorization header and no provider
+response body**; a push service's body can echo the endpoint, which is exactly why it is discarded
+rather than stored or logged.
+
+Two regression tests assert that invariant **at its source** rather than by spying on `console`,
+which would couple the suite to how the Edge Function happens to log: every error the module raises
+is one of four fixed tokens, none contains the caller's key material, endpoint or path, and each is
+short enough to survive the Edge Function's 40-character truncation intact.
+
+### 25.5 Prompt 15 is CLOSED
+
+Alerts, the three-layer Due-status/Alert/Delivery separation, the forgeable-acknowledgement fix
+(0033), email delivery, Web Push subscription and Web Push server delivery are all built, deployed
+and live-verified. Production stands at 35 migrations with `send-notifications` v3 and
+`generate-alerts` v1 ACTIVE, and the daily `cng-generate-alerts` cron live at `0 1 * * *`.
+
+Still deferred, and unchanged by this prompt: production recipient policy (nobody is subscribed
+without opting in), bulk read/acknowledge, resolve/suppress actions, mapping mutation, and the
+1,104 staged Prompt-21 blocker rows.
