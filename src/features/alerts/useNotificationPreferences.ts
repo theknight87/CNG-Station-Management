@@ -46,13 +46,20 @@ const EMPTY: ChannelPreference = { id: null, isEnabled: false, minThreshold: '' 
 
 export function useNotificationPreferences(): {
   prefs: PreferenceMap | null
-  error: string | null
+  /** A failure to READ. The screen cannot be shown at all. */
+  loadError: string | null
+  /** A failure to WRITE. The screen is fine; one change did not stick. */
+  saveError: string | null
   saving: boolean
   save: (channel: NotificationChannel, next: Omit<ChannelPreference, 'id'>) => Promise<void>
 } {
   const supabase = useSupabaseClient()
   const [prefs, setPrefs] = useState<PreferenceMap | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  // Kept apart deliberately. Reporting a failed SAVE with the words of a failed
+  // LOAD is what made the Prompt 18A defect look like a page that would not
+  // load, when in fact the page had loaded and one write was rejected.
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [nonce, setNonce] = useState(0)
 
@@ -67,7 +74,7 @@ export function useNotificationPreferences(): {
         .is('subject', null)
       if (cancelled) return
       if (err) {
-        setError(err.message)
+        setLoadError(err.message)
         return
       }
       const next: PreferenceMap = { email: { ...EMPTY }, web_push: { ...EMPTY } }
@@ -81,7 +88,7 @@ export function useNotificationPreferences(): {
           }
         }
       }
-      setError(null)
+      setLoadError(null)
       setPrefs(next)
     }
     void load()
@@ -94,7 +101,7 @@ export function useNotificationPreferences(): {
     async (channel: NotificationChannel, next: Omit<ChannelPreference, 'id'>) => {
       if (!supabase || !prefs) return
       setSaving(true)
-      setError(null)
+      setSaveError(null)
       const min_threshold = next.minThreshold === '' ? null : next.minThreshold
       const existing = prefs[channel].id
       // Insert-or-update by id rather than upsert: the uniqueness that matters
@@ -110,7 +117,10 @@ export function useNotificationPreferences(): {
             .insert({ channel, is_enabled: next.isEnabled, min_threshold })
       setSaving(false)
       if (err) {
-        setError(err.message)
+        // A WRITE failed. Reporting it as a load failure is precisely the
+        // misdiagnosis that made this defect look like a page that would not
+        // open, so the two are kept apart.
+        setSaveError(err.message)
         return
       }
       setNonce((n) => n + 1)
@@ -118,5 +128,5 @@ export function useNotificationPreferences(): {
     [supabase, prefs],
   )
 
-  return { prefs, error, saving, save }
+  return { prefs, loadError, saveError, saving, save }
 }

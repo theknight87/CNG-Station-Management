@@ -1114,3 +1114,82 @@ disturbing it.
 36 migrations · `send-notifications` v5 · `generate-alerts` v3 · cron `cng-generate-alerts` live ·
 alerts 0 · deliveries 0 · preferences 0 · active push subscriptions 1 · business date
 2026-09-16 (Africa/Cairo). `pg_net` was enabled for the boot probe and **dropped again**.
+
+## 28. Prompt 18A — a production RLS defect on /settings
+
+### 28.1 The report
+
+Owner browser verification of `/settings` produced:
+
+```
+new row violates row-level security policy for table "notification_preferences"
+```
+
+### 28.2 Root cause
+
+`notification_preferences.app_user_id` is **NOT NULL with no DEFAULT**, and the client insert
+supplies no user id. The column was therefore NULL, and the policy
+
+```sql
+WITH CHECK (app_user_id = cng_current_app_user_id())
+```
+
+evaluated `NULL = <uuid>` → NULL → not true, so the row was rejected. RLS is checked **before**
+the NOT NULL constraint would report, which is why the message names the policy rather than a
+null violation.
+
+**Reproduced locally before anything was changed**, as `authenticated` with a synthetic Clerk
+claim, producing the identical message — and confirmed against production, which holds **1 active
+user and 0 preference rows**, so `/settings` necessarily took the failing INSERT path.
+
+**The mistake behind it, stated plainly because it is easy to repeat: RLS *validates* ownership,
+it never *populates* it.** "The policy binds the row to its owner" is true of reads and of
+rejecting bad writes; it does not fill a column in. Something server-side still has to supply the
+value. Worse, the Prompt 16-18 test *"writes no user identifier when creating a preference"*
+asserted the buggy behaviour as though it were the security property, and passed while production
+was broken.
+
+**Classification: a combination — frontend plus schema.** The identity mapping itself was never
+at fault: `cng_current_app_user_id()` works correctly.
+
+### 28.3 The second half — why it looked like a page that would not load
+
+The owner reported that the page "cannot load". It had loaded. The **save** was rejected, and the
+component rendered that with the words of a **load** failure *and replaced the whole screen*. A
+write error that hides the controls and blames the read hands the user a misdiagnosis.
+
+### 28.4 The fix
+
+**Migration 0037** — one statement:
+
+```sql
+ALTER TABLE notification_preferences
+  ALTER COLUMN app_user_id SET DEFAULT cng_current_app_user_id();
+```
+
+The client still sends **no** user id, so it cannot spoof one; the database fills the owner from
+the verified Clerk subject. `cng_current_app_user_id()` is STABLE, SECURITY INVOKER, has a pinned
+`search_path`, and additionally requires `is_active` — an inactive or unauthenticated session
+yields NULL and the insert is still rejected.
+
+**No policy was weakened, no grant widened, no `service_role` path introduced.** The `WITH CHECK`
+is unchanged and still runs: it is now defence in depth behind the default, asserted by `PREF-5`.
+
+Frontend: `loadError` and `saveError` are now separate, so only a read failure can hide the
+screen.
+
+### 28.5 Regression tests — proved to fail against the defect
+
+The SQL block was run against the **pre-0037 schema** and failed with the exact production error
+before being accepted. 21 assertions (`PREF-1`…`PREF-15`), covering initialize, read, update,
+spoofing another user, cross-user read and update, anon, idempotent re-initialization, the absence
+of any Region column, and identical ownership semantics across admin / manager / viewer / engineer.
+
+Two frontend tests cover the mis-reported error — and one of them **caught a genuine slip in the
+fix itself**: two identical `if (err)` branches meant the first search-and-replace rewrote both,
+leaving the save path still reporting a load failure. The test failed, the cause was found, and it
+was corrected.
+
+### 28.6 Status
+
+**Prompt 18 is NOT closed.** It closes when the owner confirms `/settings` works in production.

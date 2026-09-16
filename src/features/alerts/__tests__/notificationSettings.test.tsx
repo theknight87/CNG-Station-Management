@@ -24,6 +24,7 @@ const db = vi.hoisted(() => ({
   countError: null as null | { message: string },
   prefRows: [] as Record<string, unknown>[],
   writes: [] as { op: string; table: string; payload?: unknown }[],
+  writeError: null as null | { message: string },
 }))
 
 vi.mock('@/lib/supabase/client', () => ({
@@ -38,7 +39,7 @@ vi.mock('@/lib/supabase/client', () => ({
       },
       insert: (payload: unknown) => {
         db.writes.push({ op: 'insert', table, payload })
-        return Promise.resolve({ error: null })
+        return Promise.resolve({ error: db.writeError })
       },
       update: (payload: unknown) => {
         db.writes.push({ op: 'update', table, payload })
@@ -56,6 +57,7 @@ beforeEach(() => {
   db.countError = null
   db.prefRows = []
   db.writes = []
+  db.writeError = null
 })
 afterEach(() => vi.clearAllMocks())
 
@@ -136,5 +138,39 @@ describe('Notification preferences', () => {
   it('states that Region comes from access, not from preference', async () => {
     render(<NotificationPreferences />)
     expect(await screen.findByText(/set by\s+your access, not here/i)).toBeDefined()
+  })
+})
+
+/**
+ * THE PRODUCTION DEFECT (Prompt 18A) — its user-visible half.
+ *
+ * The owner reported that /settings "cannot load". It had loaded: the SAVE was
+ * rejected by RLS, and the component rendered that failure with the words of a
+ * LOAD failure while replacing the entire screen. A write error that hides the
+ * controls and blames the read is a misdiagnosis handed straight to the user.
+ */
+describe('A failed save is not reported as a failed load', () => {
+  it('keeps the controls on screen and names the real failure', async () => {
+    db.writeError = {
+      message: 'new row violates row-level security policy for table "notification_preferences"',
+    }
+    render(<NotificationPreferences />)
+    const buttons = await screen.findAllByRole('button', { name: /off — turn on/i })
+    await userEvent.click(buttons[0])
+
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toMatch(/was not saved/i)
+    // The old wording blamed the load, which sent the diagnosis in the wrong
+    // direction entirely.
+    expect(alert.textContent).not.toMatch(/could not load/i)
+    // And the screen is still usable.
+    expect(screen.getAllByRole('button', { name: /turn on/i }).length).toBeGreaterThan(0)
+  })
+
+  it('still hides the screen when the READ genuinely fails', async () => {
+    // Load failure is the one case that legitimately replaces the surface.
+    render(<NotificationPreferences />)
+    await screen.findAllByRole('button', { name: /off — turn on/i })
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })

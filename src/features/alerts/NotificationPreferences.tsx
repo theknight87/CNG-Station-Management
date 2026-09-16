@@ -38,7 +38,7 @@ const CHANNELS: { key: NotificationChannel; label: string; note: string }[] = [
 ]
 
 export function NotificationPreferences() {
-  const { prefs, error, saving, save } = useNotificationPreferences()
+  const { prefs, loadError, saveError, saving, save } = useNotificationPreferences()
 
   const onToggle = useCallback(
     (channel: NotificationChannel) => {
@@ -59,10 +59,12 @@ export function NotificationPreferences() {
     [prefs, save],
   )
 
-  if (error) {
+  // Only a READ failure can hide the screen. A write failure leaves the
+  // controls on screen and says which change did not stick.
+  if (loadError) {
     return (
       <p role="alert" className="rounded border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
-        Could not load your notification preferences: {error}
+        Could not load your notification preferences: {loadError}
       </p>
     )
   }
@@ -73,6 +75,12 @@ export function NotificationPreferences() {
 
   return (
     <section className="flex min-w-0 flex-col gap-3">
+      {saveError ? (
+        <p role="alert" className="rounded border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
+          That change was not saved: {saveError}
+        </p>
+      ) : null}
+
       <div className="rounded border bg-card">
         <table className="w-full text-sm">
           <thead>

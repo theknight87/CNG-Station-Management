@@ -2264,5 +2264,123 @@ BEGIN
   RESET ROLE;
 END $$;
 
+-- ===========================================================================
+-- NOTIFICATION PREFERENCES (Prompt 18A) — a PRODUCTION defect.
+--
+-- /settings failed with "new row violates row-level security policy for table
+-- notification_preferences". The client insert supplies no user id (correctly),
+-- app_user_id had no DEFAULT, so it was NULL and the WITH CHECK
+-- `app_user_id = cng_current_app_user_id()` evaluated NULL -> not true.
+--
+-- PREF-1 is the regression test proper: it performs EXACTLY the failing insert
+-- and FAILS against the pre-0037 schema.
+-- ===========================================================================
+DO $$
+DECLARE
+  v_east  uuid;
+  v_west  uuid;
+  n       integer;
+  v_owner uuid;
+BEGIN
+  SELECT id INTO v_east FROM app_users WHERE clerk_user_id = 'clerk_eng_east';
+  SELECT id INTO v_west FROM app_users WHERE clerk_user_id = 'clerk_eng_west';
+  -- Earlier scenarios in this suite create preferences of their own. Clearing
+  -- them keeps this block self-contained, so it tests the defect rather than
+  -- the order the file happens to be written in.
+  DELETE FROM notification_preferences;
+
+  PERFORM pg_temp.become('clerk_eng_east');
+
+  -- 1. INITIALIZE: the exact client insert, with NO user id supplied.
+  INSERT INTO notification_preferences (channel, is_enabled, min_threshold)
+  VALUES ('email', true, NULL);
+  PERFORM pg_temp.ok(true,
+    'PREF-1 a user can initialize their own preferences without supplying a user id');
+
+  -- ...and the row is owned by the SESSION user, derived server-side.
+  SELECT app_user_id INTO v_owner FROM notification_preferences WHERE channel = 'email';
+  PERFORM pg_temp.ok(v_owner = v_east,
+    'PREF-2 the owner is derived from the verified session, not from the client');
+
+  -- 2. READ back their own.
+  SELECT count(*) INTO n FROM notification_preferences;
+  PERFORM pg_temp.ok(n = 1, 'PREF-3 and can read their own preferences');
+
+  -- 3. UPDATE their own.
+  UPDATE notification_preferences SET is_enabled = false WHERE channel = 'email';
+  SELECT count(*) INTO n FROM notification_preferences WHERE NOT is_enabled;
+  PERFORM pg_temp.ok(n = 1, 'PREF-4 and can update their own preferences');
+
+  -- 4. SPOOFING another user is still rejected. The DEFAULT did not replace the
+  --    WITH CHECK; it is defence in depth behind it.
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$INSERT INTO notification_preferences (app_user_id, channel, is_enabled)
+       VALUES (%L, 'web_push', true)$q$, v_west)),
+    'PREF-5 a user cannot create preferences for ANOTHER user');
+
+  -- 8. IDEMPOTENT: a repeated initialization cannot duplicate the default row.
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$INSERT INTO notification_preferences (channel, is_enabled) VALUES ('email', true)$q$),
+    'PREF-6 a repeated initialization cannot create a duplicate default row');
+  SELECT count(*) INTO n FROM notification_preferences WHERE channel = 'email';
+  PERFORM pg_temp.ok(n = 1, 'PREF-7 and exactly one row remains');
+
+  -- 7. REGION cannot be widened: there is no region column to widen, and the
+  --    preference carries no authorization of any kind.
+  SELECT count(*) INTO n FROM information_schema.columns
+   WHERE table_schema = 'public' AND table_name = 'notification_preferences'
+     AND column_name IN ('region_id', 'region', 'regions');
+  PERFORM pg_temp.ok(n = 0,
+    'PREF-8 a preference carries no Region column, so it cannot widen authorization');
+  RESET ROLE;
+
+  -- 4. Another user cannot UPDATE or READ it.
+  PERFORM pg_temp.become('clerk_eng_west');
+  SELECT count(*) INTO n FROM notification_preferences;
+  PERFORM pg_temp.ok(n = 0, 'PREF-9 another user cannot read those preferences');
+  UPDATE notification_preferences SET is_enabled = true;
+  SELECT count(*) INTO n FROM notification_preferences WHERE is_enabled;
+  PERFORM pg_temp.ok(n = 0,
+    'PREF-10 and an update from another user changes zero rows');
+  RESET ROLE;
+  -- Confirmed from outside RLS: the owner's row is untouched.
+  SELECT count(*) INTO n FROM notification_preferences
+   WHERE app_user_id = v_east AND NOT is_enabled;
+  PERFORM pg_temp.ok(n = 1, 'PREF-11 the owner''s row really is unchanged');
+
+  -- 6. anon can do nothing at all.
+  PERFORM pg_temp.as_anon();
+  PERFORM pg_temp.ok(pg_temp.denied('SELECT count(*) FROM notification_preferences'),
+    'PREF-12 anon cannot read preferences');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$INSERT INTO notification_preferences (channel, is_enabled) VALUES ('email', true)$q$),
+    'PREF-13 anon cannot create preferences');
+  RESET ROLE;
+END $$;
+
+-- 5. OWNERSHIP SEMANTICS ARE IDENTICAL FOR EVERY ROLE. A preference is personal;
+-- being an admin or a manager confers no authority over anyone else's.
+DO $$
+DECLARE
+  persona text;
+  v_self  uuid;
+  n       integer;
+BEGIN
+  FOREACH persona IN ARRAY ARRAY['clerk_admin','clerk_manager','clerk_view_east','clerk_eng_west']
+  LOOP
+    PERFORM pg_temp.become(persona);
+    INSERT INTO notification_preferences (channel, is_enabled) VALUES ('web_push', true);
+    SELECT app_user_id INTO v_self FROM notification_preferences WHERE channel = 'web_push';
+    PERFORM pg_temp.ok(
+      v_self = (SELECT id FROM app_users WHERE clerk_user_id = persona),
+      format('PREF-14 %s owns exactly the preference they created', persona));
+    -- Even an admin sees only their own.
+    SELECT count(*) INTO n FROM notification_preferences WHERE channel = 'web_push';
+    PERFORM pg_temp.ok(n = 1,
+      format('PREF-15 %s sees only their own preference, whatever their role', persona));
+    RESET ROLE;
+  END LOOP;
+END $$;
+
 DO $$ BEGIN RAISE EXCEPTION 'RLS_SUITE_ROLLBACK'; END $$;
 ROLLBACK;

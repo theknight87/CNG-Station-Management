@@ -452,6 +452,26 @@ mark-all-as-read, `/settings` preferences and push enable/disable are TEST VERIF
 owner browser verification. Three words are kept strictly apart in the docs: TEST VERIFIED,
 DEPLOYED, LIVE VERIFIED.*
 
+***PROMPT 18A — a REAL PRODUCTION DEFECT on `/settings`**, found by owner browser verification:
+*new row violates row-level security policy for table "notification_preferences"*. See
+`docs/alerts-notifications.md` §28. **ROOT CAUSE**: `app_user_id` is NOT NULL with NO DEFAULT and
+the client insert supplies no user id, so the column was NULL and
+`WITH CHECK (app_user_id = cng_current_app_user_id())` evaluated NULL -> not true. RLS is checked
+BEFORE the NOT NULL constraint would report, hence the policy message. **RLS VALIDATES OWNERSHIP,
+IT NEVER POPULATES IT** — and the Prompt 16-18 test "writes no user identifier" asserted the buggy
+behaviour as if it were the security property, passing while production was broken. Reproduced
+locally with the identical message before anything was changed. Classification: frontend + schema
+combined; the identity mapping was never at fault. **FIX — migration 0037, one statement**:
+`ALTER COLUMN app_user_id SET DEFAULT cng_current_app_user_id()`. The client still sends no id so
+it cannot spoof one; the database derives the owner from the verified Clerk subject, and the
+function additionally requires `is_active`. NO policy weakened, NO grant widened, NO service_role
+path. The WITH CHECK is unchanged and is now defence in depth (PREF-5). A SECOND, user-visible
+half: a failed SAVE was rendered with the words of a failed LOAD and replaced the whole screen,
+which is why it looked like a page that would not load — `loadError` and `saveError` are now
+separate. **The regression tests were PROVED to fail against the pre-0037 schema.** 21 SQL
+assertions plus 2 frontend tests, one of which caught a genuine slip in the fix itself.
+**PROMPT 18 IS NOT CLOSED** until the owner confirms `/settings` works in production.*
+
 *Notification delivery (Prompt 15.1) is built: migration **0034** plus the `send-notifications`
 Edge Function and a Web Push opt-in — see `docs/alerts-notifications.md` §17. The
 Alert/Delivery separation is unchanged and now asserted: a delivery failure leaves the alert
@@ -541,6 +561,7 @@ These rules are permanent and apply to every future prompt.
 | 15.3 | 416 | 146 | 302 |
 | 15.3C | 418 | 146 | 302 |
 | 16-18 | 431 | 146 | 311 |
+| 18A | 433 | 146 | 332 |
 
 Update this table when a prompt is accepted, so the next one has a baseline to compare
 against.
