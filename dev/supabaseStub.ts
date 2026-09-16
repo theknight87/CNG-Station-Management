@@ -598,6 +598,98 @@ const HOSE_REGISTRY = [
   ...Array.from({ length: 58 }, (_, k) => hoseRow(k + 14)),
 ]
 
+
+/* ------------------------------------------------------------------ *
+ * Prompt 15 - Alerts inbox fixtures.
+ *
+ * Covers every threshold, both read states, both acknowledgement states, all
+ * four delivery outcomes plus "never attempted", an Arabic station, a mixed
+ * identifier, an SRV whose Unit is unresolved, and an asset with no serial.
+ *
+ * DELIBERATELY ABSENT: any alert for a year-only or unknown due date. The
+ * generator requires `*_precision = 'exact_date'`, so such an alert cannot
+ * exist. Inventing one in the harness would show a state the database refuses
+ * to produce. The same applies to a station-unconfirmed SRV: alerts.station_id
+ * is NOT NULL, so it cannot be alerted at all.
+ * ------------------------------------------------------------------ */
+
+const ALERT_SUBJECTS = [
+  ['srv_calibration', 'installed_relief_valve'],
+  ['gas_detector_calibration', 'gas_detector'],
+  ['hose_hydrotest', 'hose'],
+  ['storage_inspection', 'storage_vessel'],
+  ['recovery_tank_inspection', 'recovery_tank'],
+]
+const ALERT_THRESHOLDS = ['overdue', 'due_today', 'due_7', 'due_15', 'due_30', 'due_60']
+
+function alertRow(i: number, over: Record<string, unknown> = {}) {
+  const [subject, assetType] = ALERT_SUBJECTS[i % ALERT_SUBJECTS.length]
+  const threshold = ALERT_THRESHOLDS[i % ALERT_THRESHOLDS.length]
+  const st = [
+    { station_id: 's-0', station_name: 'الماظة', region_id: 'r-east', region_name: 'East' },
+    { station_id: 's-1', station_name: 'شبرا 1', region_id: 'r-west', region_name: 'West' },
+    { station_id: 's-2', station_name: 'Alex Depot 7', region_id: 'r-alex', region_name: 'Alex' },
+  ][i % 3]
+  const daysLeft = threshold === 'overdue' ? -14
+    : threshold === 'due_today' ? 0
+    : Number(threshold.replace('due_', ''))
+  return {
+    id: `al-${i}`,
+    subject, threshold, state: 'open',
+    asset_type: assetType, asset_id: `asset-${i}`,
+    region_id: st.region_id, region_name: st.region_name,
+    station_id: st.station_id, station_name: st.station_name,
+    unit_id: 'u-1', unit_name: 'الماظة 1',
+    due_date: '2026-10-16',
+    days_left: daysLeft,
+    due_status: threshold === 'overdue' ? 'overdue' : threshold === 'due_today' ? 'due_today' : threshold,
+    needs_mapping: false,
+    acknowledged_by: null, acknowledged_at: null, acknowledged_by_name: null,
+    resolved_at: null,
+    generated_at: '2026-09-16T01:00:00Z',
+    is_read: false, read_at: null,
+    email_status: null, push_status: null,
+    asset_serial: `SR-${String(90000 + i)}`, asset_serial_status: 'assigned',
+    ...over,
+  }
+}
+
+const ALERT_INBOX = [
+  // Overdue, unread, unacknowledged, email FAILED - the alert still stands.
+  alertRow(0, {
+    id: 'al-overdue-failed', threshold: 'overdue', due_status: 'overdue', days_left: -14,
+    region_id: 'r-east', region_name: 'East', station_id: 's-0', station_name: 'الماظة',
+    email_status: 'failed', asset_serial: 'RV-880124',
+  }),
+  // Due today, read, acknowledged, email sent.
+  alertRow(1, {
+    id: 'al-today-ack', threshold: 'due_today', due_status: 'due_today', days_left: 0,
+    state: 'acknowledged',
+    is_read: true, read_at: '2026-09-16T08:00:00Z',
+    acknowledged_by: 'user-1', acknowledged_at: '2026-09-16T08:05:00Z',
+    acknowledged_by_name: 'Eng. Mostafa',
+    email_status: 'sent', push_status: 'sent',
+  }),
+  alertRow(2, { id: 'al-7', threshold: 'due_7', due_status: 'due_7', days_left: 7, email_status: 'pending' }),
+  alertRow(3, { id: 'al-15', threshold: 'due_15', due_status: 'due_15', days_left: 15, is_read: true, read_at: '2026-09-15T09:00:00Z' }),
+  alertRow(4, { id: 'al-30', threshold: 'due_30', due_status: 'due_30', days_left: 30, email_status: 'skipped' }),
+  alertRow(5, { id: 'al-60', threshold: 'due_60', due_status: 'due_60', days_left: 60 }),
+  // An SRV whose Unit is NOT resolved. Station is proven; no Unit is guessed
+  // and no Unit link is offered.
+  alertRow(6, {
+    id: 'al-needs-mapping', subject: 'srv_calibration', asset_type: 'installed_relief_valve',
+    unit_id: null, unit_name: null, needs_mapping: true,
+    threshold: 'overdue', due_status: 'overdue', days_left: -3,
+  }),
+  // The asset's source recorded no serial. None is synthesized.
+  alertRow(7, { id: 'al-noserial', asset_serial: null, asset_serial_status: 'unknown' }),
+  // A mixed Arabic/Latin/numeric identifier.
+  alertRow(8, { id: 'al-mixed', asset_serial: 'صمام-RV-2024-0077' }),
+  // Distinct prefix: the named rows above already use al-7/al-15/al-30/al-60,
+  // and a bare index would collide with them.
+  ...Array.from({ length: 58 }, (_, k) => alertRow(k + 9, { id: `al-bulk-${k}` })),
+]
+
 type Reply = { data: unknown; error: { message: string } | null; count?: number }
 
 const FAILURE = { message: 'permission denied for view v_station_summary' }
@@ -613,7 +705,8 @@ function builder(table: string) {
   const filters: { region?: string; overdue?: boolean; unresolved?: boolean; search?: string; stationId?: string; unitId?: string; assetType?: string; mappingStatus?: string;
     parentKind?: string; availability?: string; dueStatus?: string; dueIn?: string[]; parentId?: string;
     presence?: string; areaType?: string;
-    serialMissing?: boolean; serialDuplicate?: boolean } = {}
+    serialMissing?: boolean; serialDuplicate?: boolean;
+    subject?: string; threshold?: string; isRead?: boolean; ackNull?: boolean; emailStatus?: string; ackState?: string } = {}
   // PostgREST applies .order() calls IN SEQUENCE - the first is the primary
   // key, later ones are tie-breaks. An earlier version of this stub overwrote
   // a single column instead, so a sort by Assets silently became a sort by
@@ -811,6 +904,50 @@ function builder(table: string) {
       if (head) return { data: null, error: null, count: list.length }
       return { data: list.slice(from, to + 1), error: null, count: list.length }
     }
+    // Alerts inbox (Prompt 15).
+    if (table === 'v_alert_inbox') {
+      if (scenario === 'empty') return { data: [], error: null, count: 0 }
+      let list: Record<string, unknown>[] = ALERT_INBOX.map((a) => ({
+        ...a,
+        // Read state is PER-USER, so the harness keeps it in memory rather
+        // than baking it into the fixture: marking one read must not appear
+        // to change it for anyone else.
+        is_read: ALERT_READS.has(String(a.id)) ? true : a.is_read,
+        ...(ALERT_ACKS.has(String(a.id))
+          ? { state: 'acknowledged', acknowledged_at: '2026-09-16T10:00:00Z', acknowledged_by_name: 'You (harness)' }
+          : {}),
+      }))
+      if (scenario === 'scoped') list = list.filter((r) => r.region_id === 'r-east')
+      if (filters.region) list = list.filter((r) => r.region_id === filters.region)
+      if (filters.stationId) list = list.filter((r) => r.station_id === filters.stationId)
+      if (filters.subject) list = list.filter((r) => r.subject === filters.subject)
+      if (filters.threshold) list = list.filter((r) => r.threshold === filters.threshold)
+      if (filters.isRead !== undefined) list = list.filter((r) => Boolean(r.is_read) === filters.isRead)
+      if (filters.ackState) list = list.filter((r) => r.state === filters.ackState)
+      if (filters.ackNull) list = list.filter((r) => !r.acknowledged_at)
+      if (filters.emailStatus) list = list.filter((r) => r.email_status === filters.emailStatus)
+      if (filters.search) {
+        const q = filters.search.toLowerCase()
+        list = list.filter((r) =>
+          ['asset_serial', 'station_name', 'unit_name']
+            .some((k) => String(r[k] ?? '').toLowerCase().includes(q)),
+        )
+      }
+      list.sort((a, b) => {
+        for (const { col, asc } of orders) {
+          const x = a[col] as string | number | null
+          const y = b[col] as string | number | null
+          if (x === y) continue
+          if (x === null || x === undefined) return 1
+          if (y === null || y === undefined) return -1
+          const cmp = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'ar')
+          if (cmp !== 0) return asc ? cmp : -cmp
+        }
+        return 0
+      })
+      if (head) return { data: null, error: null, count: list.length }
+      return { data: list.slice(from, to + 1), error: null, count: list.length }
+    }
     // Unit workspace equipment. `emptytab` proves an empty tab is distinct
     // from a failed one; `error` proves a failure never renders as empty.
     if (EQUIPMENT_TABLES.has(table)) {
@@ -850,6 +987,11 @@ function builder(table: string) {
       if (col === 'area_type') filters.areaType = value
       if (col === 'serial_missing') filters.serialMissing = String(value) === 'true'
       if (col === 'serial_duplicate') filters.serialDuplicate = String(value) === 'true'
+      if (col === 'subject') filters.subject = value
+      if (col === 'threshold') filters.threshold = value
+      if (col === 'is_read') filters.isRead = String(value) === 'true'
+      if (col === 'state') filters.ackState = value
+      if (col === 'email_status') filters.emailStatus = value
       return chain
     },
     gt: (col: string) => {
@@ -859,6 +1001,10 @@ function builder(table: string) {
     },
     in: (col: string, values: string[]) => {
       if (col === 'due_status') filters.dueIn = values
+      return chain
+    },
+    is: (col: string, value: unknown) => {
+      if (col === 'acknowledged_at' && value === null) filters.ackNull = true
       return chain
     },
     or: (expr: string) => {
@@ -887,7 +1033,28 @@ function builder(table: string) {
   return chain
 }
 
-const stubClient = { from: (table: string) => builder(table) }
+/**
+ * Per-user alert state, held in memory for the harness.
+ *
+ * In the real system read state lives in `alert_reads` keyed by user, and
+ * acknowledgement is written ONLY by `cng_acknowledge_alert`, which stamps the
+ * actor and timestamp server-side. The harness mirrors that shape - the
+ * "client" here can ask, but never supplies who or when.
+ */
+const ALERT_READS = new Set<string>()
+const ALERT_ACKS = new Set<string>()
+
+const stubClient = {
+  from: (table: string) => builder(table),
+  rpc: (fn: string, args: Record<string, unknown>) => {
+    if (scenario === 'error') return Promise.resolve({ data: null, error: FAILURE })
+    const id = String(args?.p_alert_id ?? '')
+    if (fn === 'cng_mark_alert_read') ALERT_READS.add(id)
+    if (fn === 'cng_mark_alert_unread') ALERT_READS.delete(id)
+    if (fn === 'cng_acknowledge_alert') ALERT_ACKS.add(id)
+    return Promise.resolve({ data: null, error: null })
+  },
+}
 
 export function useSupabaseClient() {
   return stubClient as never

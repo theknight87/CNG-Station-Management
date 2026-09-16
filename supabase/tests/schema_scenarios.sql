@@ -988,4 +988,236 @@ SELECT pg_temp.assert(
                       OR column_name ILIKE '%period%' OR column_name ILIKE '%months%')),
   'HS20: no authoritative test interval is represented anywhere in the schema');
 
+
+-- ---------------------------------------------------------------------------
+-- Alert engine (Prompt 15).
+--
+-- These prove the three properties the whole feature rests on: only an exact
+-- date can raise an alert, generation is idempotent, and a new due-date cycle
+-- is a new event rather than a rewrite of an old one.
+-- ---------------------------------------------------------------------------
+
+-- AL1: the rule set is exactly 5 subjects x 6 thresholds, all enabled.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM alert_rules) = 30
+  AND (SELECT count(DISTINCT subject) FROM alert_rules) = 5
+  AND (SELECT count(DISTINCT threshold) FROM alert_rules) = 6
+  AND (SELECT count(*) FROM alert_rules WHERE is_enabled) = 30,
+  'AL1: 30 alert rules = 5 subjects x 6 thresholds, all enabled');
+
+-- AL2: countdown rules carry their day count; due_today and overdue do not.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM alert_rules WHERE threshold = 'due_60'  AND days_before = 60) = 5
+  AND (SELECT count(*) FROM alert_rules WHERE threshold = 'due_30' AND days_before = 30) = 5
+  AND (SELECT count(*) FROM alert_rules WHERE threshold = 'due_15' AND days_before = 15) = 5
+  AND (SELECT count(*) FROM alert_rules WHERE threshold = 'due_7'  AND days_before = 7) = 5
+  AND (SELECT count(*) FROM alert_rules WHERE threshold IN ('due_today','overdue') AND days_before IS NULL) = 10,
+  'AL2: threshold day counts are stored once in the database, not duplicated in React');
+
+-- AL3: dedupe identity is DATABASE-enforced, not a read-then-write in code.
+SELECT pg_temp.assert(
+  EXISTS (SELECT 1 FROM pg_constraint
+           WHERE conrelid = 'alerts'::regclass AND conname = 'alerts_dedupe_uq' AND contype = 'u'),
+  'AL3: alert dedupe is a unique constraint on (asset_type, asset_id, threshold, due_date)');
+
+-- Fixtures for generation.
+CREATE TEMP TABLE algen AS SELECT id AS station_id, region_id FROM stations ORDER BY id LIMIT 1;
+
+-- Exactly 30 days out, exact precision -> eligible.
+INSERT INTO gas_detectors (id, station_id, region_id, mapping_status, serial_number,
+                           next_calibration_raw, next_calibration_date, next_calibration_precision)
+SELECT 'b0000000-0000-0000-0000-00000000001a', station_id, region_id, 'needs_unit_mapping', 'AL-GD-30',
+       'x', cng_business_date() + 30, 'exact_date' FROM algen;
+-- Year-only -> NEVER eligible.
+INSERT INTO gas_detectors (id, station_id, region_id, mapping_status, serial_number,
+                           next_calibration_raw, next_calibration_precision)
+SELECT 'b0000000-0000-0000-0000-00000000001b', station_id, region_id, 'needs_unit_mapping', 'AL-GD-YEAR',
+       '2027', 'year_only' FROM algen;
+-- Unknown -> NEVER eligible.
+INSERT INTO gas_detectors (id, station_id, region_id, mapping_status, serial_number, next_calibration_precision)
+SELECT 'b0000000-0000-0000-0000-00000000001c', station_id, region_id, 'needs_unit_mapping', 'AL-GD-UNK',
+       'unknown' FROM algen;
+-- Already 45 days overdue -> only `overdue`, never a backfill of passed thresholds.
+INSERT INTO hoses (id, station_id, region_id, mapping_status, serial_number,
+                   next_test_raw, next_test_date, next_test_precision)
+SELECT 'b0000000-0000-0000-0000-00000000001d', station_id, region_id, 'needs_unit_mapping', 'AL-HS-OD',
+       'x', cng_business_date() - 45, 'exact_date' FROM algen;
+
+-- AL4: run one creates exactly the expected alerts.
+CREATE TEMP TABLE algen_run1 AS SELECT * FROM cng_generate_alerts();
+SELECT pg_temp.assert(
+  (SELECT created FROM algen_run1) = 2,
+  'AL4: generation raised exactly two alerts (one 30-day, one overdue)');
+
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM alerts WHERE asset_id = 'b0000000-0000-0000-0000-00000000001a'
+     AND threshold = 'due_30') = 1,
+  'AL5: an asset exactly 30 days out raises the 30-day alert');
+
+-- AL6: the 45-day-overdue asset raises ONLY overdue. This is the rule that
+-- stops a first run from back-filling every threshold the asset passed.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM alerts WHERE asset_id = 'b0000000-0000-0000-0000-00000000001d') = 1
+  AND (SELECT threshold FROM alerts WHERE asset_id = 'b0000000-0000-0000-0000-00000000001d') = 'overdue',
+  'AL6: an already-overdue asset raises only `overdue`, never the thresholds it passed');
+
+-- AL7: a year-only date can never raise an alert.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM alerts WHERE asset_id = 'b0000000-0000-0000-0000-00000000001b') = 0,
+  'AL7: a year-only due date raises no alert and is never turned into an exact day');
+
+-- AL8: nor an unknown one.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM alerts WHERE asset_id = 'b0000000-0000-0000-0000-00000000001c') = 0,
+  'AL8: an unknown due date raises no alert');
+
+-- AL9/AL10: IDEMPOTENCY. Re-running changes nothing.
+CREATE TEMP TABLE algen_run2 AS SELECT * FROM cng_generate_alerts();
+CREATE TEMP TABLE algen_run3 AS SELECT * FROM cng_generate_alerts();
+SELECT pg_temp.assert(
+  (SELECT created FROM algen_run2) = 0 AND (SELECT created FROM algen_run3) = 0,
+  'AL9: repeated generation runs create zero additional alerts');
+-- Scoped to THIS block's fixtures: earlier scenarios in this suite create
+-- their own assets, some of which are legitimately alertable.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM alerts
+    WHERE asset_id IN ('b0000000-0000-0000-0000-00000000001a',
+                       'b0000000-0000-0000-0000-00000000001d')) = 2,
+  'AL10: three runs leave exactly the two original alerts for these assets');
+
+-- AL11: overdue does not accumulate day after day. The dedupe key includes the
+-- due date, so one overdue alert exists per CYCLE, not per run.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM alerts
+    WHERE asset_id = 'b0000000-0000-0000-0000-00000000001d' AND threshold = 'overdue') = 1,
+  'AL11: repeated runs against an overdue asset keep exactly one overdue alert');
+
+-- AL12/AL13: a NEW due-date cycle is a new event, and the old one survives.
+UPDATE gas_detectors SET next_calibration_date = cng_business_date() + 395
+ WHERE id = 'b0000000-0000-0000-0000-00000000001a';
+SELECT created FROM cng_generate_alerts((cng_business_date() + 365)::date) \gset gen_
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM alerts WHERE asset_id = 'b0000000-0000-0000-0000-00000000001a') = 2
+  AND (SELECT count(DISTINCT due_date) FROM alerts
+        WHERE asset_id = 'b0000000-0000-0000-0000-00000000001a') = 2,
+  'AL12: a new due-date cycle raises its own alert');
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM alerts
+    WHERE asset_id = 'b0000000-0000-0000-0000-00000000001a'
+      AND due_date = (SELECT (cng_business_date() + 30))) = 1,
+  'AL13: the historical alert keeps its original due date, unrewritten');
+
+-- AL14: an alert always carries an exact due date. There is no path by which a
+-- year-only value reaches the table.
+SELECT pg_temp.assert(
+  NOT EXISTS (SELECT 1 FROM alerts WHERE due_date IS NULL),
+  'AL14: every alert carries a concrete due date');
+
+-- AL15: an UNRESOLVED-STATION SRV is still alertable. Migration 0015 made
+-- alerts.station_id nullable deliberately: an exact due date is enough to track
+-- a calibration, and no Station is fabricated to enable the alert. The alert
+-- instead carries the RAW source station name, so it names a place without
+-- asserting a canonical one.
+INSERT INTO installed_relief_valves (id, region_id, station_id, mapping_status,
+                                     source_station_name_raw, location_raw, expected_parent_kind,
+                                     next_calibration_raw, next_calibration_date, next_calibration_precision)
+SELECT 'b0000000-0000-0000-0000-00000000002a', region_id, NULL, 'needs_station_mapping',
+       'AL-RAW-STATION', 'Stage', 'compressor', 'x', cng_business_date() + 15, 'exact_date' FROM algen;
+SELECT created FROM cng_generate_alerts() \gset gen15_
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM alerts
+    WHERE asset_id = 'b0000000-0000-0000-0000-00000000002a'
+      AND station_id IS NULL
+      AND needs_station_mapping
+      AND source_station_name_raw = 'AL-RAW-STATION') = 1,
+  'AL15: a station-unconfirmed SRV still raises an alert, carrying raw source context and no invented Station');
+
+-- AL15b: and it surfaces through the inbox view rather than being dropped by a
+-- join that assumes a Station row exists.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM v_alert_inbox
+    WHERE asset_id = 'b0000000-0000-0000-0000-00000000002a') = 1,
+  'AL15b: the inbox view LEFT JOINs stations, so an unresolved-station alert is not silently lost');
+
+-- AL15c: vessels, detectors and hoses cannot reach that state at all, because
+-- station_id is NOT NULL on each (the Prompt-21 blockers).
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name IN ('storage_vessels','recovery_tanks','gas_detectors','hoses')
+      AND column_name = 'station_id' AND is_nullable = 'YES') = 0,
+  'AL15c: only SRVs can be station-unconfirmed; the other asset types cannot hold that state');
+
+-- AL16: acknowledgement columns move together or not at all.
+SELECT pg_temp.assert_rejected($q$
+  UPDATE alerts SET acknowledged_at = now() WHERE acknowledged_at IS NULL$q$,
+  'AL16: an acknowledgement timestamp cannot exist without an actor');
+
+-- AL17: delivery is a SEPARATE record. Deleting every delivery leaves the
+-- alerts untouched - a failed or missing send never removes an alert.
+DELETE FROM notification_deliveries;
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM alerts
+    WHERE asset_id IN ('b0000000-0000-0000-0000-00000000001a',
+                       'b0000000-0000-0000-0000-00000000001d')) = 3,
+  'AL17: alerts persist independently of any delivery record');
+
+-- AL18: a delivery cannot exist without its alert.
+SELECT pg_temp.assert(
+  EXISTS (SELECT 1 FROM pg_constraint
+           WHERE conrelid = 'notification_deliveries'::regclass AND contype = 'f'
+             AND confrelid = 'alerts'::regclass),
+  'AL18: a delivery record is anchored to a real alert by foreign key');
+
+-- AL19: one delivery per (alert, user, channel) - a retry updates, never duplicates.
+SELECT pg_temp.assert(
+  EXISTS (SELECT 1 FROM pg_constraint
+           WHERE conrelid = 'notification_deliveries'::regclass AND conname = 'notif_delivery_uq'),
+  'AL19: delivery is unique per alert, user and channel, so a retry cannot duplicate a send');
+
+-- AL20: read state is PER-USER, keyed by both the alert and the user.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM information_schema.columns
+    WHERE table_name = 'alert_reads' AND column_name IN ('alert_id','app_user_id')) = 2
+  AND EXISTS (SELECT 1 FROM pg_constraint
+               WHERE conrelid = 'alert_reads'::regclass AND contype = 'p'),
+  'AL20: read state is per-user, so one reader does not mark an alert read for everyone');
+
+-- AL21: Africa/Cairo, proven across BOTH DST offsets at fixed instants, so the
+-- result cannot depend on when or where the suite runs.
+SELECT pg_temp.assert(
+  (TIMESTAMPTZ '2026-06-15 22:30:00+00' AT TIME ZONE 'Africa/Cairo')::date = DATE '2026-06-16'
+  AND (TIMESTAMPTZ '2026-06-15 22:30:00+00' AT TIME ZONE 'UTC')::date = DATE '2026-06-15'
+  AND (TIMESTAMPTZ '2026-01-15 22:30:00+00' AT TIME ZONE 'Africa/Cairo')::date = DATE '2026-01-16'
+  AND (TIMESTAMPTZ '2026-01-15 22:30:00+00' AT TIME ZONE 'UTC')::date = DATE '2026-01-15',
+  'AL21: the Cairo calendar date is a day ahead of UTC late in the evening, in both summer and winter');
+
+-- AL22: and cng_business_date() is Cairo regardless of the host timezone.
+SET LOCAL TIME ZONE 'America/New_York';
+SELECT pg_temp.assert(
+  cng_business_date() = (now() AT TIME ZONE 'Africa/Cairo')::date,
+  'AL22: cng_business_date() follows Africa/Cairo, not the session timezone');
+SET LOCAL TIME ZONE 'UTC';
+
+-- AL23: generation is not exposed to signed-in users. It is a scheduled server
+-- task, and letting a browser drive it would be an abuse vector.
+SELECT pg_temp.assert(
+  NOT has_function_privilege('authenticated', 'cng_generate_alerts(date)', 'EXECUTE')
+  AND has_function_privilege('service_role', 'cng_generate_alerts(date)', 'EXECUTE'),
+  'AL23: only service_role may run alert generation; authenticated cannot');
+
+-- AL24: acknowledgement is reachable by users, and only through the function.
+SELECT pg_temp.assert(
+  has_function_privilege('authenticated', 'cng_acknowledge_alert(uuid)', 'EXECUTE')
+  AND NOT has_function_privilege('anon', 'cng_acknowledge_alert(uuid)', 'EXECUTE'),
+  'AL24: acknowledgement is granted to authenticated and denied to anon');
+
+-- AL25: the definer functions pin their search_path.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM pg_proc
+    WHERE proname IN ('cng_generate_alerts','cng_acknowledge_alert')
+      AND prosecdef
+      AND array_to_string(proconfig, ',') LIKE '%search_path%') = 2,
+  'AL25: both SECURITY DEFINER alert functions pin search_path');
+
 ROLLBACK;

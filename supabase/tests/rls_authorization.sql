@@ -159,6 +159,44 @@ INSERT INTO hoses (id, station_id, region_id, unit_id, mapping_status, serial_nu
 SELECT 'e5700000-0000-0000-0000-0000000000fc', 'e5700000-0000-0000-0000-0000000000f1', r_west,
        NULL, 'needs_unit_mapping', 'TESTDATA-CROSS-DUP', 'assigned' FROM f;
 
+
+-- Alerts (Prompt 15). East and West, plus one on a station-unconfirmed SRV,
+-- which is the sensitive case: its raw source context must reach admins and
+-- managers only.
+INSERT INTO alerts (id, alert_rule_id, subject, threshold, asset_type, asset_id,
+                    region_id, station_id, unit_id, due_date, days_left, needs_mapping)
+SELECT 'e5700000-0000-0000-0000-0000000000d1',
+       (SELECT id FROM alert_rules WHERE subject='srv_calibration' AND threshold='due_30'),
+       'srv_calibration', 'due_30', 'installed_relief_valve',
+       'e5700000-0000-0000-0000-0000000000e5', r_east,
+       'e5700000-0000-0000-0000-0000000000e1', 'e5700000-0000-0000-0000-0000000000e2',
+       DATE '2026-10-16', 30, false FROM f;
+INSERT INTO alerts (id, alert_rule_id, subject, threshold, asset_type, asset_id,
+                    region_id, station_id, unit_id, due_date, days_left, needs_mapping)
+SELECT 'e5700000-0000-0000-0000-0000000000d2',
+       (SELECT id FROM alert_rules WHERE subject='srv_calibration' AND threshold='overdue'),
+       'srv_calibration', 'overdue', 'installed_relief_valve',
+       'e5700000-0000-0000-0000-0000000000f5', r_west,
+       'e5700000-0000-0000-0000-0000000000f1', 'e5700000-0000-0000-0000-0000000000f2',
+       DATE '2026-08-02', -45, false FROM f;
+-- THE SENSITIVE ONE. No confirmed Station; region_id says East and the raw text
+-- names an East-looking station. An East engineer must NOT be able to see it.
+INSERT INTO alerts (id, alert_rule_id, subject, threshold, asset_type, asset_id,
+                    region_id, station_id, unit_id, due_date, days_left,
+                    needs_mapping, needs_station_mapping, source_station_name_raw)
+SELECT 'e5700000-0000-0000-0000-0000000000d3',
+       (SELECT id FROM alert_rules WHERE subject='srv_calibration' AND threshold='due_15'),
+       'srv_calibration', 'due_15', 'installed_relief_valve',
+       'e5700000-0000-0000-0000-0000000000e6', r_east,
+       NULL, NULL, DATE '2026-10-01', 15, true, true, 'TESTDATA-EAST-STATION' FROM f;
+
+-- Per-user read state and a delivery record, both belonging to the VIEWER.
+INSERT INTO alert_reads (alert_id, app_user_id)
+VALUES ('e5700000-0000-0000-0000-0000000000d1', 'a0000000-0000-0000-0000-00000000000e');
+INSERT INTO notification_deliveries (alert_id, app_user_id, channel, status, error_detail)
+VALUES ('e5700000-0000-0000-0000-0000000000d1', 'a0000000-0000-0000-0000-00000000000e',
+        'email', 'failed', 'TESTDATA provider rejected');
+
 INSERT INTO warehouse_relief_valves (id, availability_status, serial_number)
 VALUES ('e5700000-0000-0000-0000-0000000000a5', 'available_calibrated', 'TESTDATA-WH-1');
 
@@ -353,8 +391,17 @@ BEGIN
       'ENG-25 cannot update warehouse stock');
 
   -- alerts
-  SELECT count(*) INTO n FROM alerts;
-  PERFORM pg_temp.ok(n = 0, 'ENG-26 sees no West alert and no unmapped-SRV alert');
+  --
+  -- Asserted by INTENT rather than by a blanket zero. The original `= 0` held
+  -- only because no East alert existed in the fixtures; Prompt 15 adds one that
+  -- an East engineer is legitimately entitled to see. Naming the two forbidden
+  -- rows explicitly is strictly stronger than counting, and it cannot silently
+  -- pass again just because the fixture set changed.
+  SELECT count(*) INTO n FROM alerts WHERE region_id = v_west_region;
+  PERFORM pg_temp.ok(n = 0, 'ENG-26 sees no West alert');
+
+  SELECT count(*) INTO n FROM alerts WHERE station_id IS NULL;
+  PERFORM pg_temp.ok(n = 0, 'ENG-26b sees no station-unconfirmed SRV alert, whatever its region_id claims');
 
   -- owner-confirmed rules readable, never writable
   SELECT count(*) INTO n FROM owner_confirmed_part_numbers;
@@ -399,15 +446,25 @@ END $$;
 -- 5. ENGINEER (West) — mirror check, proving scoping is per-user not global
 -- ===========================================================================
 DO $$
-DECLARE n int;
+DECLARE n int; v_west_region uuid;
 BEGIN
+  -- Read from the fixture table BEFORE assuming a role: `regions` is itself
+  -- RLS-scoped, so resolving it afterwards would beg the question.
+  SELECT r_west INTO v_west_region FROM f;
   PERFORM pg_temp.become('clerk_eng_west');
   SELECT count(*) INTO n FROM stations WHERE id='e5700000-0000-0000-0000-0000000000f1';
   PERFORM pg_temp.ok(n = 1, 'ENGW-1 West engineer CAN read West');
   SELECT count(*) INTO n FROM stations WHERE id='e5700000-0000-0000-0000-0000000000e1';
   PERFORM pg_temp.ok(n = 0, 'ENGW-2 West engineer cannot read East');
-  SELECT count(*) INTO n FROM alerts;
-  PERFORM pg_temp.ok(n = 1, 'ENGW-3 West engineer sees the West alert only');
+  -- Again by intent, not by a fixture-count. What matters is that EVERY alert
+  -- the West engineer can see is a West alert, and that none is station-
+  -- unconfirmed -- both of which stay true however many fixtures are added.
+  SELECT count(*) INTO n FROM alerts WHERE region_id IS DISTINCT FROM v_west_region;
+  PERFORM pg_temp.ok(n = 0, 'ENGW-3 West engineer sees West alerts only');
+  SELECT count(*) INTO n FROM alerts WHERE region_id = v_west_region;
+  PERFORM pg_temp.ok(n > 0, 'ENGW-3b and does see their own region''s alerts');
+  SELECT count(*) INTO n FROM alerts WHERE station_id IS NULL;
+  PERFORM pg_temp.ok(n = 0, 'ENGW-3c and no station-unconfirmed alert reaches them');
   RESET ROLE;
 END $$;
 
@@ -532,15 +589,20 @@ END $$;
 -- 9. UNRESOLVED-SRV ALERT VISIBILITY
 -- ===========================================================================
 DO $$
-DECLARE n int;
+DECLARE n int; v_total int;
 BEGIN
+  -- The privileged truth, taken before any role is assumed, so the assertions
+  -- below compare against reality rather than a hard-coded fixture count.
+  SELECT count(*) INTO v_total FROM alerts WHERE needs_station_mapping;
+
   PERFORM pg_temp.become('clerk_view_east');
   SELECT count(*) INTO n FROM alerts WHERE needs_station_mapping;
   PERFORM pg_temp.ok(n = 0, 'ALERT-1 viewer gains nothing from raw station text on an unmapped alert');
   RESET ROLE;
   PERFORM pg_temp.become('clerk_manager');
   SELECT count(*) INTO n FROM alerts WHERE needs_station_mapping;
-  PERFORM pg_temp.ok(n = 1, 'ALERT-2 manager CAN see the unmapped-SRV alert');
+  PERFORM pg_temp.ok(n = v_total AND v_total > 0,
+    'ALERT-2 manager CAN see every unmapped-SRV alert');
   RESET ROLE;
 END $$;
 
@@ -1619,6 +1681,241 @@ BEGIN
    WHERE tgrelid = 'hoses'::regclass AND NOT tgisinternal AND tgname ILIKE '%audit%';
   PERFORM pg_temp.ok(uniq = 0,
     'HOSE-25 hoses has no audit trigger, so mapping attribution is not yet trustworthy');
+END $$;
+
+
+-- ---------------------------------------------------------------------------
+-- Alerts (Prompt 15)
+--
+-- Three separate things are proved here: region scoping of alerts, the
+-- admin/manager-only rule for station-unconfirmed rows, and the fact that
+-- per-user state (read, delivery) is genuinely per-user.
+-- ---------------------------------------------------------------------------
+DO $$
+DECLARE n bigint; v_ack timestamptz; v_by uuid;
+BEGIN
+  ---------------------------------------------------------------- viewer, East
+  PERFORM pg_temp.become('clerk_view_east');
+
+  SELECT count(*) INTO n FROM v_alert_inbox;
+  PERFORM pg_temp.ok(n = 1,
+    'ALRT-1 an East viewer sees only the East alert - not West, and not the station-unconfirmed one');
+
+  SELECT count(*) INTO n FROM v_alert_inbox WHERE id = 'e5700000-0000-0000-0000-0000000000d2';
+  PERFORM pg_temp.ok(n = 0, 'ALRT-2 a West alert cannot be named directly by an East viewer (IDOR)');
+
+  SELECT count(*) INTO n FROM alerts WHERE id = 'e5700000-0000-0000-0000-0000000000d2';
+  PERFORM pg_temp.ok(n = 0, 'ALRT-3 nor through the alerts table itself');
+
+  -- THE INFORMATION-LEAK CASE. The raw source name looks like an East station
+  -- and region_id says East, but neither is permission: raw source text is
+  -- evidence (CLAUDE.md §10). An engineer or viewer must not see it.
+  SELECT count(*) INTO n FROM v_alert_inbox WHERE id = 'e5700000-0000-0000-0000-0000000000d3';
+  PERFORM pg_temp.ok(n = 0,
+    'ALRT-4 a station-unconfirmed alert is invisible to a regional viewer, despite its East region_id');
+
+  SELECT count(*) INTO n FROM v_alert_inbox WHERE source_station_name_raw IS NOT NULL;
+  PERFORM pg_temp.ok(n = 0, 'ALRT-5 and its raw source station name never leaks through the view');
+
+  SELECT count(*) INTO n FROM v_alert_inbox WHERE station_name ILIKE '%WEST%';
+  PERFORM pg_temp.ok(n = 0, 'ALRT-6 search by station name cannot surface an unauthorized alert');
+
+  SELECT count(*) INTO n FROM v_alert_inbox WHERE threshold = 'overdue';
+  PERFORM pg_temp.ok(n = 0, 'ALRT-7 a threshold filter cannot reach the West overdue alert');
+
+  -- Counts are RLS-scoped, so a total cannot betray a row the caller may not read.
+  SELECT count(*) INTO n FROM v_alert_inbox WHERE due_date IS NOT NULL;
+  PERFORM pg_temp.ok(n = 1, 'ALRT-8 the pagination total counts only authorized alerts');
+
+  -- Per-user state really is per-user.
+  SELECT count(*) INTO n FROM v_alert_inbox WHERE is_read;
+  PERFORM pg_temp.ok(n = 1, 'ALRT-9 the viewer sees their OWN read state');
+
+  SELECT count(*) INTO n FROM v_alert_inbox WHERE email_status = 'failed';
+  PERFORM pg_temp.ok(n = 1, 'ALRT-10 and their own delivery failure, which does not remove the alert');
+
+  -- A delivery failure never deletes or alters the alert it belongs to.
+  SELECT count(*) INTO n FROM v_alert_inbox
+   WHERE id = 'e5700000-0000-0000-0000-0000000000d1' AND email_status = 'failed';
+  PERFORM pg_temp.ok(n = 1,
+    'ALRT-11 an alert whose delivery failed is still fully present - failure is not absence');
+
+  -- Direct table writes are impossible. This is NOT free: migration 0019 had
+  -- granted UPDATE on (state, acknowledged_by, acknowledged_at, resolved_at) at
+  -- COLUMN level, which `information_schema.role_table_grants` does not show,
+  -- and an engineer could attribute an acknowledgement to an admin with a
+  -- backdated timestamp. Migration 0033 revoked it, so the definer function is
+  -- now the only path. This assertion is what stops that regressing.
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$UPDATE alerts SET acknowledged_by = 'a0000000-0000-0000-0000-00000000000a',
+                         acknowledged_at = now()
+        WHERE id = 'e5700000-0000-0000-0000-0000000000d1'$q$),
+    'ALRT-12 a client cannot write acknowledged_by directly - there is no UPDATE grant on alerts');
+
+  -- A viewer may not acknowledge: the function re-checks WRITE authorization.
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$SELECT cng_acknowledge_alert('e5700000-0000-0000-0000-0000000000d1')$q$),
+    'ALRT-13 a viewer cannot acknowledge, because the function requires write authorization');
+
+  -- Nor can they mark an alert they cannot see as read.
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$SELECT cng_mark_alert_read('e5700000-0000-0000-0000-0000000000d2')$q$),
+    'ALRT-14 marking an unauthorized alert read fails, and reports "not found" rather than confirming it exists');
+
+  RESET ROLE;
+
+  --------------------------------------------------------------- engineer, East
+  PERFORM pg_temp.become('clerk_eng_east');
+
+  SELECT count(*) INTO n FROM v_alert_inbox WHERE id = 'e5700000-0000-0000-0000-0000000000d3';
+  PERFORM pg_temp.ok(n = 0,
+    'ALRT-15 an East ENGINEER also cannot see the station-unconfirmed alert');
+
+  -- The engineer CAN acknowledge in their own region, and the actor is stamped
+  -- by the server rather than supplied.
+  PERFORM cng_acknowledge_alert('e5700000-0000-0000-0000-0000000000d1');
+  RESET ROLE;
+  SELECT acknowledged_by, acknowledged_at INTO v_by, v_ack
+    FROM alerts WHERE id = 'e5700000-0000-0000-0000-0000000000d1';
+  PERFORM pg_temp.ok(v_by = 'a0000000-0000-0000-0000-00000000000c' AND v_ack IS NOT NULL,
+    'ALRT-16 acknowledgement records the SERVER-derived acting user, not a client-supplied one');
+
+  -- Re-acknowledging by a DIFFERENT user must not reattribute the record.
+  PERFORM pg_temp.become('clerk_admin');
+  PERFORM cng_acknowledge_alert('e5700000-0000-0000-0000-0000000000d1');
+  RESET ROLE;
+  SELECT acknowledged_by INTO v_by FROM alerts WHERE id = 'e5700000-0000-0000-0000-0000000000d1';
+  PERFORM pg_temp.ok(v_by = 'a0000000-0000-0000-0000-00000000000c',
+    'ALRT-17 a second acknowledgement does not overwrite the first actor');
+
+  -- An East engineer cannot acknowledge a West alert.
+  PERFORM pg_temp.become('clerk_eng_east');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$SELECT cng_acknowledge_alert('e5700000-0000-0000-0000-0000000000d2')$q$),
+    'ALRT-18 an East engineer cannot acknowledge a West alert');
+  RESET ROLE;
+
+  ------------------------------------------------------- admin sees the unmapped
+  PERFORM pg_temp.become('clerk_admin');
+  SELECT count(*) INTO n FROM v_alert_inbox WHERE id = 'e5700000-0000-0000-0000-0000000000d3';
+  PERFORM pg_temp.ok(n = 1,
+    'ALRT-19 an admin DOES see the station-unconfirmed alert, so ALRT-4 is scoping and not an accident');
+
+  SELECT count(*) INTO n FROM v_alert_inbox
+   WHERE id = 'e5700000-0000-0000-0000-0000000000d3' AND source_station_name_raw = 'TESTDATA-EAST-STATION';
+  PERFORM pg_temp.ok(n = 1,
+    'ALRT-20 and the admin sees its raw source station name, which is what makes it resolvable');
+
+  -- An admin's own read state is their own: the viewer's read row is not theirs.
+  SELECT count(*) INTO n FROM v_alert_inbox WHERE is_read;
+  PERFORM pg_temp.ok(n = 0,
+    'ALRT-21 read state is PER-USER: the viewer having read an alert does not mark it read for the admin');
+
+  -- Nor does the admin inherit the viewer's delivery record.
+  SELECT count(*) INTO n FROM v_alert_inbox WHERE email_status IS NOT NULL;
+  PERFORM pg_temp.ok(n = 0,
+    'ALRT-22 one user''s delivery outcome is never visible as another''s');
+  RESET ROLE;
+
+  -------------------------------------------------- cross-user state tampering
+  PERFORM pg_temp.become('clerk_eng_east');
+  -- Writing a read row for ANOTHER user must change nothing. RLS filters the
+  -- WITH CHECK, so this is a policy violation rather than a silent success.
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$INSERT INTO alert_reads (alert_id, app_user_id)
+       VALUES ('e5700000-0000-0000-0000-0000000000d1','a0000000-0000-0000-0000-00000000000a')$q$),
+    'ALRT-23 a user cannot create read state on behalf of another user');
+
+  SELECT count(*) INTO n FROM alert_reads;
+  PERFORM pg_temp.ok(n = 0,
+    'ALRT-24 and cannot READ another user''s read state either');
+
+  DELETE FROM alert_reads WHERE app_user_id = 'a0000000-0000-0000-0000-00000000000e';
+  GET DIAGNOSTICS n = ROW_COUNT;
+  PERFORM pg_temp.ok(n = 0,
+    'ALRT-25 deleting another user''s read state changes zero rows');
+
+  SELECT count(*) INTO n FROM notification_deliveries;
+  PERFORM pg_temp.ok(n = 0,
+    'ALRT-26 a user cannot read another user''s delivery records, including provider error text');
+
+  -- Push subscriptions are per-user too.
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$INSERT INTO push_subscriptions (app_user_id, endpoint, p256dh, auth)
+       VALUES ('a0000000-0000-0000-0000-00000000000a','https://x.test/1','k','a')$q$),
+    'ALRT-27 a user cannot register a push subscription for another user');
+  RESET ROLE;
+
+  ------------------------------------------------------------------------ anon
+  PERFORM pg_temp.become(NULL);
+  SET LOCAL ROLE anon;
+  PERFORM pg_temp.ok(pg_temp.denied('SELECT count(*) FROM alerts'),
+    'ALRT-28 anon cannot read alerts');
+  PERFORM pg_temp.ok(pg_temp.denied('SELECT count(*) FROM v_alert_inbox'),
+    'ALRT-29 anon cannot read the alert inbox view');
+  PERFORM pg_temp.ok(pg_temp.denied('SELECT count(*) FROM alert_reads'),
+    'ALRT-30 anon cannot read alert read state');
+  PERFORM pg_temp.ok(pg_temp.denied('SELECT count(*) FROM notification_deliveries'),
+    'ALRT-31 anon cannot read delivery records');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$SELECT cng_acknowledge_alert('e5700000-0000-0000-0000-0000000000d1')$q$),
+    'ALRT-32 anon cannot acknowledge');
+  PERFORM pg_temp.ok(pg_temp.denied('SELECT cng_generate_alerts()'),
+    'ALRT-33 anon cannot run alert generation');
+  RESET ROLE;
+END $$;
+
+-- Structural guarantees.
+DO $$
+DECLARE definer int; anon_grants int; write_grants int; upd int;
+BEGIN
+  SELECT count(*) INTO definer
+    FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace
+   WHERE ns.nspname = 'public' AND c.relname = 'v_alert_inbox'
+     AND NOT coalesce((c.reloptions::text LIKE '%security_invoker=true%'), false);
+  PERFORM pg_temp.ok(definer = 0, 'ALRT-34 the alert inbox view is security_invoker');
+
+  SELECT count(*) INTO anon_grants
+    FROM information_schema.role_table_grants
+   WHERE grantee = 'anon' AND table_schema = 'public'
+     AND table_name IN ('v_alert_inbox','alerts','alert_reads','notification_deliveries');
+  PERFORM pg_temp.ok(anon_grants = 0, 'ALRT-35 anon holds no grant on any alert object');
+
+  SELECT count(*) INTO write_grants
+    FROM information_schema.role_table_grants
+   WHERE table_schema = 'public' AND table_name = 'v_alert_inbox'
+     AND grantee IN ('anon','authenticated','service_role','PUBLIC')
+     AND privilege_type IN ('INSERT','UPDATE','DELETE','TRUNCATE');
+  PERFORM pg_temp.ok(write_grants = 0,
+    format('ALRT-36 the read-only inbox view cannot be written through (found %s)', write_grants));
+
+  -- THE KEY STRUCTURAL FACT behind non-forgeable attribution: there is no
+  -- UPDATE grant on `alerts` for `authenticated`, so the definer function is
+  -- the ONLY path by which an alert can become acknowledged.
+  -- COLUMN grants, not table grants. The table-level view is exactly what hid
+  -- the original hole, so this checks the level the hole actually lived at.
+  SELECT count(*) INTO upd
+    FROM information_schema.role_column_grants
+   WHERE table_schema = 'public' AND table_name = 'alerts'
+     AND grantee = 'authenticated' AND privilege_type IN ('UPDATE','INSERT','DELETE');
+  PERFORM pg_temp.ok(upd = 0,
+    format('ALRT-37 authenticated holds no write privilege on ANY alerts column, so acknowledgement can only happen through the audited function (found %s)', upd));
+
+  -- service_role gained EXECUTE on generation and nothing more.
+  PERFORM pg_temp.ok(
+    has_function_privilege('service_role','cng_generate_alerts(date)','EXECUTE')
+    AND NOT has_function_privilege('authenticated','cng_generate_alerts(date)','EXECUTE'),
+    'ALRT-38 only service_role may generate alerts');
+
+  -- The generation function reads assets, so it must not be callable by anon.
+  PERFORM pg_temp.ok(NOT has_function_privilege('anon','cng_generate_alerts(date)','EXECUTE'),
+    'ALRT-39 anon holds no EXECUTE on alert generation');
+
+  -- Read-state functions are reachable by users and nobody else.
+  PERFORM pg_temp.ok(
+    has_function_privilege('authenticated','cng_mark_alert_read(uuid)','EXECUTE')
+    AND NOT has_function_privilege('anon','cng_mark_alert_read(uuid)','EXECUTE'),
+    'ALRT-40 read-state functions are granted to authenticated only');
 END $$;
 
 DO $$ BEGIN RAISE EXCEPTION 'RLS_SUITE_ROLLBACK'; END $$;

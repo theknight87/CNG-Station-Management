@@ -985,3 +985,44 @@ and the gap is documented. Mapping mutation remains deferred for the fourth prom
 running.
 
 See `docs/hoses-management.md`.
+
+
+## Alerts & Notifications (Prompt 15)
+
+`/alerts` is the operational alert inbox. It added migrations **0031** (engine), **0032**
+(daily schedule) and **0033** (a security fix), plus the `generate-alerts` Edge Function.
+
+The feature exists to keep three things apart: **due status** is a calculated property of
+an asset's date; an **alert** is a persisted event with its own lifecycle that outlives the
+condition that raised it; a **delivery** is an attempt to surface that alert. A failed send
+never alters an alert, and an asset returning to Current never deletes its history.
+
+Most of the schema already existed from Prompt 4 and was reused, not rebuilt — including
+`alerts_dedupe_uq (asset_type, asset_id, threshold, due_date)`, which makes idempotency a
+database property rather than an application convention. Generation uses `ON CONFLICT DO
+NOTHING`; six concurrent runs against one eligible asset produced exactly one alert.
+
+Three things were missing and were added: per-user read state (`alert_reads` — one manager
+reading an alert must not mark it read for everyone), a safe acknowledgement path, and
+generation itself. Only assets with `exact_date` precision are eligible, so a year-only
+date can never raise a countdown. Countdown thresholds match the exact calendar day, which
+is what stops a first run against an already-overdue asset from back-filling every
+threshold it passed.
+
+**A pre-existing vulnerability was found and fixed.** Migration 0019 had granted
+`UPDATE (state, acknowledged_by, acknowledged_at, resolved_at)` at COLUMN level — invisible
+in `information_schema.role_table_grants`, which showed only `SELECT`. Reproduced by
+attack: an engineer attributed an acknowledgement to an admin, backdated to 2020-01-01.
+Migration 0033 revokes it, leaving the `SECURITY DEFINER` `cng_acknowledge_alert()` — which
+takes no identity parameter and stamps actor and time server-side — as the only path.
+
+Alert generation is granted to `service_role` alone, never to `authenticated`. `pg_cron`
+calls the SQL function **in-database** at 01:00 UTC, so no invocation secret has to exist
+anywhere; the function derives its own Africa/Cairo date via `cng_business_date()`.
+
+In-app alerting is complete. Email and Web Push are architected but **not sent**: this
+project has no Resend API key, no verified CNG sender and no VAPID pair, and none was
+guessed. The Resend *account* may be shared with the Coding System; its *credentials* may
+not, and a repository-wide search confirms no cross-project dependency exists.
+
+See `docs/alerts-notifications.md`.

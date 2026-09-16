@@ -299,6 +299,27 @@ serials are never duplicates of one another. Terminology follows the schema: "La
 so none is hard-coded. Mapping mutation stays deferred for the same attribution reason as
 Prompts 11-13.*
 
+*Alerts & Notifications (Prompt 15) is built: `/alerts` — see `docs/alerts-notifications.md`.
+Migrations **0031** (engine), **0032** (daily pg_cron schedule) and **0033** (a security fix),
+plus the `generate-alerts` Edge Function. The system keeps **due status**, **alert** and
+**delivery** as three separate layers: a failed delivery never alters an alert, and an asset
+becoming current never deletes one. Most of the schema existed from Prompt 4 and was reused —
+`alerts_dedupe_uq` makes idempotency a DATABASE property, verified with six concurrent runs
+producing exactly one alert. Added: **per-user read state** (`alert_reads`; read is NOT
+acknowledgement, and opening an alert does neither), a safe acknowledgement path, and generation
+itself. Only `exact_date` precision is eligible, so a year-only date can never raise a countdown;
+countdown thresholds match the exact calendar day, so a first run against an already-overdue asset
+raises `overdue` alone and back-fills nothing. **A PRE-EXISTING VULNERABILITY WAS FOUND AND
+FIXED**: migration 0019 granted `UPDATE (state, acknowledged_by, acknowledged_at, resolved_at)` at
+COLUMN level — invisible in `role_table_grants` — and an engineer could attribute an
+acknowledgement to an admin with a backdated timestamp. Reproduced by attack; migration 0033
+revokes it, leaving the SECURITY DEFINER `cng_acknowledge_alert()` as the only path. Generation is
+granted to `service_role` only. `pg_cron` calls the SQL function IN-DATABASE, so no invocation
+secret exists in the repository. **Email and Web Push are architected but NOT sent**: this project
+has no Resend API key, no verified CNG sender and no VAPID pair, and none was invented — the
+Resend ACCOUNT may be shared with the Coding System, its CREDENTIALS may not, and no cross-project
+dependency exists.*
+
 ### Prompt-21 import blockers (must be resolved before the production import)
 
 | Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |
@@ -363,6 +384,7 @@ These rules are permanent and apply to every future prompt.
 | 12 | 270 | 72 | 166 |
 | 13 | 316 | 82 | 197 |
 | 14 | 356 | 102 | 222 |
+| 15 | 389 | 129 | 265 |
 
 Update this table when a prompt is accepted, so the next one has a baseline to compare
 against.
