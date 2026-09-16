@@ -804,3 +804,30 @@ reads nothing.
 satisfied honestly.
 
 **Not deployed.** 0038 exists in the repository only; the hosted project is still at 37.
+
+
+---
+
+## Migrations 0039 and 0040 — pre-import decisions and channel policy (Prompt 19A)
+
+Both additive.
+
+**0039** adds `import_mapping_decisions` (one human row-level decision per source row),
+`cng_admin_decide_staged_mapping()`, `v_admin_staged_mapping_queue`, `v_import_confirmed_mappings`,
+and replaces `v_admin_data_quality` in place to add the staged queues. Structural guarantees:
+`imd_one_active_per_source_row` (partial unique index) for exactly one active decision per source
+row; `imd_unit_station_fk (confirmed_unit_id, confirmed_station_id) → units(id, station_id)` for
+the hierarchy; `imd_status_shape_ck` so the status matches what was actually confirmed. The table
+has **no INSERT/UPDATE/DELETE policy and no such grant** — the SECURITY DEFINER function is the
+only writer. `superseded_by` is `DEFERRABLE INITIALLY DEFERRED` because a correction names its
+replacement in the same statement that mints it.
+
+**No canonical table was altered.** `storage_vessels.station_id`, `recovery_tanks.station_id`,
+`gas_detectors.station_id` and `hoses.station_id` are all still `NOT NULL`, asserted by PREMAP-33.
+
+**0040** adds `notification_channel_policy` (email, web_push, in_app; seeded enabled),
+`cng_channel_policy_enabled()`, `cng_admin_set_channel_policy()`, and replaces
+`cng_enqueue_alert_deliveries` with the same 0034 body plus a policy gate at the top.
+`ncp_in_app_mandatory_ck` makes in-app impossible to disable.
+
+**Not deployed.** The hosted project is still at 37.

@@ -514,6 +514,49 @@ mapping (a definer function bypasses the RLS that would bound them, so the scope
 hostile pass), bulk mapping, and vessel/detector/hose mapping mutation. **NOT DEPLOYED and NOT
 LIVE VERIFIED** — 0038 is not applied to the hosted project.*
 
+***PROMPT 19A — the missing Admin scope is now built** — see `docs/preimport-mapping.md`.
+**Two additive migrations, 0039 and 0040.** The review checkpoint correctly found Prompt 19
+PARTIAL: four of five asset types were count-only, the audit log rendered no before/after, and
+there was no admin-level channel policy.
+
+**PRE-IMPORT MAPPING (0039).** The 1,104 staged `needs_station_mapping` rows cannot enter their
+canonical tables because `station_id` is NOT NULL — so the resolution moved EARLIER, to the
+staging row, where the evidence still lives. **NO canonical `station_id` was made nullable, no
+constraint was relaxed and no staged row was dropped** (PREMAP-33 asserts all four columns are
+still NOT NULL). `import_mapping_decisions` records one human decision per SOURCE ROW, keyed by
+`source_row_key` so it survives a later dry run. **A row decision is NOT an alias**: confirming
+one row says nothing about another carrying byte-identical text, and PREMAP-23/24 plus a frontend
+test assert no alias or owner-confirmed rule is ever created. A correction SUPERSEDES rather than
+overwrites; `imd_one_active_per_source_row` (a partial unique index) makes "exactly one active
+decision" a DATABASE property; `imd_unit_station_fk` makes a Unit from another Station
+inexpressible; the resulting status is DERIVED in SQL. `p_expected_decision_at` is both the
+stale-write AND the duplicate guard. The decision table has **no INSERT/UPDATE/DELETE policy and
+no grant** — the SECURITY DEFINER function is the only writer, so not even an admin can forge,
+edit or delete a decision. Admin only; engineer/manager Region-scoped mapping stays DEFERRED and
+was not opened by accident.
+
+**PROMPT 21 CONSUMPTION** is built and tested but NOT executed: `src/import/mappingDecisions.ts`
+plans a commit from `v_import_confirmed_mappings`, using the confirmed ids, holding every row
+without a decision, and copying `sourceRaw`/`sourceRowKey`/`sourceRowHash`/provenance through
+unchanged.
+
+**CHANNEL POLICY (0040).** `/settings` is a USER saying "I want email"; `notification_channel_policy`
+is the ORGANIZATION saying "email is available at all". Effective delivery requires BOTH. Disabling
+writes NO preference row, so re-enabling restores the same audience — the entire reason it is a
+separate table rather than a bulk preference update. The gate lives in
+`cng_enqueue_alert_deliveries`, otherwise byte-for-byte the 0034 logic, so it applies to every
+caller. All three ship ENABLED and Prompt 15-18 delivery is unaffected. **IN-APP IS MANDATORY BY
+DESIGN**: it is the alert READ surface, not a delivery channel, and `ncp_in_app_mandatory_ck` makes
+disabling it impossible — the screen states that instead of offering a toggle that always refuses.
+**Severity was NOT invented**: no severity column exists on `alert_rules` or `alerts`, and none was
+added to satisfy a checklist. Subject, threshold and days_before stay immutable rule identity.
+
+**HOSTILE GAPS CLOSED**: the Dispenser equipment-parent path (GAP-1/2/3), malformed UUID and
+out-of-enum input (GAP-4..7), and cross-Region read vs mutation (GAP-8..11). Prompt 19's user
+administration is re-asserted AFTER the new migrations (REG-1..6). The gate now also replays the
+UPGRADE path — a production-equivalent database at 37, then 0038/0039/0040 in order, then both SQL
+suites against the upgraded database. **NOT DEPLOYED and NOT LIVE VERIFIED.***
+
 ### Prompt-21 import blockers (must be resolved before the production import)
 
 | Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |
@@ -525,7 +568,10 @@ LIVE VERIFIED** — 0038 is not applied to the hosted project.*
 | **Total** | **1,104** | | |
 
 Do not resolve these by relaxing a constraint, by fabricating a Station mapping, or by dropping
-the staged rows. The resolution is a Prompt-21 decision.
+the staged rows. **Prompt 19A built the resolution PATH** — an admin confirms the Station on the
+staging row before the import, and Prompt 21 commits with the confirmed ids
+(`docs/preimport-mapping.md`). The rows themselves are still unresolved, and working them is
+operational work, not a migration.
 
 *Vessels Management (Prompt 12) is built: `/manage/vessels/storage` and
 `/manage/vessels/recovery` — see `docs/vessels-management.md`. **No new migration.** Storage
@@ -587,6 +633,7 @@ These rules are permanent and apply to every future prompt.
 | 16-18 | 431 | 146 | 311 |
 | 18A | 433 | 146 | 332 |
 | 19 | 451 | 146 | 406 |
+| 19A | 486 | 146 | 479 |
 
 Update this table when a prompt is accepted, so the next one has a baseline to compare
 against.

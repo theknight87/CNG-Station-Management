@@ -30,6 +30,9 @@ run "build"  npm run build
 run "lint"   npx eslint src dev --max-warnings=0
 run "tests"  npx vitest run
 run "brand"  node scripts/verify-brand.mjs
+# Run the import/dry-run regression suite in its own right as well as inside the
+# full run, so a failure there is named rather than buried in a total.
+run "import suite" npx vitest run src/import
 
 # Counts are reported, not used as the verdict.
 tests_log=/tmp/verify-tests.log
@@ -53,7 +56,7 @@ done
 # runs but asserts nothing (a failed connection, a renamed file, a truncated
 # run) must FAIL rather than report a cheerful zero - that is precisely the
 # silent coverage loss this gate exists to stop.
-declare -A MIN=( [schema_scenarios]=146 [rls_authorization]=406 )
+declare -A MIN=( [schema_scenarios]=146 [rls_authorization]=479 )
 
 for suite in schema_scenarios rls_authorization; do
   out="$(sudo -n -u postgres psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "supabase/tests/$suite.sql" 2>&1)"
@@ -68,6 +71,48 @@ for suite in schema_scenarios rls_authorization; do
     line "sql $suite" "PASS ($count assertions, baseline $min)"
   fi
 done
+
+# ---------------------------------------------------------------------------
+# UPGRADE REPLAY. Replaying from zero proves the migrations are internally
+# consistent; it does NOT prove that the hosted database, which is at 37, can
+# take the new ones. So the upgrade path is replayed separately: stop at 37,
+# then apply 0038, 0039 and 0040 in order, exactly as production would.
+# ---------------------------------------------------------------------------
+UDB="${VERIFY_UPGRADE_DB:-cng_upgrade}"
+sudo -n -u postgres psql -q -c "DROP DATABASE IF EXISTS $UDB" -c "CREATE DATABASE $UDB" >/dev/null 2>&1
+up_fail=0
+for f in $(ls supabase/migrations/*.sql | head -37); do
+  sudo -n -u postgres psql -d "$UDB" -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null 2>&1 \
+    || { echo "BASE MIGRATION FAILED: $f"; up_fail=1; break; }
+done
+if [ $up_fail -eq 0 ]; then
+  line "production-equivalent base" "PASS (37 applied)"
+  for f in supabase/migrations/0038_*.sql supabase/migrations/0039_*.sql supabase/migrations/0040_*.sql; do
+    if sudo -n -u postgres psql -d "$UDB" -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null 2>&1; then
+      line "upgrade $(basename "$f" .sql)" "PASS (exit 0)"
+    else
+      echo "UPGRADE FAILED: $f"; up_fail=1; fail=1; break
+    fi
+  done
+fi
+[ $up_fail -ne 0 ] && fail=1
+
+# The upgraded database must pass the same suites as one built from zero: an
+# upgrade that "works" but leaves different behaviour behind is not an upgrade.
+if [ $up_fail -eq 0 ]; then
+  for suite in schema_scenarios rls_authorization; do
+    out="$(sudo -n -u postgres psql -d "$UDB" -v ON_ERROR_STOP=1 -q -f "supabase/tests/$suite.sql" 2>&1)"
+    count="$(printf '%s' "$out" | grep -c 'PASS ')"
+    if printf '%s' "$out" | grep -q 'FAILED:'; then
+      fail=1; line "upgraded $suite" "FAIL (assertion failed)"
+      printf '%s\n' "$out" | grep 'FAILED:' | head -5
+    elif [ "$count" -lt "${MIN[$suite]}" ]; then
+      fail=1; line "upgraded $suite" "FAIL ($count assertions, baseline ${MIN[$suite]})"
+    else
+      line "upgraded $suite" "PASS ($count assertions)"
+    fi
+  done
+fi
 
 echo
 if [ $fail -ne 0 ]; then echo "VERIFICATION FAILED"; exit 1; fi

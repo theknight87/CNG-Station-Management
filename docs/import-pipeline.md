@@ -211,3 +211,41 @@ Canal, Alex and Upper contribute a large share of the 387 for a structural reaso
 their Station→Unit structure, so their names cannot match a canonical entity that does not yet
 exist. Their Stations are still created and still carry every attribute the sources prove
 (principle #19).
+
+
+---
+
+## 13. Human pre-import mapping decisions (Prompt 19A)
+
+The dry run ends with unresolved records by design (§12). Prompt 19A adds the mechanism that
+works that queue **before** the commit, and defines exactly what Prompt 21 consumes.
+
+### The vocabulary, kept apart
+
+| Kind | Where | Scope |
+| --- | --- | --- |
+| raw import evidence | `import_staging_rows.source_raw` + file/sheet/row | one source cell |
+| automated candidate | `resolution.proposals` | a suggestion about one row; applies nothing |
+| owner-confirmed global rule | `owner_confirmed_station_aliases`, `station_aliases` | every row with that exact value |
+| **human row-level decision** | `import_mapping_decisions` | **exactly one source row** |
+| canonical record | the asset table | written only by the commit |
+
+A row-level decision is **never** promoted into an alias. There is no code path that could, and
+`PREMAP-23`/`PREMAP-24` assert it.
+
+### What the commit step must do (still Prompt 21, still not built)
+
+Step 5 of §11 — "never resolve a mapping the pipeline left unresolved" — is unchanged and now has
+a precise exception: a mapping a HUMAN resolved. Concretely, the commit:
+
+1. reads `v_import_confirmed_mappings` (the ACTIVE decisions, keyed by `source_row_key`);
+2. for each staging row calls `planRow()` in `src/import/mappingDecisions.ts`;
+3. commits rows planned `commit`, using `confirmed_station_id` / `confirmed_unit_id`;
+4. leaves rows planned `hold_needs_station` exactly as staged — it never re-derives a Station;
+5. writes `committed_entity_id` / `committed_at` on the staging row in the same transaction, as
+   §11 already requires.
+
+`applyDecision()` copies `sourceRaw`, `sourceRowKey`, `sourceRowHash` and `provenance` through
+unchanged, keeps what the pipeline concluded under `normalized.staged_mapping_status`, and records
+`resolution.human_decision` with an explicit `scope` of "this source row only; NOT an alias and NOT
+a global rule".

@@ -217,6 +217,75 @@ SELECT (SELECT id FROM alert_rules WHERE subject='srv_calibration' AND threshold
 -- ===========================================================================
 -- 1. ANONYMOUS — must see and do nothing
 -- ===========================================================================
+
+-- ---------------------------------------------------------------------------
+-- Prompt 19A fixtures: a dispenser per Unit, and a staged pre-import set.
+-- Created with RLS bypassed, like every other fixture in this file.
+-- ---------------------------------------------------------------------------
+INSERT INTO dispensers (id, station_id, region_id, unit_id, mapping_status, serial_number)
+SELECT 'e5700000-0000-0000-0000-0000000000da'::uuid, 'e5700000-0000-0000-0000-0000000000e1'::uuid,
+       r_east, 'e5700000-0000-0000-0000-0000000000e2'::uuid, 'resolved'::asset_mapping_status,
+       'TESTDATA-EAST-DISP' FROM f
+UNION ALL
+SELECT 'e5700000-0000-0000-0000-0000000000fa'::uuid, 'e5700000-0000-0000-0000-0000000000f1'::uuid,
+       r_west, 'e5700000-0000-0000-0000-0000000000f2'::uuid, 'resolved'::asset_mapping_status,
+       'TESTDATA-WEST-DISP' FROM f;
+
+INSERT INTO import_runs (id, mode, label)
+VALUES ('e5719a00-0000-0000-0000-000000000001', 'dry_run', 'TESTDATA-RUN');
+
+INSERT INTO import_batches (id, source_file, source_sheet, status, import_run_id)
+VALUES ('e5719a00-0000-0000-0000-000000000002', 'TESTDATA-PREIMPORT.xlsx', 'Sheet1',
+        'dry_run', 'e5719a00-0000-0000-0000-000000000001');
+
+-- One staged row per pre-import asset type, all in needs_station_mapping — the
+-- exact shape of the 1,104 rows this workflow exists for.
+INSERT INTO import_staging_rows (
+  id, import_run_id, import_batch_id, source_file, source_sheet, source_row,
+  source_raw, source_row_key, source_row_hash, target_table, outcome,
+  mapping_status, normalized, resolution)
+VALUES
+  ('e5719a00-0000-0000-0000-000000000011',
+   'e5719a00-0000-0000-0000-000000000001', 'e5719a00-0000-0000-0000-000000000002',
+   'TESTDATA-PREIMPORT.xlsx', 'Sheet1', 11,
+   '{"Station":"TESTDATA-RAW-STATION","Area":"EAST","Serial Number":"SV-001"}'::jsonb,
+   'TESTDATA-PREIMPORT.xlsx#Sheet1#11', 'hash-s1', 'storage_vessels', 'ready_unresolved',
+   'needs_station_mapping',
+   '{"region":"East","region_raw":"EAST","source_station_name_raw":"TESTDATA-RAW-STATION","serial_number":"SV-001","serial_number_raw":"SV-001","manufacturer":"TESTDATA MFR","location_raw":"Storage"}'::jsonb,
+   '{"station":{"kind":"unmatched","rule":null,"proposals":[{"name":"TESTDATA-EAST-STATION","score":0.71}]}}'::jsonb),
+  ('e5719a00-0000-0000-0000-000000000012',
+   'e5719a00-0000-0000-0000-000000000001', 'e5719a00-0000-0000-0000-000000000002',
+   'TESTDATA-PREIMPORT.xlsx', 'Sheet1', 12,
+   '{"Station":"TESTDATA-RAW-STATION","Area":"EAST","Serial Number":"RT-001"}'::jsonb,
+   'TESTDATA-PREIMPORT.xlsx#Sheet1#12', 'hash-s2', 'recovery_tanks', 'ready_unresolved',
+   'needs_station_mapping',
+   '{"region":"East","region_raw":"EAST","source_station_name_raw":"TESTDATA-RAW-STATION","serial_number":"RT-001"}'::jsonb,
+   '{"station":{"kind":"unmatched","rule":null,"proposals":[]}}'::jsonb),
+  ('e5719a00-0000-0000-0000-000000000013',
+   'e5719a00-0000-0000-0000-000000000001', 'e5719a00-0000-0000-0000-000000000002',
+   'TESTDATA-PREIMPORT.xlsx', 'Sheet1', 13,
+   '{"Station":"TESTDATA-RAW-STATION","Area":"EAST","S/N":"GD-001"}'::jsonb,
+   'TESTDATA-PREIMPORT.xlsx#Sheet1#13', 'hash-s3', 'gas_detectors', 'ready_unresolved',
+   'needs_station_mapping',
+   '{"region":"East","region_raw":"EAST","source_station_name_raw":"TESTDATA-RAW-STATION","serial_number":"GD-001"}'::jsonb,
+   '{"station":{"kind":"unmatched","rule":null,"proposals":[]}}'::jsonb),
+  ('e5719a00-0000-0000-0000-000000000014',
+   'e5719a00-0000-0000-0000-000000000001', 'e5719a00-0000-0000-0000-000000000002',
+   'TESTDATA-PREIMPORT.xlsx', 'Sheet1', 14,
+   '{"Station":"TESTDATA-RAW-STATION","Serial Number":"HS-001"}'::jsonb,
+   'TESTDATA-PREIMPORT.xlsx#Sheet1#14', 'hash-s4', 'hoses', 'ready_unresolved',
+   'needs_station_mapping',
+   '{"source_station_name_raw":"TESTDATA-RAW-STATION","serial_number":"HS-001"}'::jsonb,
+   '{"station":{"kind":"unmatched","rule":null,"proposals":[]}}'::jsonb),
+  -- A rejected row: structurally unusable, and therefore not a decision to make.
+  ('e5719a00-0000-0000-0000-000000000015',
+   'e5719a00-0000-0000-0000-000000000001', 'e5719a00-0000-0000-0000-000000000002',
+   'TESTDATA-PREIMPORT.xlsx', 'Sheet1', 15,
+   '{"Station":null}'::jsonb,
+   'TESTDATA-PREIMPORT.xlsx#Sheet1#15', 'hash-s5', 'storage_vessels', 'rejected',
+   'needs_station_mapping', '{}'::jsonb, '{}'::jsonb);
+
+
 DO $$
 DECLARE n int;
 BEGIN
@@ -2889,6 +2958,453 @@ BEGIN
   PERFORM pg_temp.ok(pg_temp.denied('SELECT count(*) FROM v_admin_data_quality'),
     'ADMSEC-35 anon reads no data-quality counts');
   RESET ROLE;
+END $$;
+
+-- ===========================================================================
+-- PRE-IMPORT MAPPING DECISIONS (Prompt 19A, migration 0039).
+--
+-- These are the 1,104 staged rows the canonical tables cannot hold. The
+-- resolution happens BEFORE the import, on the staging row, where the evidence
+-- still is — and it never relaxes a canonical constraint to get there.
+-- ===========================================================================
+DO $$
+DECLARE
+  v_admin   uuid;
+  v_station uuid := 'e5700000-0000-0000-0000-0000000000e1';
+  v_unit    uuid := 'e5700000-0000-0000-0000-0000000000e2';
+  v_w_unit  uuid := 'e5700000-0000-0000-0000-0000000000f2';
+  v_sv      uuid := 'e5719a00-0000-0000-0000-000000000011';
+  v_rt      uuid := 'e5719a00-0000-0000-0000-000000000012';
+  v_gd      uuid := 'e5719a00-0000-0000-0000-000000000013';
+  v_hs      uuid := 'e5719a00-0000-0000-0000-000000000014';
+  v_rej     uuid := 'e5719a00-0000-0000-0000-000000000015';
+  v_status  text;
+  v_at      timestamptz;
+  v_id      uuid;
+  v_raw     jsonb;
+  n         integer;
+BEGIN
+  SELECT id INTO v_admin FROM app_users WHERE clerk_user_id = 'clerk_admin';
+  SELECT source_raw INTO v_raw FROM import_staging_rows WHERE id = v_sv;
+
+  ------------------------------------------------------------------ NON-ADMINS
+  PERFORM pg_temp.become('clerk_view_east');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_decide_staged_mapping(%L, %L)$q$, v_sv, v_station)),
+    'PREMAP-1 a viewer cannot record a pre-import mapping decision');
+  RESET ROLE;
+  PERFORM pg_temp.become('clerk_eng_east');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_decide_staged_mapping(%L, %L)$q$, v_sv, v_station)),
+    'PREMAP-2 nor an engineer');
+  RESET ROLE;
+  PERFORM pg_temp.become('clerk_manager');
+  -- A manager may READ staging (they always could) but may not DECIDE. Region
+  -- scoped admin mapping stays deferred and is not opened here by accident.
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_decide_staged_mapping(%L, %L)$q$, v_sv, v_station)),
+    'PREMAP-3 nor a manager');
+  RESET ROLE;
+  PERFORM pg_temp.as_anon();
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_decide_staged_mapping(%L, %L)$q$, v_sv, v_station)),
+    'PREMAP-4 nor anon');
+  PERFORM pg_temp.ok(pg_temp.denied('SELECT count(*) FROM v_admin_staged_mapping_queue'),
+    'PREMAP-5 anon reads no pre-import queue');
+  RESET ROLE;
+
+  ------------------------------------------------- STORAGE VESSEL: Station only
+  PERFORM pg_temp.become('clerk_admin');
+  SELECT d.resulting_mapping_status, d.decided_at INTO v_status, v_at
+    FROM cng_admin_decide_staged_mapping(v_sv, v_station, NULL, NULL,
+         'PREMAP-6 station confirmed from the job file') d;
+  PERFORM pg_temp.ok(v_status = 'needs_unit_mapping',
+    'PREMAP-6 Storage Vessel: confirming the Station alone leaves the Unit unproven');
+
+  -- ...and then the Unit, as a correction that SUPERSEDES rather than overwrites.
+  SELECT d.resulting_mapping_status, d.decided_at INTO v_status, v_at
+    FROM cng_admin_decide_staged_mapping(v_sv, v_station, v_unit, v_at,
+         'PREMAP-7 unit confirmed on site') d;
+  PERFORM pg_temp.ok(v_status = 'resolved',
+    'PREMAP-7 Storage Vessel: confirming the Unit completes the decision');
+  RESET ROLE;
+
+  SELECT count(*) INTO n FROM import_mapping_decisions
+   WHERE source_row_key = 'TESTDATA-PREIMPORT.xlsx#Sheet1#11';
+  PERFORM pg_temp.ok(n = 2, 'PREMAP-8 the earlier decision is kept as history, not overwritten');
+  SELECT count(*) INTO n FROM import_mapping_decisions
+   WHERE source_row_key = 'TESTDATA-PREIMPORT.xlsx#Sheet1#11' AND superseded_at IS NULL;
+  PERFORM pg_temp.ok(n = 1, 'PREMAP-9 exactly ONE decision is active for a source row');
+  SELECT count(*) INTO n FROM import_mapping_decisions
+   WHERE source_row_key = 'TESTDATA-PREIMPORT.xlsx#Sheet1#11'
+     AND superseded_at IS NOT NULL AND superseded_by IS NOT NULL;
+  PERFORM pg_temp.ok(n = 1, 'PREMAP-10 the superseded decision names the decision that replaced it');
+
+  --------------------------------------------------------- RECOVERY TANK
+  PERFORM pg_temp.become('clerk_admin');
+  SELECT d.resulting_mapping_status INTO v_status
+    FROM cng_admin_decide_staged_mapping(v_rt, v_station, v_unit, NULL, 'PREMAP-11') d;
+  PERFORM pg_temp.ok(v_status = 'resolved', 'PREMAP-11 Recovery Tank: Station and Unit confirmed');
+
+  ------------------------------------------------------------ GAS DETECTOR
+  SELECT d.resulting_mapping_status INTO v_status
+    FROM cng_admin_decide_staged_mapping(v_gd, v_station, v_unit, NULL, 'PREMAP-12') d;
+  PERFORM pg_temp.ok(v_status = 'resolved', 'PREMAP-12 Gas Detector: Station and Unit confirmed');
+
+  --------------------------------------------------------------------- HOSE
+  -- Station-only is a LEGITIMATE end state for a hose whose Unit the source
+  -- genuinely does not prove. It is not a half-finished decision.
+  SELECT d.resulting_mapping_status INTO v_status
+    FROM cng_admin_decide_staged_mapping(v_hs, v_station, NULL, NULL, 'PREMAP-13') d;
+  PERFORM pg_temp.ok(v_status = 'needs_unit_mapping',
+    'PREMAP-13 Hose: Station-only remains valid where the Unit is genuinely unknown');
+
+  ---------------------------------------------- THE HIERARCHY IS NOT NEGOTIABLE
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_decide_staged_mapping(%L, %L, %L)$q$, v_rt, v_station, v_w_unit)),
+    'PREMAP-14 a Unit from another Station is rejected by the composite FK');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_decide_staged_mapping(%L, NULL)$q$, v_rt)),
+    'PREMAP-15 a decision without a Station is refused');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_decide_staged_mapping(%L, '00000000-0000-0000-0000-000000000000')$q$, v_rt)),
+    'PREMAP-16 an unknown Station is refused, not silently accepted');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$SELECT cng_admin_decide_staged_mapping('00000000-0000-0000-0000-000000000000',
+        'e5700000-0000-0000-0000-0000000000e1')$q$),
+    'PREMAP-17 a spoofed / unknown staging row is refused');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_decide_staged_mapping(%L, %L)$q$, v_rej, v_station)),
+    'PREMAP-18 a REJECTED staging row takes no decision — it is not committable');
+
+  ------------------------------------------------- STALE and DUPLICATE decisions
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_decide_staged_mapping(%L, %L, NULL, %L::timestamptz)$q$,
+    v_rt, v_station, '2020-01-01T00:00:00Z')),
+    'PREMAP-19 a stale decision is refused');
+  -- A second decision that does not acknowledge the first is a DUPLICATE, and is
+  -- refused rather than silently superseding it.
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_decide_staged_mapping(%L, %L)$q$, v_rt, v_station)),
+    'PREMAP-20 a duplicate decision that ignores the existing one is refused');
+  RESET ROLE;
+
+  ------------------------------------------------------------ EVIDENCE INTACT
+  SELECT count(*) INTO n FROM import_staging_rows
+   WHERE id = v_sv AND source_raw = v_raw AND mapping_status = 'needs_station_mapping';
+  PERFORM pg_temp.ok(n = 1,
+    'PREMAP-21 raw source evidence and the staged status are NEVER written by a decision');
+  SELECT count(*) INTO n FROM import_mapping_decisions
+   WHERE staging_row_id = v_sv AND source_evidence -> 'source_raw' = v_raw;
+  PERFORM pg_temp.ok(n = 2,
+    'PREMAP-22 each decision captured a COPY of the evidence it was made from');
+
+  ------------------------------- A ROW DECISION IS NOT AN ALIAS, AND NEVER BECOMES ONE
+  SELECT count(*) INTO n FROM station_aliases
+   WHERE source_name_raw = 'TESTDATA-RAW-STATION';
+  PERFORM pg_temp.ok(n = 0,
+    'PREMAP-23 confirming one row creates NO global station alias');
+  SELECT count(*) INTO n FROM owner_confirmed_station_aliases
+   WHERE source_name_raw = 'TESTDATA-RAW-STATION';
+  PERFORM pg_temp.ok(n = 0,
+    'PREMAP-24 nor an owner-confirmed rule — a row decision binds one row only');
+
+  ------------------------------------------------------------- AUDIT, ATOMICALLY
+  SELECT count(*) INTO n FROM audit_logs
+   WHERE entity_table = 'import_mapping_decisions' AND actor_id = v_admin;
+  PERFORM pg_temp.ok(n = 5,
+    'PREMAP-25 every ACCEPTED decision is audited to the server-derived actor');
+  -- Seven attempts were refused above; not one of them wrote an audit row.
+  SELECT count(*) INTO n FROM audit_logs
+   WHERE entity_table = 'import_mapping_decisions';
+  PERFORM pg_temp.ok(n = 5,
+    'PREMAP-26 a refused decision writes no audit — the audit is atomic with the write');
+
+  ------------------------------------------------- THE DECISION TABLE IS NOT WRITABLE
+  PERFORM pg_temp.become('clerk_admin');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$UPDATE import_mapping_decisions SET confirmed_station_id =
+       'e5700000-0000-0000-0000-0000000000f1'$q$),
+    'PREMAP-27 not even an ADMIN may edit a decision directly');
+  PERFORM pg_temp.ok(pg_temp.denied($q$DELETE FROM import_mapping_decisions$q$),
+    'PREMAP-28 nor delete one');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$INSERT INTO import_mapping_decisions (staging_row_id, source_row_key, target_table,
+        asset_type, region_id, confirmed_station_id, previous_mapping_status,
+        resulting_mapping_status, decided_by, source_evidence)
+       VALUES (%L, 'forged', 'hoses', 'hose',
+        (SELECT region_id FROM stations WHERE id = %L), %L,
+        'needs_station_mapping', 'needs_unit_mapping', %L, '{}'::jsonb)$q$,
+    v_hs, v_station, v_station,
+    (SELECT id FROM app_users WHERE clerk_user_id = 'clerk_eng_west'))),
+    'PREMAP-29 a forged decision attributed to someone else is refused');
+  -- Staging itself stays read-only: a decision must never be made by editing the
+  -- evidence it is a decision about.
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$UPDATE import_staging_rows SET station_id = %L WHERE id = %L$q$, v_station, v_rt)),
+    'PREMAP-30 an admin cannot resolve a staged row by editing staging directly');
+  RESET ROLE;
+
+  ---------------------------------------------- WHAT PROMPT 21 WILL READ
+  SELECT count(*) INTO n FROM v_import_confirmed_mappings;
+  PERFORM pg_temp.ok(n = 4,
+    'PREMAP-31 the Prompt-21 view exposes exactly the four ACTIVE decisions');
+  SELECT count(*) INTO n FROM v_import_confirmed_mappings
+   WHERE confirmed_station_id IS NULL;
+  PERFORM pg_temp.ok(n = 0,
+    'PREMAP-32 every consumable decision carries a confirmed Station — the NOT NULL blocker is answered before the import, not by relaxing the column');
+  SELECT count(*) INTO n FROM information_schema.columns
+   WHERE table_name IN ('storage_vessels','recovery_tanks','gas_detectors','hoses')
+     AND column_name = 'station_id' AND is_nullable = 'YES';
+  PERFORM pg_temp.ok(n = 0,
+    'PREMAP-33 and station_id is STILL NOT NULL on all four canonical tables');
+END $$;
+
+-- The queue, and who may see it.
+DO $$
+DECLARE n integer;
+BEGIN
+  PERFORM pg_temp.become('clerk_admin');
+  SELECT count(*) INTO n FROM v_admin_staged_mapping_queue;
+  PERFORM pg_temp.ok(n = 4,
+    'PREMAP-34 the queue holds one row per unresolved staged asset, and excludes the rejected row');
+  SELECT count(*) INTO n FROM v_admin_staged_mapping_queue
+   WHERE decision_id IS NOT NULL AND confirmed_station_id IS NOT NULL;
+  PERFORM pg_temp.ok(n = 4, 'PREMAP-35 a decided row shows its CONFIRMED mapping');
+  -- RAW, CANDIDATE and CONFIRMED are separate columns, so a proposal can never
+  -- be rendered as though it were a decision.
+  SELECT count(*) INTO n FROM v_admin_staged_mapping_queue
+   WHERE staging_row_id = 'e5719a00-0000-0000-0000-000000000011'
+     AND raw_station = 'TESTDATA-RAW-STATION'
+     AND candidate_proposals IS NOT NULL
+     AND confirmed_station_name = 'TESTDATA-EAST-STATION';
+  PERFORM pg_temp.ok(n = 1,
+    'PREMAP-36 raw, candidate and confirmed are carried separately on the same row');
+  RESET ROLE;
+
+  PERFORM pg_temp.become('clerk_eng_east');
+  SELECT count(*) INTO n FROM v_admin_staged_mapping_queue;
+  PERFORM pg_temp.ok(n = 0,
+    'PREMAP-37 an engineer sees no staging: raw source text is never an authorization boundary');
+  RESET ROLE;
+  PERFORM pg_temp.become('clerk_view_east');
+  SELECT count(*) INTO n FROM v_admin_staged_mapping_queue;
+  PERFORM pg_temp.ok(n = 0, 'PREMAP-38 nor a viewer');
+  RESET ROLE;
+END $$;
+
+-- ===========================================================================
+-- ADMIN CHANNEL POLICY (Prompt 19A, migration 0040).
+--
+-- Policy and preference are different questions. These prove they COMPOSE and
+-- that neither writes the other.
+-- ===========================================================================
+DO $$
+DECLARE
+  v_admin uuid;
+  v_ts    timestamptz;
+  v_prefs jsonb;
+  n       integer;
+  v_on    boolean;
+BEGIN
+  SELECT id INTO v_admin FROM app_users WHERE clerk_user_id = 'clerk_admin';
+  SELECT jsonb_agg(jsonb_build_object('id', id, 'channel', channel, 'enabled', is_enabled)
+                   ORDER BY id)
+    INTO v_prefs FROM notification_preferences;
+
+  PERFORM pg_temp.ok(cng_channel_policy_enabled('email'),
+    'CHAN-1 every channel ships ENABLED, so Prompt 15-18 delivery is unchanged');
+
+  PERFORM pg_temp.become('clerk_admin');
+  v_ts := cng_admin_set_channel_policy('email', false, NULL, NULL);
+  RESET ROLE;
+  PERFORM pg_temp.ok(NOT cng_channel_policy_enabled('email'),
+    'CHAN-2 an admin can disable a channel for the whole organization');
+
+  -- THE POINT OF A SEPARATE TABLE: no user preference was touched.
+  PERFORM pg_temp.ok(
+    (SELECT jsonb_agg(jsonb_build_object('id', id, 'channel', channel, 'enabled', is_enabled)
+                      ORDER BY id) FROM notification_preferences) IS NOT DISTINCT FROM v_prefs,
+    'CHAN-3 disabling a channel writes NO user preference row');
+
+  -- Effective delivery requires BOTH. With policy off, nothing is enqueued even
+  -- for a user who has opted in.
+  SELECT enqueued INTO n FROM cng_enqueue_alert_deliveries('email');
+  PERFORM pg_temp.ok(n = 0, 'CHAN-4 a disabled channel enqueues nothing');
+
+  PERFORM pg_temp.become('clerk_admin');
+  v_ts := cng_admin_set_channel_policy('email', true, v_ts, NULL);
+  RESET ROLE;
+  PERFORM pg_temp.ok(cng_channel_policy_enabled('email'),
+    'CHAN-5 re-enabling restores the channel — and the audience, because it was never unsubscribed');
+  PERFORM pg_temp.ok(
+    (SELECT jsonb_agg(jsonb_build_object('id', id, 'channel', channel, 'enabled', is_enabled)
+                      ORDER BY id) FROM notification_preferences) IS NOT DISTINCT FROM v_prefs,
+    'CHAN-6 and re-enabling writes no preference row either');
+
+  ------------------------------------------------------------- IN-APP IS MANDATORY
+  PERFORM pg_temp.become('clerk_admin');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$SELECT cng_admin_set_channel_policy('in_app', false)$q$),
+    'CHAN-7 in-app cannot be disabled: it is the READ surface for compliance state');
+  RESET ROLE;
+  PERFORM pg_temp.ok(cng_channel_policy_enabled('in_app'),
+    'CHAN-8 in-app therefore remains enabled after the attempt');
+  SELECT count(*) INTO n FROM notification_channel_policy WHERE channel = 'in_app' AND is_enabled;
+  PERFORM pg_temp.ok(n = 1, 'CHAN-9 and the constraint, not just the function, guarantees it');
+
+  ------------------------------------------------------------------ AUTHORIZATION
+  PERFORM pg_temp.become('clerk_manager');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$SELECT cng_admin_set_channel_policy('email', false)$q$),
+    'CHAN-10 a manager cannot change channel policy');
+  RESET ROLE;
+  PERFORM pg_temp.become('clerk_eng_east');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$SELECT cng_admin_set_channel_policy('email', false)$q$),
+    'CHAN-11 nor an engineer');
+  RESET ROLE;
+  PERFORM pg_temp.become('clerk_view_east');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$SELECT cng_admin_set_channel_policy('email', false)$q$),
+    'CHAN-12 nor a viewer');
+  -- ...but every signed-in user may READ it, so /settings can say why an opt-in
+  -- would not deliver rather than accepting it silently.
+  SELECT count(*) INTO n FROM notification_channel_policy;
+  PERFORM pg_temp.ok(n = 3, 'CHAN-13 a viewer CAN read the policy, to be told why a channel is off');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$UPDATE notification_channel_policy SET is_enabled = false WHERE channel = 'email'$q$),
+    'CHAN-14 but cannot write it directly');
+  RESET ROLE;
+
+  PERFORM pg_temp.become('clerk_admin');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$UPDATE notification_channel_policy SET is_enabled = false WHERE channel = 'email'$q$),
+    'CHAN-15 and neither can an ADMIN, bypassing the audit');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$SELECT cng_admin_set_channel_policy('carrier_pigeon', false)$q$),
+    'CHAN-16 an unknown channel is refused, not created');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_set_channel_policy('email', false, %L::timestamptz)$q$,
+    '2020-01-01T00:00:00Z')),
+    'CHAN-17 a stale policy write is refused');
+  RESET ROLE;
+
+  SELECT count(*) INTO n FROM audit_logs
+   WHERE entity_table = 'notification_channel_policy' AND actor_id = v_admin;
+  PERFORM pg_temp.ok(n = 2,
+    'CHAN-18 exactly the two ACCEPTED policy changes are audited; every refusal wrote nothing');
+END $$;
+
+-- ===========================================================================
+-- The hostile gaps the review checkpoint reported as NOT TESTED.
+-- ===========================================================================
+DO $$
+DECLARE
+  v_srv    uuid := 'e5700000-0000-0000-0000-0000000000f5';  -- WEST, needs_equipment
+  v_w_stn  uuid := 'e5700000-0000-0000-0000-0000000000f1';
+  v_w_unit uuid := 'e5700000-0000-0000-0000-0000000000f2';
+  v_w_disp uuid := 'e5700000-0000-0000-0000-0000000000fa';
+  v_e_disp uuid := 'e5700000-0000-0000-0000-0000000000da';
+  v_status srv_mapping_status;
+  n        integer;
+BEGIN
+  PERFORM pg_temp.become('clerk_admin');
+
+  ------------------------------------------------------- DISPENSER PARENT PATH
+  -- The one equipment kind the Prompt 19 matrix did not cover.
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_map_srv(%L, %L, %L, 'dispenser', %L)$q$,
+    v_srv, v_w_stn, v_w_unit, v_e_disp)),
+    'GAP-1 a Dispenser belonging to another Unit is rejected');
+  SELECT mapping_status INTO v_status
+    FROM cng_admin_map_srv(v_srv, v_w_stn, v_w_unit, 'dispenser', v_w_disp, NULL,
+                           'GAP-2 dispenser nameplate read');
+  PERFORM pg_temp.ok(v_status = 'resolved',
+    'GAP-2 a Dispenser belonging to the confirmed Unit resolves the SRV');
+  SELECT count(*) INTO n FROM installed_relief_valves
+   WHERE id = v_srv AND dispenser_id = v_w_disp
+     AND compressor_id IS NULL AND storage_vessel_id IS NULL;
+  PERFORM pg_temp.ok(n = 1, 'GAP-3 and it is the ONLY parent, exactly as for the other two kinds');
+
+  ----------------------------------------------------------- MALFORMED INPUT
+  -- PostgreSQL's type parser refuses this before any function body runs, which
+  -- is the correct layer — but "correct by construction" is worth asserting,
+  -- because it is the assumption a future signature change would break.
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$SELECT cng_admin_set_user_role('not-a-uuid', 'admin')$q$),
+    'GAP-4 a malformed UUID is refused at the type boundary, not inside the function');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$SELECT cng_admin_decide_staged_mapping('', 'also-not-a-uuid')$q$),
+    'GAP-5 the same for the pre-import decision function');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$SELECT cng_admin_set_user_role('e5700000-0000-0000-0000-0000000000e1', 'sysadmin')$q$),
+    'GAP-6 a role outside the enum is refused');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$SELECT cng_admin_map_srv('e5700000-0000-0000-0000-0000000000f5',
+        'e5700000-0000-0000-0000-0000000000f1', NULL, 'turbine', NULL)$q$),
+    'GAP-7 a parent kind outside srv_parent_kind is refused');
+  RESET ROLE;
+
+  ------------------------------------------------ CROSS-REGION, READ vs MUTATE
+  -- An engineer may READ their own Regions and no other. Proven for the
+  -- canonical queue at ADMSEC-32; here for the asset itself.
+  PERFORM pg_temp.become('clerk_eng_east');
+  SELECT count(*) INTO n FROM installed_relief_valves WHERE id = v_srv;
+  PERFORM pg_temp.ok(n = 0,
+    'GAP-8 an East engineer cannot even READ a WEST valve');
+  -- ...and the mutation path is closed to them regardless of the ids supplied,
+  -- so a cross-Region argument never reaches a decision.
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_map_srv(%L, %L, %L)$q$, v_srv, v_w_stn, v_w_unit)),
+    'GAP-9 nor map one: cross-Region mutation is refused before the ids are read');
+  -- The direct write is not an ERROR: RLS makes it a zero-row no-op, because the
+  -- engineer cannot see the row to update it. That is the correct outcome, and
+  -- asserting an exception here would be asserting the wrong mechanism.
+  UPDATE installed_relief_valves SET unit_id = v_w_unit WHERE id = v_srv;
+  GET DIAGNOSTICS n = ROW_COUNT;
+  PERFORM pg_temp.ok(n = 0,
+    'GAP-10 a direct cross-Region write touches no row — RLS filters it rather than erroring');
+  RESET ROLE;
+
+  -- An admin mapping ACROSS Regions is legitimate (decision D8) — but the
+  -- Region always follows the confirmed Station, never the caller.
+  PERFORM pg_temp.become('clerk_admin');
+  SELECT count(*) INTO n FROM installed_relief_valves v
+    JOIN stations s ON s.id = v.station_id
+   WHERE v.id = v_srv AND v.region_id = s.region_id;
+  PERFORM pg_temp.ok(n = 1,
+    'GAP-11 the Region on a mapped valve always matches its confirmed Station');
+  RESET ROLE;
+END $$;
+
+-- Prompt 19 user administration, re-asserted AFTER the 19A migrations.
+DO $$
+DECLARE
+  v_admin uuid;
+  v_west  uuid;
+  n       integer;
+BEGIN
+  SELECT id INTO v_admin FROM app_users WHERE clerk_user_id = 'clerk_admin';
+  SELECT id INTO v_west  FROM app_users WHERE clerk_user_id = 'clerk_eng_west';
+
+  PERFORM pg_temp.become('clerk_admin');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$UPDATE app_users SET role = 'viewer' WHERE id = %L$q$, v_west)),
+    'REG-1 direct role mutation is STILL revoked after 0039 and 0040');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_set_user_role(%L, 'viewer')$q$, v_admin)),
+    'REG-2 self-demotion is STILL refused');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_set_user_active(%L, false)$q$, v_admin)),
+    'REG-3 self-deactivation is STILL refused');
+  PERFORM pg_temp.ok(pg_temp.denied($q$UPDATE audit_logs SET summary = 'tampered'$q$),
+    'REG-4 audit history is STILL not rewritable');
+  PERFORM pg_temp.ok(pg_temp.denied($q$DELETE FROM audit_logs$q$),
+    'REG-5 nor deletable');
+  RESET ROLE;
+  SELECT count(*) INTO n FROM app_users WHERE role = 'admin' AND is_active;
+  PERFORM pg_temp.ok(n >= 1, 'REG-6 there is STILL at least one active administrator');
 END $$;
 
 DO $$ BEGIN RAISE EXCEPTION 'RLS_SUITE_ROLLBACK'; END $$;

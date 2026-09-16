@@ -176,3 +176,21 @@ mechanism they exercised was deliberately removed:
 
 **NOT DEPLOYED.** Migration 0038 has not been applied to the hosted project and
 the frontend has not been redeployed. Nothing here is LIVE VERIFIED.
+
+
+---
+
+## 10. Superseded by Prompt 19A
+
+The review checkpoint found this prompt PARTIAL, correctly. Three gaps were closed in Prompt 19A —
+see `docs/preimport-mapping.md`:
+
+* **Data Quality** now has a per-record queue for all five asset types. The four pre-import types
+  are worked on their STAGING rows, because their canonical `station_id` is NOT NULL and no
+  constraint was relaxed to change that.
+* **Audit Log** now renders before/after, filters by date range, actor, action, record type and
+  id, and pages without a fixed ceiling.
+* **Alert Settings** now carries organization-level channel policy, separate from the per-user
+  opt-in at `/settings`. Severity was not invented; in-app is documented and tested as mandatory.
+
+Everything §1–§9 describes is unchanged and is re-asserted after the new migrations (REG-1..6).

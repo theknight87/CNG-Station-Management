@@ -271,13 +271,13 @@ describe('data quality', () => {
       source_file: 'SRV.xlsx', source_sheet: 'Sheet1', source_row: 42,
     }]
     render(withRouter(<AdminDataQualitySection />))
-    await userEvent.click(await screen.findByRole('button', { name: /^resolve$/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /^resolve relief valve/i }))
 
     // Unit and equipment are unreachable until the level above is confirmed.
     expect((await screen.findByLabelText(/^unit$/i)).hasAttribute('disabled')).toBe(true)
     expect(screen.getByLabelText(/parent kind/i).hasAttribute('disabled')).toBe(true)
 
-    await userEvent.selectOptions(screen.getByLabelText(/^station$/i), 'st1')
+    await userEvent.selectOptions(screen.getByLabelText('Station'), 'st1')
     await userEvent.click(screen.getByRole('button', { name: /record decision/i }))
 
     expect(db.rpcCalls[0].fn).toBe('cng_admin_map_srv')

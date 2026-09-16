@@ -83,3 +83,20 @@ export function useEquipment(kind: SrvParentKind | null, unitId: string | null):
   }, [supabase, kind, unitId])
   return options
 }
+
+/** Canonical Regions, for the queue filters. */
+export function useRegions(): Option[] {
+  const supabase = useSupabaseClient()
+  const [options, setOptions] = useState<Option[]>([])
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      if (!supabase) return
+      const { data } = await supabase.from('regions').select('id, name').order('name')
+      if (cancelled) return
+      setOptions((data ?? []).map((r) => ({ id: r.id as string, label: (r.name as string) ?? '' })))
+    })()
+    return () => { cancelled = true }
+  }, [supabase])
+  return options
+}
