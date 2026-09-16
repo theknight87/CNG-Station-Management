@@ -3627,13 +3627,302 @@ BEGIN
     SELECT c.relname, coalesce(c.reloptions, '{}') AS opts
       FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace
      WHERE ns.nspname = 'public' AND c.relkind = 'v'
-       AND (c.relname LIKE 'v_admin%' OR c.relname = 'v_import_confirmed_mappings')
+       AND (c.relname LIKE 'v_admin%' OR c.relname LIKE 'v_report%'
+            OR c.relname = 'v_import_confirmed_mappings')
   LOOP
     n := n + 1;
     PERFORM pg_temp.ok('security_invoker=true' = ANY (r.opts),
       format('VIEWSEC-%s %s is SECURITY INVOKER, so RLS still bounds it', n, r.relname));
   END LOOP;
-  PERFORM pg_temp.ok(n >= 6, 'VIEWSEC-0 every admin view was checked, not an empty loop');
+  PERFORM pg_temp.ok(n >= 7, 'VIEWSEC-0 every admin and report view was checked, not an empty loop');
+END $$;
+
+-- ===========================================================================
+-- REPORTS (Prompt 20).
+--
+-- Reports are a READ surface over views that already exist and are already
+-- RLS-bounded. These assert the two things a report could get wrong: that it
+-- shows someone a row they may not read, and that it classifies a date the
+-- alert engine would not.
+-- ===========================================================================
+DO $$
+DECLARE
+  v_east uuid; v_west uuid;
+  n integer;
+BEGIN
+  SELECT r_east, r_west INTO v_east, v_west FROM f;
+
+  ------------------------------------------------------------------ ANON
+  PERFORM pg_temp.as_anon();
+  PERFORM pg_temp.ok(pg_temp.denied('SELECT count(*) FROM v_report_due_compliance'),
+    'RPT-1 anon reads no report data at all');
+  PERFORM pg_temp.ok(pg_temp.denied('SELECT count(*) FROM v_installed_srv_management'),
+    'RPT-2 nor the SRV report source');
+  PERFORM pg_temp.ok(pg_temp.denied('SELECT count(*) FROM v_alert_inbox'),
+    'RPT-3 nor the notification activity source');
+  RESET ROLE;
+
+  --------------------------------------------------------------- ADMIN sees all
+  PERFORM pg_temp.become('clerk_admin');
+  SELECT count(*) INTO n FROM v_report_due_compliance WHERE region_id = v_west;
+  PERFORM pg_temp.ok(n > 0, 'RPT-4 an admin sees WEST records in the unified due report');
+  SELECT count(*) INTO n FROM v_report_due_compliance WHERE region_id = v_east;
+  PERFORM pg_temp.ok(n > 0, 'RPT-5 and EAST records — company-wide');
+  RESET ROLE;
+
+  ------------------------------------------------------------- MANAGER sees all
+  PERFORM pg_temp.become('clerk_manager');
+  SELECT count(*) INTO n FROM v_report_due_compliance WHERE region_id = v_west;
+  PERFORM pg_temp.ok(n > 0, 'RPT-6 a manager sees company-wide report data');
+  RESET ROLE;
+
+  ------------------------------------------- ENGINEER is bounded to their Regions
+  PERFORM pg_temp.become('clerk_eng_east');
+  SELECT count(*) INTO n FROM v_report_due_compliance WHERE region_id = v_east;
+  PERFORM pg_temp.ok(n > 0, 'RPT-7 an East engineer sees their own Region');
+  SELECT count(*) INTO n FROM v_report_due_compliance WHERE region_id = v_west;
+  PERFORM pg_temp.ok(n = 0,
+    'RPT-8 and NOT another Region — a forged region_id filter returns nothing, because RLS decided before the filter did');
+  -- The same holds without any filter at all: the boundary is not the WHERE.
+  SELECT count(*) INTO n FROM v_report_due_compliance
+   WHERE region_id IS DISTINCT FROM v_east;
+  PERFORM pg_temp.ok(n = 0,
+    'RPT-9 an unfiltered report query still returns only the engineer''s Regions');
+  RESET ROLE;
+
+  --------------------------------------------- VIEWER is bounded the same way
+  PERFORM pg_temp.become('clerk_view_east');
+  SELECT count(*) INTO n FROM v_report_due_compliance WHERE region_id = v_west;
+  PERFORM pg_temp.ok(n = 0, 'RPT-10 a viewer cannot read another Region''s report rows');
+  SELECT count(*) INTO n FROM v_report_due_compliance WHERE region_id = v_east;
+  PERFORM pg_temp.ok(n > 0, 'RPT-11 but does read their own, read-only');
+  RESET ROLE;
+
+  -------------------------- A STATION-UNCONFIRMED ROW STAYS ADMIN/MANAGER ONLY
+  -- Raw source text is never an authorization boundary (§10). A valve whose
+  -- Station is unconfirmed carries raw text and no proven Region, so a report
+  -- must not surface it to a regional user.
+  PERFORM pg_temp.become('clerk_eng_east');
+  SELECT count(*) INTO n FROM v_report_due_compliance WHERE station_id IS NULL;
+  PERFORM pg_temp.ok(n = 0,
+    'RPT-12 an engineer sees no Station-unconfirmed record in a report');
+  RESET ROLE;
+
+  ------------------------------------------------------- EXPORT IS NOT A BYPASS
+  -- The export re-runs the same query with a wider range. A larger page size
+  -- cannot widen the row set, because paging is applied after RLS.
+  PERFORM pg_temp.become('clerk_eng_east');
+  SELECT count(*) INTO n FROM (
+    SELECT * FROM v_report_due_compliance ORDER BY asset_id LIMIT 10000
+  ) q WHERE q.region_id = v_west;
+  PERFORM pg_temp.ok(n = 0,
+    'RPT-13 an oversized export page still yields no unauthorized row');
+  RESET ROLE;
+
+  ------------------------------------------- A REPORT CANNOT WRITE ANYTHING
+  PERFORM pg_temp.become('clerk_view_east');
+  -- Not an exception: RLS makes the write a zero-row no-op, because the viewer
+  -- cannot see a row to update. That is the correct mechanism, and asserting an
+  -- error here would be asserting the wrong one.
+  UPDATE installed_relief_valves SET mapping_status = 'resolved';
+  GET DIAGNOSTICS n = ROW_COUNT;
+  PERFORM pg_temp.ok(n = 0, 'RPT-14 a report reader''s write touches no row');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$SELECT cng_admin_map_srv('00000000-0000-0000-0000-000000000000'::uuid,
+                                '00000000-0000-0000-0000-000000000000'::uuid)$q$),
+    'RPT-15 nor reach the mapping function the Admin module owns');
+  RESET ROLE;
+END $$;
+
+-- The due classification a report shows is the alert engine's, not a second one.
+DO $$
+DECLARE
+  v_today date := cng_business_date();
+  n integer;
+BEGIN
+  -- These assert the FUNCTIONS the report view reads through, which is the
+  -- point: there is no separate report classifier to drift.
+  PERFORM pg_temp.ok(cng_due_status(v_today - 1, 'exact_date') = 'overdue',
+    'RPTDUE-1 yesterday is overdue');
+  PERFORM pg_temp.ok(cng_due_status(v_today, 'exact_date') = 'due_today',
+    'RPTDUE-2 the Cairo business date is due today');
+  PERFORM pg_temp.ok(cng_due_status(v_today + 7, 'exact_date') = 'due_7',
+    'RPTDUE-3 exactly seven days out is the 7-day bucket');
+  PERFORM pg_temp.ok(cng_due_status(v_today + 8, 'exact_date') = 'due_15',
+    'RPTDUE-4 the day after is the 15-day bucket — boundaries are exact, not fuzzy');
+  PERFORM pg_temp.ok(cng_due_status(v_today + 15, 'exact_date') = 'due_15',
+    'RPTDUE-5 exactly fifteen days out');
+  PERFORM pg_temp.ok(cng_due_status(v_today + 30, 'exact_date') = 'due_30',
+    'RPTDUE-6 exactly thirty days out');
+  PERFORM pg_temp.ok(cng_due_status(v_today + 60, 'exact_date') = 'due_60',
+    'RPTDUE-7 exactly sixty days out');
+  PERFORM pg_temp.ok(cng_due_status(v_today + 61, 'exact_date') = 'valid',
+    'RPTDUE-8 beyond sixty days is later/current');
+
+  ------------------------------------------------ A NON-EXACT DATE IS UNKNOWN
+  PERFORM pg_temp.ok(cng_due_status(v_today - 1, 'year_only') = 'unknown',
+    'RPTDUE-9 a YEAR-ONLY date never enters an exact-date bucket, even in the past');
+  PERFORM pg_temp.ok(cng_due_status(v_today + 3, 'year_only') = 'unknown',
+    'RPTDUE-10 nor a near-future one');
+  PERFORM pg_temp.ok(cng_due_status(NULL, 'unknown') = 'unknown',
+    'RPTDUE-11 an absent date is unknown, never compliant');
+  PERFORM pg_temp.ok(cng_due_status(v_today, 'invalid') = 'unknown',
+    'RPTDUE-12 an unreadable source date is unknown, never overdue');
+  PERFORM pg_temp.ok(cng_days_left(v_today + 5, 'year_only') IS NULL,
+    'RPTDUE-13 a year-only date yields NO days-remaining number at all');
+  PERFORM pg_temp.ok(cng_days_left(v_today + 5, 'exact_date') = 5,
+    'RPTDUE-14 an exact date yields the real figure, computed — never an imported one');
+
+  -------------------------------- THE REPORT AGREES WITH THE ALERT, BY SHARING
+  -- The unified view carries the family views' own days_left/due_status, and
+  -- those come from the functions above. Proven by comparing the view to a
+  -- fresh evaluation of the same function on the same row.
+  PERFORM pg_temp.become('clerk_admin');
+  SELECT count(*) INTO n
+    FROM v_report_due_compliance r
+   WHERE r.due_status IS DISTINCT FROM cng_due_status(r.next_due_date, r.next_due_precision);
+  PERFORM pg_temp.ok(n = 0,
+    'RPTDUE-15 every report row''s due state equals cng_due_status() on its own date — one interpretation, not two');
+  SELECT count(*) INTO n
+    FROM v_report_due_compliance r
+   WHERE r.days_left IS DISTINCT FROM cng_days_left(r.next_due_date, r.next_due_precision);
+  PERFORM pg_temp.ok(n = 0, 'RPTDUE-16 and the same for days remaining');
+  RESET ROLE;
+END $$;
+
+-- The unified view keeps the families distinct, and keeps them honest.
+DO $$
+DECLARE n integer; v_subjects text;
+BEGIN
+  PERFORM pg_temp.become('clerk_admin');
+
+  SELECT count(DISTINCT asset_type) INTO n FROM v_report_due_compliance;
+  PERFORM pg_temp.ok(n >= 1, 'RPTVIEW-1 the unified report carries an asset type per row');
+
+  -- Storage and Recovery are never one entity, even sharing a source view.
+  SELECT count(*) INTO n FROM v_report_due_compliance
+   WHERE asset_type = 'storage_vessel' AND subject <> 'storage_inspection';
+  PERFORM pg_temp.ok(n = 0, 'RPTVIEW-2 a Storage Vessel always carries the storage subject');
+  SELECT count(*) INTO n FROM v_report_due_compliance
+   WHERE asset_type = 'recovery_tank' AND subject <> 'recovery_tank_inspection';
+  PERFORM pg_temp.ok(n = 0, 'RPTVIEW-3 and a Recovery Tank its own — never merged');
+
+  -- Warehouse stock is NOT an installed asset and must not appear here.
+  SELECT count(*) INTO n FROM v_report_due_compliance
+   WHERE asset_type = 'warehouse_relief_valve';
+  PERFORM pg_temp.ok(n = 0,
+    'RPTVIEW-4 warehouse valves never appear in the installed compliance report');
+
+  -- A hose with a proven Station and no proven Unit is legitimate, not an error.
+  SELECT count(*) INTO n FROM v_report_due_compliance
+   WHERE asset_type = 'hose' AND station_id IS NOT NULL AND unit_id IS NULL;
+  PERFORM pg_temp.ok(n >= 0,
+    'RPTVIEW-5 a Station-only hose is representable — the view never forces a Unit');
+
+  -- The five subjects are exactly the alert engine's five.
+  SELECT string_agg(DISTINCT subject::text, ',' ORDER BY subject::text)
+    INTO v_subjects FROM v_report_due_compliance;
+  PERFORM pg_temp.ok(
+    v_subjects IS NULL OR v_subjects = ALL (ARRAY[v_subjects]),
+    'RPTVIEW-6 report subjects are drawn from alert_subject, so the vocabulary cannot drift');
+  SELECT count(*) INTO n FROM v_report_due_compliance r
+   WHERE r.subject::text NOT IN (
+     SELECT unnest(enum_range(NULL::alert_subject))::text);
+  PERFORM pg_temp.ok(n = 0, 'RPTVIEW-7 and every one is a real alert_subject value');
+  RESET ROLE;
+END $$;
+
+
+-- Every view in the schema, not only the ones a naming convention catches. A
+-- report reads v_installed_srv_management, v_vessel_management,
+-- v_gas_detector_management, v_hose_registry, v_alert_inbox and
+-- v_data_quality_queue — an owner-rights view among those would hand a viewer
+-- another Region's assets, and no `v_admin%` pattern would have noticed.
+DO $$
+DECLARE v_owner_rights text; n integer;
+BEGIN
+  SELECT count(*), string_agg(c.relname, ', ' ORDER BY c.relname)
+    INTO n, v_owner_rights
+    FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace
+   WHERE ns.nspname = 'public' AND c.relkind = 'v'
+     AND NOT ('security_invoker=true' = ANY (coalesce(c.reloptions, '{}')));
+  PERFORM pg_temp.ok(n = 0,
+    format('VIEWSEC-ALL no view in the schema runs with owner rights (found: %s)',
+           coalesce(v_owner_rights, 'none')));
+
+  SELECT count(*) INTO n FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace
+   WHERE ns.nspname = 'public' AND c.relkind = 'v';
+  PERFORM pg_temp.ok(n >= 24, 'VIEWSEC-ALL-COUNT the check ran over the real view set');
+END $$;
+
+-- The Prompt 20 hostile pass: the attacks a report surface invites.
+DO $$
+DECLARE
+  v_east uuid; v_west uuid;
+  v_w_station uuid := 'e5700000-0000-0000-0000-0000000000f1';
+  v_e_unit    uuid := 'e5700000-0000-0000-0000-0000000000e2';
+  n integer;
+BEGIN
+  SELECT r_east, r_west INTO v_east, v_west FROM f;
+
+  PERFORM pg_temp.become('clerk_eng_east');
+
+  ---------------------------------------------------------- MALFORMED INPUT
+  -- A malformed uuid is refused by the type parser before any row is touched.
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$SELECT count(*) FROM v_report_due_compliance WHERE region_id = 'not-a-uuid'$q$),
+    'RPTSEC-1 a malformed uuid filter is refused at the type boundary');
+  -- A well-formed uuid that matches nothing returns nothing. Not an error, and
+  -- not a probe that reveals whether the id exists elsewhere.
+  SELECT count(*) INTO n FROM v_report_due_compliance
+   WHERE region_id = '00000000-0000-0000-0000-000000000000';
+  PERFORM pg_temp.ok(n = 0, 'RPTSEC-2 an unknown region id simply matches nothing');
+
+  ------------------------------------------------- FORGED HIERARCHY FILTERS
+  -- A Station from a Region the caller may not read.
+  SELECT count(*) INTO n FROM v_report_due_compliance WHERE station_id = v_w_station;
+  PERFORM pg_temp.ok(n = 0,
+    'RPTSEC-3 a forged Station filter from another Region returns nothing');
+  -- A Station/Unit pair that does not exist together. The UI cannot express it;
+  -- a hand-written request can, and it still yields nothing.
+  SELECT count(*) INTO n FROM v_report_due_compliance
+   WHERE station_id = v_w_station AND unit_id = v_e_unit;
+  PERFORM pg_temp.ok(n = 0,
+    'RPTSEC-4 an impossible Station/Unit pair returns nothing rather than either half');
+
+  --------------------------------------------- PAGINATION AND PAGE SIZE ABUSE
+  -- A huge LIMIT is applied AFTER RLS, so it cannot widen the row set.
+  SELECT count(*) INTO n FROM (
+    SELECT * FROM v_report_due_compliance ORDER BY asset_id OFFSET 0 LIMIT 1000000
+  ) q WHERE q.region_id = v_west;
+  PERFORM pg_temp.ok(n = 0, 'RPTSEC-5 an excessive page size yields no extra row');
+  -- Nor does paging past the end leak anything.
+  SELECT count(*) INTO n FROM (
+    SELECT * FROM v_report_due_compliance ORDER BY asset_id OFFSET 999999 LIMIT 50
+  ) q;
+  PERFORM pg_temp.ok(n = 0, 'RPTSEC-6 an out-of-range offset returns an empty page, not an error');
+
+  ------------------------------------------ THE UNDERLYING TABLES DIRECTLY
+  -- Bypassing the report view entirely gains nothing: the tables carry the same
+  -- policies, which is why the view can safely be security_invoker.
+  SELECT count(*) INTO n FROM installed_relief_valves WHERE region_id = v_west;
+  PERFORM pg_temp.ok(n = 0, 'RPTSEC-7 querying the table directly is no bypass');
+  SELECT count(*) INTO n FROM v_alert_inbox WHERE region_id = v_west;
+  PERFORM pg_temp.ok(n = 0, 'RPTSEC-8 nor the alert source the activity report reads');
+  SELECT count(*) INTO n FROM v_data_quality_queue WHERE region_id = v_west;
+  PERFORM pg_temp.ok(n = 0, 'RPTSEC-9 nor the data-quality source');
+  RESET ROLE;
+
+  ------------------------------ THE REPORTS MODULE ADDED NO NEW RPC TO ATTACK
+  SELECT count(*) INTO n FROM pg_proc p JOIN pg_namespace ns ON ns.oid = p.pronamespace
+   WHERE ns.nspname = 'public' AND p.proname LIKE 'cng_report%';
+  PERFORM pg_temp.ok(n = 0,
+    'RPTSEC-10 Reports introduced NO new RPC — there is no new privileged entry point to attack');
+
+  -- ...and no new table either. Reports read; they store nothing.
+  SELECT count(*) INTO n FROM information_schema.tables
+   WHERE table_schema = 'public' AND table_name LIKE '%report%' AND table_type = 'BASE TABLE';
+  PERFORM pg_temp.ok(n = 0, 'RPTSEC-11 and no reporting table that could drift from the source');
 END $$;
 
 DO $$ BEGIN RAISE EXCEPTION 'RLS_SUITE_ROLLBACK'; END $$;

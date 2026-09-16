@@ -584,6 +584,43 @@ never the protection; the invoker setting was. 0041 restates it on all three rep
 the suite now asserts it as a CATALOG property for every admin view (VIEWSEC-*) so it cannot lapse
 again. **NOT DEPLOYED and NOT LIVE VERIFIED.***
 
+*The Reports Module (Prompt 20) is built: `/reports` with routed Due & Overdue, SRV, Vessels,
+Gas Detectors, Hoses, Data Quality and Notification Activity — see `docs/reports.md`.
+**One additive migration, 0042, containing exactly one view.** The read-first gap analysis found
+that almost every report was already served by an existing RLS-bounded view
+(`v_installed_srv_management`, `v_warehouse_srv_management`, `v_vessel_management`,
+`v_gas_detector_management`, `v_hose_registry`, `v_alert_inbox`, `v_data_quality_queue`), so
+Reports READ those rather than duplicating them. The ONE genuine gap was a unified cross-family
+due list — `v_dashboard_due_summary` counts but does not enumerate — so `v_report_due_compliance`
+was added and nothing else. **NO new RPC, NO new table, NO new index** (RPTSEC-10/11), and the
+existing partial `*_due_idx ... WHERE precision = 'exact_date'` indexes are already exactly a due
+report's predicate.
+
+**DUE SEMANTICS ARE NOT RE-DERIVED**: the unified view carries the family views' own `days_left`
+and `due_status`, which come from `cng_days_left()`/`cng_due_status()` — the alert engine's
+functions. RPTDUE-15/16 assert every report row equals a fresh evaluation of those functions on
+its own date, so there is ONE interpretation and nothing to drift. A YEAR-ONLY date never enters
+an exact bucket and yields NO days-remaining figure at all; unknown is neither compliant nor
+overdue; boundaries are exact (day 7 is due_7, day 8 is due_15).
+
+**AUTHORIZATION IS THE DATABASE, NOT THE FILTERS**: RPT-9 asserts that an engineer running the
+report with NO Region filter still receives only their own Regions, and RPT-12 that a
+Station-unconfirmed record stays admin/manager only. Reports MUTATE NOTHING — no RPC, no write,
+no acknowledgement, no mapping control; corrections stay in `/admin/data-quality` behind a link.
+**VIEWSEC-ALL now asserts from `pg_class.reloptions` that NO view in the schema runs with owner
+rights** — not only those a `v_admin%` naming pattern would catch, because a report reads six
+views named neither way and the Prompt 19B defect would have been invisible there.
+
+**CSV EXPORT RE-RUNS THE SAME AUTHORIZED QUERY** — same view, same filters, same order, same RLS,
+in bounded 1,000-row chunks to a documented 10,000-row ceiling that the UI states when reached.
+Formula injection is neutralised by quoting and apostrophe-prefixing TEXT cells only, so a genuine
+number still sorts numerically and the guard PREFIXES rather than edits; UTF-8 with a BOM because
+Arabic Station names are ordinary data here. Filtering, ordering, counting and paging are all
+server-side with a deterministic id tiebreak, so paging cannot duplicate or omit a row. **Empty
+production is a first-class state**: "no canonical assets have been imported yet" and "no records
+match the selected filters" are told apart and neither is an error. **NOT DEPLOYED and NOT LIVE
+VERIFIED.***
+
 ### Prompt-21 import blockers (must be resolved before the production import)
 
 | Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |
@@ -662,6 +699,7 @@ These rules are permanent and apply to every future prompt.
 | 19 | 451 | 146 | 406 |
 | 19A | 486 | 146 | 479 |
 | 19B | 499 | 146 | 508 |
+| 20 | 547 | 146 | 560 |
 
 Update this table when a prompt is accepted, so the next one has a baseline to compare
 against.

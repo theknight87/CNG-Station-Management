@@ -23,6 +23,11 @@ import { HosesManagementPage } from '@/pages/HosesManagementPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { RegionDetailPage } from '@/pages/RegionDetailPage'
 import { RegionsPage } from '@/pages/RegionsPage'
+import {
+  ActivityReportSection, DataQualityReportSection, DueReportSection,
+  GasDetectorsReportSection, HosesReportSection, SrvReportSection,
+  VesselsReportSection,
+} from '@/features/reports'
 import { ReportsPage } from '@/pages/ReportsPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { SrvManagementPage } from '@/pages/SrvManagementPage'
@@ -122,7 +127,22 @@ export const router = createBrowserRouter([
       { path: 'manage/hoses', element: <HosesManagementPage /> },
 
       { path: 'alerts', element: <AlertsPage /> },
-      { path: 'reports', element: <ReportsPage /> },
+      // Reports. One workspace, report categories as nested routes so each is
+      // deep-linkable. Every report is read-only and RLS-bounded.
+      {
+        path: 'reports',
+        element: <ReportsPage />,
+        children: [
+          { index: true, element: <Navigate to="/reports/due" replace /> },
+          { path: 'due', element: <DueReportSection /> },
+          { path: 'srv', element: <SrvReportSection /> },
+          { path: 'vessels', element: <VesselsReportSection /> },
+          { path: 'gas-detectors', element: <GasDetectorsReportSection /> },
+          { path: 'hoses', element: <HosesReportSection /> },
+          { path: 'data-quality', element: <DataQualityReportSection /> },
+          { path: 'activity', element: <ActivityReportSection /> },
+        ],
+      },
       { path: 'settings', element: <SettingsPage /> },
 
       // Admin. The landing route is a page, not a redirect: an engineer or
