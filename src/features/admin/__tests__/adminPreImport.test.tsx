@@ -114,6 +114,8 @@ const STAGED_VESSEL = {
   decision_id: null, confirmed_station_id: null, confirmed_station_name: null,
   confirmed_unit_id: null, confirmed_unit_name: null, confirmed_mapping_status: null,
   decided_by: null, decided_by_name: null, decided_at: null, decision_reason: null,
+  source_row_hash: 'hash-1', reviewed_source_row_hash: null,
+  decision_is_stale_source: false,
 }
 
 const STAGED_HOSE = {
@@ -390,5 +392,82 @@ describe('admin channel policy', () => {
     const enable = await screen.findByRole('button', { name: /enable web push delivery/i })
     expect(enable).toBeDefined()
     expect(screen.getByText('Disabled')).toBeDefined()
+  })
+})
+
+
+/**
+ * Prompt 19B — a decision whose source evidence has changed.
+ *
+ * The screen must say WHY a previous ruling stopped counting. Showing it as
+ * confirmed would apply a decision about different evidence; showing nothing
+ * would leave an administrator re-deciding a row with no idea what happened to
+ * their earlier answer.
+ */
+describe('a stale-source decision in the queue', () => {
+  const STALE = {
+    ...STAGED_VESSEL,
+    source_row_hash: 'hash-2',
+    reviewed_source_row_hash: 'hash-1',
+    decision_is_stale_source: true,
+    decision_id: 'd1',
+    confirmed_station_id: 'st-old', confirmed_station_name: 'OLD Station',
+    confirmed_unit_id: 'un-old', confirmed_unit_name: 'OLD Unit',
+    confirmed_mapping_status: 'resolved',
+    decided_by: 'me', decided_by_name: 'Me', decided_at: '2026-03-04T09:00:00Z',
+  }
+
+  it('states that the previous decision requires re-review, and why', async () => {
+    db.staged = [STALE]
+    await openStagedQueue()
+    expect(await screen.findByText(
+      /previous decision requires re-review because source evidence changed/i,
+    )).toBeDefined()
+  })
+
+  it('does not present it as confirmed', async () => {
+    db.staged = [STALE]
+    await openStagedQueue()
+    expect(screen.getByText('Needs re-review')).toBeDefined()
+    expect(screen.queryByText('Station + Unit')).toBeNull()
+    expect(screen.queryByText('Station only')).toBeNull()
+    // The old answer is visible as context, explicitly marked as not applied.
+    expect(screen.getByText(/which is not applied/i)).toBeDefined()
+  })
+
+  it('offers re-review rather than a change to an answer that still stands', async () => {
+    db.staged = [STALE]
+    await openStagedQueue()
+    expect(await screen.findByRole('button', { name: /^re-review staged row/i })).toBeDefined()
+    expect(screen.queryByRole('button', { name: /^change decision for/i })).toBeNull()
+  })
+
+  it('pre-fills nothing, so the old answer cannot be clicked through', async () => {
+    db.staged = [STALE]
+    await openStagedQueue()
+    await userEvent.click(await screen.findByRole('button', { name: /^re-review staged row/i }))
+    expect((screen.getByLabelText(/confirmed station/i) as HTMLSelectElement).value).toBe('')
+    expect((screen.getByLabelText(/confirmed unit/i) as HTMLSelectElement).value).toBe('')
+    // ...and nothing can be submitted until a Station is chosen afresh.
+    expect((screen.getByRole('button', { name: /record re-reviewed decision/i }) as HTMLButtonElement)
+      .disabled).toBe(true)
+  })
+
+  it('records the re-review through the normal audited path, carrying the old version', async () => {
+    db.staged = [STALE]
+    await openStagedQueue()
+    await userEvent.click(await screen.findByRole('button', { name: /^re-review staged row/i }))
+    await userEvent.selectOptions(screen.getByLabelText(/confirmed station/i), 'st1')
+    await userEvent.click(screen.getByRole('button', { name: /record re-reviewed decision/i }))
+
+    expect(db.rpcCalls).toHaveLength(1)
+    expect(db.rpcCalls[0].fn).toBe('cng_admin_decide_staged_mapping')
+    expect(db.rpcCalls[0].args.p_station_id).toBe('st1')
+    // Supersedes the earlier ruling rather than creating a second active one.
+    expect(db.rpcCalls[0].args.p_expected_decision_at).toBe('2026-03-04T09:00:00Z')
+    // The hash is never sent: the database reads it from the staging row.
+    for (const key of Object.keys(db.rpcCalls[0].args)) {
+      expect(key).not.toMatch(/hash/i)
+    }
   })
 })

@@ -557,6 +557,33 @@ administration is re-asserted AFTER the new migrations (REG-1..6). The gate now 
 UPGRADE path — a production-equivalent database at 37, then 0038/0039/0040 in order, then both SQL
 suites against the upgraded database. **NOT DEPLOYED and NOT LIVE VERIFIED.***
 
+***PROMPT 19B — a REAL CORRECTNESS DEFECT in 19A, found by owner review of commit 0ca11c1** —
+see `docs/preimport-mapping.md` §2a. **One additive migration, 0041.** 0039 keyed a human mapping
+decision on `source_row_key` alone — the stable `(file, sheet, row)` identity. **That says WHERE a
+row was, not WHAT the administrator read.** A workbook is a live document: rows are inserted,
+deleted, re-ordered and overwritten, so the same file/sheet/row can hold a different asset next
+month, and a later dry run would have matched the old decision by key and attached last month's
+Station to this month's vessel — **a fabricated physical relationship arrived at without anyone
+guessing**, exactly what data principle #8 exists to prevent. `import_staging_rows.source_row_hash`
+already existed and already changes with content; it was simply never recorded on the decision.
+**FIX**: `reviewed_source_row_hash`, captured SERVER-SIDE — it is a parameter of NO function
+(PREHASH-1), so a caller cannot claim to have reviewed evidence it never saw. Reuse now requires
+BOTH key and hash. A key match with a hash mismatch is `stale_source_decision`: NOT applied, NOT
+silently demoted to "no decision", old Station/Unit NEVER injected, and given its OWN data-quality
+queue so the reason a ruling lapsed stays visible. The flag follows the evidence in both
+directions (PREHASH-14/15). The UI says *"Previous decision requires re-review because source
+evidence changed"* and **pre-fills nothing**, so the old answer cannot be clicked through. **The
+regression tests were PROVED to fail against the 0ca11c1 behaviour** — 3 of 21 — before being
+accepted.
+
+**A SECOND DEFECT, FOUND BY THE SUITE**: `CREATE OR REPLACE VIEW` does NOT preserve reloptions.
+Migration 0039 replaced `v_admin_data_quality` without restating
+`WITH (security_invoker = true)`, silently turning it into an OWNER-RIGHTS view that bypassed the
+RLS meant to bound it — an engineer or viewer could have read Region-wide counts. The GRANT was
+never the protection; the invoker setting was. 0041 restates it on all three replaced views, and
+the suite now asserts it as a CATALOG property for every admin view (VIEWSEC-*) so it cannot lapse
+again. **NOT DEPLOYED and NOT LIVE VERIFIED.***
+
 ### Prompt-21 import blockers (must be resolved before the production import)
 
 | Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |
@@ -634,6 +661,7 @@ These rules are permanent and apply to every future prompt.
 | 18A | 433 | 146 | 332 |
 | 19 | 451 | 146 | 406 |
 | 19A | 486 | 146 | 479 |
+| 19B | 499 | 146 | 508 |
 
 Update this table when a prompt is accepted, so the next one has a baseline to compare
 against.

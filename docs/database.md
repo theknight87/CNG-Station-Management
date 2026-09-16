@@ -831,3 +831,26 @@ replacement in the same statement that mints it.
 `ncp_in_app_mandatory_ck` makes in-app impossible to disable.
 
 **Not deployed.** The hosted project is still at 37.
+
+
+---
+
+## Migration 0041 — decision / source-content binding (Prompt 19B)
+
+Additive, and it corrects a defect in 0039.
+
+Adds `import_mapping_decisions.reviewed_source_row_hash` (added nullable, backfilled from the
+staging row, then `SET NOT NULL`), captured server-side by
+`cng_admin_decide_staged_mapping` — which still takes no hash parameter. Reuse of a decision
+requires `source_row_key` **and** `reviewed_source_row_hash` to match the staging row; a key-only
+match is a stale-source decision, surfaced by `v_admin_staged_mapping_queue.decision_is_stale_source`
+and counted as `staged_stale_source_decision` in `v_admin_data_quality`.
+
+**It also repairs a privilege regression.** `CREATE OR REPLACE VIEW` does not preserve reloptions,
+so 0039's replacement of `v_admin_data_quality` silently dropped `security_invoker` and the view
+has been running with owner rights since. 0041 restates
+`WITH (security_invoker = true)` on `v_admin_data_quality`, `v_admin_staged_mapping_queue` and
+`v_import_confirmed_mappings`, and the authorization suite now asserts the setting from
+`pg_class.reloptions` for every admin view.
+
+**Not deployed.** The hosted project is still at 37.

@@ -227,7 +227,7 @@ works that queue **before** the commit, and defines exactly what Prompt 21 consu
 | raw import evidence | `import_staging_rows.source_raw` + file/sheet/row | one source cell |
 | automated candidate | `resolution.proposals` | a suggestion about one row; applies nothing |
 | owner-confirmed global rule | `owner_confirmed_station_aliases`, `station_aliases` | every row with that exact value |
-| **human row-level decision** | `import_mapping_decisions` | **exactly one source row** |
+| **human row-level decision** | `import_mapping_decisions` | **exactly one source row, and only while that row's CONTENT is unchanged** |
 | canonical record | the asset table | written only by the commit |
 
 A row-level decision is **never** promoted into an alias. There is no code path that could, and
@@ -238,10 +238,15 @@ A row-level decision is **never** promoted into an alias. There is no code path 
 Step 5 of §11 — "never resolve a mapping the pipeline left unresolved" — is unchanged and now has
 a precise exception: a mapping a HUMAN resolved. Concretely, the commit:
 
-1. reads `v_import_confirmed_mappings` (the ACTIVE decisions, keyed by `source_row_key`);
-2. for each staging row calls `planRow()` in `src/import/mappingDecisions.ts`;
+1. reads `v_import_confirmed_mappings` (the ACTIVE decisions, with the `reviewed_source_row_hash`
+   each was made against);
+2. for each staging row calls `planRow()` in `src/import/mappingDecisions.ts`, which matches on
+   `source_row_key` **AND** `source_row_hash = reviewed_source_row_hash`;
 3. commits rows planned `commit`, using `confirmed_station_id` / `confirmed_unit_id`;
 4. leaves rows planned `hold_needs_station` exactly as staged — it never re-derives a Station;
+4a. leaves rows planned `stale_source_decision` staged too, and reports them separately: a decision
+   exists for that source row but was made against content that has since changed, so it is held
+   for human re-review rather than applied (Prompt 19B, `docs/preimport-mapping.md` §2a);
 5. writes `committed_entity_id` / `committed_at` on the staging row in the same transaction, as
    §11 already requires.
 

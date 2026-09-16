@@ -238,6 +238,15 @@ INSERT INTO import_batches (id, source_file, source_sheet, status, import_run_id
 VALUES ('e5719a00-0000-0000-0000-000000000002', 'TESTDATA-PREIMPORT.xlsx', 'Sheet1',
         'dry_run', 'e5719a00-0000-0000-0000-000000000001');
 
+-- A LATER dry run over the same workbook. `import_staging_rows_uq` is
+-- (import_run_id, source_row_key), so the same source row legitimately appears
+-- again here — which is exactly how a changed workbook reaches the system.
+INSERT INTO import_runs (id, mode, label)
+VALUES ('e5719a00-0000-0000-0000-000000000003', 'dry_run', 'TESTDATA-RUN-LATER');
+INSERT INTO import_batches (id, source_file, source_sheet, status, import_run_id)
+VALUES ('e5719a00-0000-0000-0000-000000000004', 'TESTDATA-PREIMPORT.xlsx', 'Sheet1',
+        'dry_run', 'e5719a00-0000-0000-0000-000000000003');
+
 -- One staged row per pre-import asset type, all in needs_station_mapping — the
 -- exact shape of the 1,104 rows this workflow exists for.
 INSERT INTO import_staging_rows (
@@ -276,6 +285,17 @@ VALUES
    'TESTDATA-PREIMPORT.xlsx#Sheet1#14', 'hash-s4', 'hoses', 'ready_unresolved',
    'needs_station_mapping',
    '{"source_station_name_raw":"TESTDATA-RAW-STATION","serial_number":"HS-001"}'::jsonb,
+   '{"station":{"kind":"unmatched","rule":null,"proposals":[]}}'::jsonb),
+  -- A row that a LATER dry run re-stages from the same (file, sheet, row) with
+  -- DIFFERENT content. This is the Prompt 19B scenario, and the reason a
+  -- decision must be bound to content and not only to location.
+  ('e5719a00-0000-0000-0000-000000000021',
+   'e5719a00-0000-0000-0000-000000000003', 'e5719a00-0000-0000-0000-000000000004',
+   'TESTDATA-PREIMPORT.xlsx', 'Sheet1', 11,
+   '{"Station":"A DIFFERENT STATION","Area":"WEST","Serial Number":"SV-999"}'::jsonb,
+   'TESTDATA-PREIMPORT.xlsx#Sheet1#11', 'hash-s1-CHANGED', 'storage_vessels', 'ready_unresolved',
+   'needs_station_mapping',
+   '{"region":"West","region_raw":"WEST","source_station_name_raw":"A DIFFERENT STATION","serial_number":"SV-999"}'::jsonb,
    '{"station":{"kind":"unmatched","rule":null,"proposals":[]}}'::jsonb),
   -- A rejected row: structurally unusable, and therefore not a decision to make.
   ('e5719a00-0000-0000-0000-000000000015',
@@ -3165,12 +3185,22 @@ DO $$
 DECLARE n integer;
 BEGIN
   PERFORM pg_temp.become('clerk_admin');
+  -- Four rows from the first dry run, plus the row a LATER dry run re-staged
+  -- from the same (file, sheet, row) with different content. The rejected row
+  -- is excluded.
   SELECT count(*) INTO n FROM v_admin_staged_mapping_queue;
-  PERFORM pg_temp.ok(n = 4,
+  PERFORM pg_temp.ok(n = 5,
     'PREMAP-34 the queue holds one row per unresolved staged asset, and excludes the rejected row');
   SELECT count(*) INTO n FROM v_admin_staged_mapping_queue
-   WHERE decision_id IS NOT NULL AND confirmed_station_id IS NOT NULL;
+   WHERE decision_id IS NOT NULL AND confirmed_station_id IS NOT NULL
+     AND NOT decision_is_stale_source;
   PERFORM pg_temp.ok(n = 4, 'PREMAP-35 a decided row shows its CONFIRMED mapping');
+  -- The fifth carries a decision, but one made against content that has since
+  -- changed. It is neither "decided" nor "awaiting a decision" (Prompt 19B).
+  SELECT count(*) INTO n FROM v_admin_staged_mapping_queue
+   WHERE decision_is_stale_source;
+  PERFORM pg_temp.ok(n = 1,
+    'PREMAP-35b a decision made against changed source content is its own state, not a confirmation');
   -- RAW, CANDIDATE and CONFIRMED are separate columns, so a proposal can never
   -- be rendered as though it were a decision.
   SELECT count(*) INTO n FROM v_admin_staged_mapping_queue
@@ -3405,6 +3435,205 @@ BEGIN
   RESET ROLE;
   SELECT count(*) INTO n FROM app_users WHERE role = 'admin' AND is_active;
   PERFORM pg_temp.ok(n >= 1, 'REG-6 there is STILL at least one active administrator');
+END $$;
+
+-- ===========================================================================
+-- DECISION / SOURCE-CONTENT BINDING (Prompt 19B, migration 0041).
+--
+-- 0039 keyed a decision on (file, sheet, row) alone. That says WHERE a row was,
+-- not WHAT was reviewed — and a workbook is a live document. These prove the
+-- binding is now to both, that the hash comes from the server, and that a
+-- decision made against content that has since changed is neither applied nor
+-- silently forgotten.
+-- ===========================================================================
+DO $$
+DECLARE
+  v_admin   uuid;
+  v_station uuid := 'e5700000-0000-0000-0000-0000000000e1';
+  v_unit    uuid := 'e5700000-0000-0000-0000-0000000000e2';
+  v_sv      uuid := 'e5719a00-0000-0000-0000-000000000011';  -- run 1, hash-s1
+  v_sv_new  uuid := 'e5719a00-0000-0000-0000-000000000021';  -- run 2, hash-s1-CHANGED
+  v_raw_new jsonb;
+  v_hash    text;
+  v_at      timestamptz;
+  v_status  text;
+  n         integer;
+  b         boolean;
+BEGIN
+  SELECT id INTO v_admin FROM app_users WHERE clerk_user_id = 'clerk_admin';
+  SELECT source_raw INTO v_raw_new FROM import_staging_rows WHERE id = v_sv_new;
+
+  -------------------------------------------- THE HASH IS SERVER-DERIVED
+  -- The function takes five arguments and not one of them is a hash. A caller
+  -- that could name the hash could claim to have reviewed evidence it never saw.
+  SELECT count(*) INTO n
+    FROM pg_proc p JOIN pg_namespace ns ON ns.oid = p.pronamespace
+   WHERE ns.nspname = 'public' AND p.proname = 'cng_admin_decide_staged_mapping'
+     AND pg_get_function_arguments(p.oid) ILIKE '%hash%';
+  PERFORM pg_temp.ok(n = 0,
+    'PREHASH-1 no function signature accepts a source hash from the caller');
+
+  -- The decision taken in the PREMAP block above recorded the hash of the row
+  -- it was made from.
+  SELECT d.reviewed_source_row_hash INTO v_hash
+    FROM import_mapping_decisions d
+   WHERE d.source_row_key = 'TESTDATA-PREIMPORT.xlsx#Sheet1#11'
+     AND d.superseded_at IS NULL;
+  PERFORM pg_temp.ok(v_hash = 'hash-s1',
+    'PREHASH-2 the decision carries the hash of the staging row it reviewed');
+  PERFORM pg_temp.ok(
+    v_hash = (SELECT source_row_hash FROM import_staging_rows WHERE id = v_sv),
+    'PREHASH-3 and it is exactly the staging row''s own hash, not a client value');
+
+  ------------------------------------------- THE STALE-SOURCE STATE EXISTS
+  PERFORM pg_temp.become('clerk_admin');
+  SELECT decision_is_stale_source INTO b FROM v_admin_staged_mapping_queue
+   WHERE staging_row_id = v_sv_new;
+  PERFORM pg_temp.ok(b,
+    'PREHASH-4 a decision made against content that has since changed is flagged STALE-SOURCE');
+  SELECT decision_is_stale_source INTO b FROM v_admin_staged_mapping_queue
+   WHERE staging_row_id = v_sv;
+  PERFORM pg_temp.ok(NOT b,
+    'PREHASH-5 the row it was actually made from is NOT stale');
+
+  -- It is SHOWN, not dropped: an admin must be able to see why their previous
+  -- ruling stopped counting.
+  SELECT count(*) INTO n FROM v_admin_staged_mapping_queue
+   WHERE staging_row_id = v_sv_new AND decision_id IS NOT NULL;
+  PERFORM pg_temp.ok(n = 1,
+    'PREHASH-6 the stale decision is still visible on the re-staged row, not silently hidden');
+  RESET ROLE;
+
+  -- ...and it is its own queue, not folded into "decided" or "awaiting".
+  SELECT open_count INTO n FROM v_admin_data_quality
+   WHERE asset = 'storage_vessels' AND queue = 'staged_stale_source_decision';
+  PERFORM pg_temp.ok(n = 1,
+    'PREHASH-7 a stale-source decision is counted as its own queue');
+  SELECT coalesce(open_count, 0) INTO n FROM v_admin_data_quality
+   WHERE asset = 'storage_vessels' AND queue = 'staged_decided';
+  PERFORM pg_temp.ok(n = 1,
+    'PREHASH-8 and is NOT counted as decided — only the row it was made from is');
+
+  ---------------------------------------- PROMPT 21 CANNOT REUSE IT BY KEY ALONE
+  -- The consumable view carries the reviewed hash, so the planner can check it.
+  SELECT count(*) INTO n FROM v_import_confirmed_mappings
+   WHERE source_row_key = 'TESTDATA-PREIMPORT.xlsx#Sheet1#11'
+     AND reviewed_source_row_hash IS NOT NULL;
+  PERFORM pg_temp.ok(n = 1,
+    'PREHASH-9 the Prompt-21 view exposes the reviewed hash for verification');
+  -- The join Prompt 21 performs: key AND hash. It matches the original row...
+  SELECT count(*) INTO n
+    FROM import_staging_rows s
+    JOIN v_import_confirmed_mappings m
+      ON m.source_row_key = s.source_row_key
+     AND m.reviewed_source_row_hash = s.source_row_hash
+   WHERE s.id = v_sv;
+  PERFORM pg_temp.ok(n = 1, 'PREHASH-10 the content-bound join matches the reviewed row');
+  -- ...and does not match the re-staged one.
+  SELECT count(*) INTO n
+    FROM import_staging_rows s
+    JOIN v_import_confirmed_mappings m
+      ON m.source_row_key = s.source_row_key
+     AND m.reviewed_source_row_hash = s.source_row_hash
+   WHERE s.id = v_sv_new;
+  PERFORM pg_temp.ok(n = 0,
+    'PREHASH-11 and never matches a row whose content changed under the same key');
+
+  ------------------------------------- A CORRECTION AGAINST THE NEW EVIDENCE
+  -- The ordinary audited path: review the new evidence, supersede the old
+  -- ruling. Nothing special is needed, and nothing is forced.
+  SELECT decided_at INTO v_at FROM import_mapping_decisions
+   WHERE source_row_key = 'TESTDATA-PREIMPORT.xlsx#Sheet1#11' AND superseded_at IS NULL;
+  PERFORM pg_temp.become('clerk_admin');
+  SELECT d.resulting_mapping_status INTO v_status
+    FROM cng_admin_decide_staged_mapping(v_sv_new, v_station, v_unit, v_at,
+         'PREHASH-12 re-reviewed after the workbook changed') d;
+  RESET ROLE;
+  PERFORM pg_temp.ok(v_status = 'resolved',
+    'PREHASH-12 an admin may re-review the new evidence and supersede the old ruling');
+
+  SELECT reviewed_source_row_hash INTO v_hash FROM import_mapping_decisions
+   WHERE source_row_key = 'TESTDATA-PREIMPORT.xlsx#Sheet1#11' AND superseded_at IS NULL;
+  PERFORM pg_temp.ok(v_hash = 'hash-s1-CHANGED',
+    'PREHASH-13 the new decision is bound to the NEW content');
+
+  PERFORM pg_temp.become('clerk_admin');
+  SELECT decision_is_stale_source INTO b FROM v_admin_staged_mapping_queue
+   WHERE staging_row_id = v_sv_new;
+  PERFORM pg_temp.ok(NOT b, 'PREHASH-14 which clears the stale-source state for that row');
+  -- ...and the ORIGINAL row is now the stale one, because the active decision
+  -- no longer describes its content. The flag follows the evidence, both ways.
+  SELECT decision_is_stale_source INTO b FROM v_admin_staged_mapping_queue
+   WHERE staging_row_id = v_sv;
+  PERFORM pg_temp.ok(b,
+    'PREHASH-15 the flag follows the evidence in both directions, never a fixed label');
+  RESET ROLE;
+
+  SELECT count(*) INTO n FROM import_mapping_decisions
+   WHERE source_row_key = 'TESTDATA-PREIMPORT.xlsx#Sheet1#11' AND superseded_at IS NULL;
+  PERFORM pg_temp.ok(n = 1,
+    'PREHASH-16 still exactly one active decision — the correction superseded, it did not duplicate');
+
+  ------------------------------------------------- THE HASH IS NOT FORGEABLE
+  PERFORM pg_temp.become('clerk_admin');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$UPDATE import_mapping_decisions SET reviewed_source_row_hash = 'hash-s1'$q$),
+    'PREHASH-17 not even an ADMIN may rewrite the reviewed hash to revive a stale decision');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$INSERT INTO import_mapping_decisions (staging_row_id, source_row_key,
+        reviewed_source_row_hash, target_table, asset_type, region_id,
+        confirmed_station_id, previous_mapping_status, resulting_mapping_status,
+        decided_by, source_evidence)
+       VALUES (%L, 'TESTDATA-PREIMPORT.xlsx#Sheet1#11', 'hash-s1-CHANGED',
+        'storage_vessels', 'storage_vessel',
+        (SELECT region_id FROM stations WHERE id = %L), %L,
+        'needs_station_mapping', 'needs_unit_mapping', %L, '{}'::jsonb)$q$,
+    v_sv_new, v_station, v_station, v_admin)),
+    'PREHASH-18 nor insert a decision claiming to have reviewed content it did not');
+  -- The other half of the forgery: changing the EVIDENCE to match a decision.
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$UPDATE import_staging_rows SET source_row_hash = 'hash-s1' WHERE id = %L$q$, v_sv_new)),
+    'PREHASH-19 nor edit the staging row''s hash so a stale decision would match');
+  RESET ROLE;
+
+  ------------------------------------------------------- RAW EVIDENCE INTACT
+  SELECT count(*) INTO n FROM import_staging_rows
+   WHERE id = v_sv_new AND source_raw = v_raw_new
+     AND source_row_hash = 'hash-s1-CHANGED'
+     AND mapping_status = 'needs_station_mapping';
+  PERFORM pg_temp.ok(n = 1,
+    'PREHASH-20 the re-staged row''s raw evidence, hash and staged status are untouched throughout');
+
+  ------------------------------------------ AND STILL NOT AN ALIAS, EITHER WAY
+  SELECT count(*) INTO n FROM station_aliases
+   WHERE source_name_raw IN ('TESTDATA-RAW-STATION', 'A DIFFERENT STATION');
+  PERFORM pg_temp.ok(n = 0,
+    'PREHASH-21 neither the original decision nor the correction created a global alias');
+END $$;
+
+-- Every admin/import view must be SECURITY INVOKER, asserted as a property of
+-- the catalog rather than trusted from the migration text.
+--
+-- This is not theoretical. CREATE OR REPLACE VIEW does not preserve reloptions,
+-- so replacing a view without restating `WITH (security_invoker = true)`
+-- silently turns it into an owner-rights view that bypasses every RLS policy
+-- meant to bound it. Migration 0039 did exactly that to v_admin_data_quality,
+-- and the suite is what found it. A GRANT is not the protection here — the
+-- invoker setting is.
+DO $$
+DECLARE r record; n integer := 0;
+BEGIN
+  FOR r IN
+    SELECT c.relname, coalesce(c.reloptions, '{}') AS opts
+      FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace
+     WHERE ns.nspname = 'public' AND c.relkind = 'v'
+       AND (c.relname LIKE 'v_admin%' OR c.relname = 'v_import_confirmed_mappings')
+  LOOP
+    n := n + 1;
+    PERFORM pg_temp.ok('security_invoker=true' = ANY (r.opts),
+      format('VIEWSEC-%s %s is SECURITY INVOKER, so RLS still bounds it', n, r.relname));
+  END LOOP;
+  PERFORM pg_temp.ok(n >= 6, 'VIEWSEC-0 every admin view was checked, not an empty loop');
 END $$;
 
 DO $$ BEGIN RAISE EXCEPTION 'RLS_SUITE_ROLLBACK'; END $$;

@@ -89,6 +89,16 @@ export interface StagedQueueRow {
   decided_by_name: string | null
   decided_at: string | null
   decision_reason: string | null
+  /** The content identity of THIS staged row. */
+  source_row_hash: string
+  /** The content the decision was actually made from, or null if none exists. */
+  reviewed_source_row_hash: string | null
+  /**
+   * TRUE when a decision exists for this source row but was made against
+   * DIFFERENT source content. The decision is not applied and is not silently
+   * dropped: the administrator re-reviews the new evidence and supersedes it.
+   */
+  decision_is_stale_source: boolean
 }
 
 export type PreImportTarget = 'storage_vessels' | 'recovery_tanks' | 'gas_detectors' | 'hoses'

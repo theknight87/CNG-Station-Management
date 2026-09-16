@@ -43,6 +43,7 @@ function stagedVessel(overrides: Partial<StagedRow> = {}): StagedRow {
 
 const DECISION: ConfirmedMapping = {
   sourceRowKey: 'V.xlsx#Sheet1#11',
+  reviewedSourceRowHash: 'hash-1',
   targetTable: 'storage_vessels',
   confirmedStationId: 'station-1',
   confirmedUnitId: 'unit-1',
@@ -189,5 +190,112 @@ describe('the whole replay, end to end', () => {
     expect(committable.normalized.unit_id).toBe('unit-1')
     expect(committable.sourceRaw).toEqual(RAW)
     expect(committable.outcome).toBe('ready')
+  })
+})
+
+/**
+ * Prompt 19B — the regression that made this binding necessary.
+ *
+ * Before the fix a decision was keyed on `sourceRowKey` alone. That identifies
+ * WHERE a row was, not WHAT was reviewed. A workbook is a live document: rows
+ * are inserted, deleted, re-ordered and overwritten, so the same
+ * (file, sheet, row) can hold a different asset next month.
+ *
+ * The scenario below is exactly that. Under the old behaviour it produced
+ * `plan: 'commit'` with last month's Station attached to this month's vessel —
+ * a fabricated physical relationship arrived at without anyone guessing, which
+ * is the failure mode data principle #8 exists to prevent.
+ */
+describe('a decision whose source content has since changed', () => {
+  // Same location, different content: hash-1 became hash-2.
+  const restaged = () => stagedVessel({
+    sourceRowHash: 'hash-2',
+    sourceRaw: { Station: 'A DIFFERENT STATION', Area: 'WEST', 'Serial Number': 'SV-999' },
+    normalized: {
+      region_raw: 'WEST',
+      source_station_name_raw: 'A DIFFERENT STATION',
+      station_id: null,
+      unit_id: null,
+      serial_number: 'SV-999',
+    },
+  })
+
+  it('is NOT applied, and the old confirmed ids are never injected', () => {
+    const plan = planImport([restaged()], [DECISION])
+
+    expect(plan.counts.commit).toBe(0)
+    expect(plan.counts.decided).toBe(0)
+    expect(plan.counts.staleSourceDecision).toBe(1)
+
+    const planned = plan.rows[0]
+    expect(planned.plan).toBe('stale_source_decision')
+    expect(planned.decided).toBe(false)
+    expect(planned.decision).toBeNull()
+    // The specific thing that would have been wrong: station-1 / unit-1 from a
+    // decision about different evidence.
+    expect(planned.stationId).toBeNull()
+    expect(planned.unitId).toBeNull()
+    expect(planned.regionId).toBeNull()
+    expect(planned.mappingStatus).toBe('needs_station_mapping')
+  })
+
+  it('is identified as stale rather than silently forgotten', () => {
+    const planned = planImport([restaged()], [DECISION]).rows[0]
+    // The administrator must be able to see WHY a previous ruling stopped
+    // counting. "No decision" and "your decision no longer matches the source"
+    // are different facts and are reported differently.
+    expect(planned.staleDecision).not.toBeNull()
+    expect(planned.staleDecision?.confirmedStationId).toBe('station-1')
+    expect(planned.staleDecision?.reviewedSourceRowHash).toBe('hash-1')
+    expect(planned.plan).not.toBe('hold_needs_station')
+  })
+
+  it('refuses to be applied even if a caller reaches past the plan', () => {
+    expect(() => applyDecision(restaged(), DECISION))
+      .toThrow(/stale_source_decision/i)
+  })
+
+  it('leaves the new raw evidence untouched', () => {
+    const row = restaged()
+    const before = JSON.parse(JSON.stringify(row.sourceRaw))
+    planImport([row], [DECISION])
+    expect(row.sourceRaw).toEqual(before)
+    expect(row.sourceRowHash).toBe('hash-2')
+    expect(row.mappingStatus).toBe('needs_station_mapping')
+  })
+
+  it('creates no global alias, exactly as a live decision does not', () => {
+    const planned = planImport([restaged()], [DECISION]).rows[0]
+    // Nothing anywhere in the plan generalises from the raw station text.
+    const serialized = JSON.stringify(planned)
+    expect(serialized).not.toMatch(/alias/i)
+    expect(planned.row.resolution.human_decision).toBeUndefined()
+  })
+})
+
+describe('the binding, stated both ways', () => {
+  it('reuses a decision normally when key AND hash both match', () => {
+    const plan = planImport([stagedVessel()], [DECISION])
+    expect(plan.counts.commit).toBe(1)
+    expect(plan.counts.staleSourceDecision).toBe(0)
+    expect(plan.rows[0].decided).toBe(true)
+    expect(plan.rows[0].stationId).toBe('station-1')
+  })
+
+  it('never applies a decision from a different source row, matching hash or not', () => {
+    // Same content hash, different location. A hash collision across rows must
+    // not be a back door: the key is checked first and independently.
+    const elsewhere = stagedVessel({ sourceRowKey: 'V.xlsx#Sheet1#77' })
+    const planned = planRow(elsewhere, indexDecisions([DECISION]))
+    expect(planned.decided).toBe(false)
+    expect(planned.staleDecision).toBeNull()
+    expect(planned.plan).toBe('hold_needs_station')
+    expect(planned.stationId).toBeNull()
+  })
+
+  it('records the reviewed hash on an applied decision, so the binding is re-checkable', () => {
+    const applied = applyDecision(stagedVessel(), DECISION)
+    const human = applied.resolution.human_decision as Record<string, string>
+    expect(human.reviewed_source_row_hash).toBe('hash-1')
   })
 })

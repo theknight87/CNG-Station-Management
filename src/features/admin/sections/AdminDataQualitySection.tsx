@@ -362,13 +362,17 @@ function StagedQueue({
                   aria-label={`${
                     openRow === row.staging_row_id
                       ? 'Cancel deciding'
-                      : row.decision_id ? 'Change decision for' : 'Decide'
+                      : row.decision_is_stale_source
+                        ? 'Re-review'
+                        : row.decision_id ? 'Change decision for' : 'Decide'
                   } staged row ${row.source_row_key}`}
                   onClick={() => onToggle(row.staging_row_id)}
                 >
                   {openRow === row.staging_row_id
                     ? 'Cancel'
-                    : row.decision_id ? 'Change' : 'Decide'}
+                    : row.decision_is_stale_source
+                      ? 'Re-review'
+                      : row.decision_id ? 'Change' : 'Decide'}
                 </Button>
               </TableCell>
             </TableRow>
@@ -402,8 +406,38 @@ function CandidateCell({ row }: { row: StagedQueueRow }) {
   )
 }
 
-/** A CONFIRMED human decision, or the honest absence of one. */
+/**
+ * A CONFIRMED human decision, the honest absence of one, or a decision whose
+ * evidence has since changed.
+ *
+ * The third case is the one that matters. A decision is bound to the source
+ * CONTENT it was reviewed against, not only to the (file, sheet, row) location,
+ * because a workbook is a live document. When the content changes the previous
+ * ruling stops applying — and it is shown as needing re-review rather than
+ * presented as confirmed, or silently reduced to "no decision", which would hide
+ * why it lapsed.
+ */
 function ConfirmedCell({ row }: { row: StagedQueueRow }) {
+  if (row.decision_is_stale_source) {
+    return (
+      <span className="text-xs">
+        <StatusBadge
+          kind="conflict"
+          label="Needs re-review"
+          description="A previous decision exists, but the source evidence has changed since it was made, so it no longer applies"
+        />
+        <span className="ml-1">
+          Previous decision requires re-review because source evidence changed.
+        </span>
+        {row.confirmed_station_name ? (
+          <span className="ml-1 text-muted-foreground">
+            It named {row.confirmed_station_name}
+            {row.confirmed_unit_name ? ` · ${row.confirmed_unit_name}` : ''}, which is not applied.
+          </span>
+        ) : null}
+      </span>
+    )
+  }
   if (!row.decision_id) {
     return (
       <StatusBadge
@@ -542,8 +576,13 @@ function StagedMappingForm({
   busy: boolean
   onSubmit: (stationId: string, unitId: string | null, reason: string) => void | Promise<void>
 }) {
-  const [stationId, setStationId] = useState(row.confirmed_station_id ?? '')
-  const [unitId, setUnitId] = useState(row.confirmed_unit_id ?? '')
+  // When the source evidence has changed, the previous answers are NOT
+  // pre-filled. Offering them as defaults would invite a click-through that
+  // re-applies a ruling made about different content — the exact failure this
+  // binding exists to prevent.
+  const stale = row.decision_is_stale_source
+  const [stationId, setStationId] = useState(stale ? '' : row.confirmed_station_id ?? '')
+  const [unitId, setUnitId] = useState(stale ? '' : row.confirmed_unit_id ?? '')
   const [reason, setReason] = useState('')
 
   const stations = useStations()
@@ -561,6 +600,14 @@ function StagedMappingForm({
       }}
     >
       <div className="text-xs text-muted-foreground">
+        {stale ? (
+          <p className="font-medium text-foreground">
+            Previous decision requires re-review because source evidence changed. The earlier
+            ruling
+            {row.confirmed_station_name ? ` (${row.confirmed_station_name})` : ''} is not applied
+            and nothing is pre-filled — review the evidence below and decide again.
+          </p>
+        ) : null}
         <p>
           <strong>Raw source:</strong> {row.source_file} · {row.source_sheet} · row{' '}
           <span className="tabular">{row.source_row}</span> — Region{' '}
@@ -604,7 +651,7 @@ function StagedMappingForm({
           />
         </Field>
         <Button type="submit" size="sm" disabled={busy || stationId === ''}>
-          {row.decision_id ? 'Replace decision' : 'Record decision'}
+          {stale ? 'Record re-reviewed decision' : row.decision_id ? 'Replace decision' : 'Record decision'}
         </Button>
       </div>
     </form>
