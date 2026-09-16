@@ -338,6 +338,140 @@ const VESSEL_SRVS: Record<string, string[]> = {
   'sv-resolved': ['isrv-resolved', 'isrv-long'],
 }
 
+
+/* ------------------------------------------------------------------ *
+ * Prompt 13 - Global Gas Detector Management fixtures.
+ *
+ * Chosen to exercise exactly what is easy to get wrong: both area
+ * classifications and an unrecorded one, a detector whose Unit is unresolved,
+ * a NULL serial, a `not_yet_assigned` serial (a fact, not a gap), a very long
+ * identifier, a year-only date that must never become a countdown, an Arabic
+ * station and unit, every due bucket, and presence EVIDENCE rows that carry no
+ * detector_id because no device exists there.
+ *
+ * `needs_station_mapping` is deliberately ABSENT: `gas_detectors.station_id`
+ * is NOT NULL, so no such row can exist. Inventing one in the harness would
+ * show a state the real database cannot hold.
+ * ------------------------------------------------------------------ */
+
+const DETECTOR_STATIONS = [
+  { station_id: 's-0', station_name: 'الماظة', region_id: 'r-east', region_name: 'East' },
+  { station_id: 's-1', station_name: 'شبرا 1', region_id: 'r-west', region_name: 'West' },
+  { station_id: 's-2', station_name: 'Alex Depot 7', region_id: 'r-alex', region_name: 'Alex' },
+]
+
+const DUE_CYCLE = ['valid', 'overdue', 'due_7', 'due_30', 'due_60', 'due_today', 'due_15']
+
+function detectorRow(i: number, over: Record<string, unknown> = {}) {
+  const st = DETECTOR_STATIONS[i % DETECTOR_STATIONS.length]
+  const due = DUE_CYCLE[i % DUE_CYCLE.length]
+  const exact = due !== 'unknown'
+  return {
+    detector_id: `gd-${i}`,
+    detector_presence: 'installed',
+    region_id: st.region_id, region_name: st.region_name,
+    station_id: st.station_id, station_name: st.station_name,
+    unit_id: 'u-1', unit_name: 'الماظة 1',
+    area_type: i % 2 === 0 ? 'closed' : 'open',
+    area_type_raw: i % 2 === 0 ? 'Close Area' : 'Open Area',
+    mapping_status: 'resolved', needs_mapping: false,
+    manufacturer: i % 3 === 0 ? 'Honeywell' : i % 3 === 1 ? 'Dräger' : 'MSA',
+    model: i % 4 === 0 ? null : 'XNX',
+    serial_number: `GD-${String(770000 + i)}`,
+    serial_number_raw: `GD-${String(770000 + i)}`,
+    serial_status: 'assigned',
+    last_calibration_date: '2025-09-20', last_calibration_precision: 'exact_date',
+    last_calibration_display: '20 Sep 2025',
+    next_calibration_date: exact ? '2026-09-20' : null,
+    next_calibration_precision: exact ? 'exact_date' : 'year_only',
+    next_calibration_display: exact ? '20 Sep 2026' : '2027',
+    days_left: exact ? 4 : null,
+    due_status: due,
+    source_status_raw: null, needs_review: false, notes: null,
+    ...over,
+  }
+}
+
+const DETECTOR_REGISTRY = [
+  // A fully resolved detector in a CLOSED area, East - the combined
+  // East + Closed + Overdue filter target.
+  detectorRow(0, {
+    detector_id: 'gd-east-closed-overdue', due_status: 'overdue', days_left: -12,
+    next_calibration_display: '4 Sep 2026', next_calibration_date: '2026-09-04',
+    area_type: 'closed', area_type_raw: 'Close Area',
+    region_id: 'r-east', region_name: 'East', station_id: 's-0', station_name: 'الماظة',
+    serial_number: 'GD-EAST-0001', serial_number_raw: 'GD-EAST-0001',
+  }),
+  // Unit unresolved. The Station is proven; the Unit is NOT, and none is guessed.
+  detectorRow(1, {
+    detector_id: 'gd-needs-unit', mapping_status: 'needs_unit_mapping', needs_mapping: true,
+    unit_id: null, unit_name: null, area_type: 'open', area_type_raw: 'Open Area',
+  }),
+  // Source evidence disagrees.
+  detectorRow(2, {
+    detector_id: 'gd-conflict', mapping_status: 'conflict', needs_mapping: true,
+    notes: 'Two source files disagree on the Unit.',
+  }),
+  // NULL serial: the source said nothing.
+  detectorRow(3, {
+    detector_id: 'gd-noserial', serial_number: null, serial_number_raw: null, serial_status: 'unknown',
+  }),
+  // A serial that has explicitly not been issued yet - a fact, not a gap.
+  detectorRow(4, {
+    detector_id: 'gd-notyet', serial_number: null, serial_number_raw: null,
+    serial_status: 'not_yet_assigned',
+  }),
+  // A very long identifier, to prove the column scrolls rather than truncating.
+  detectorRow(5, {
+    detector_id: 'gd-long',
+    serial_number: 'GD-CNG-2019-000044170-REV-A-LONG-IDENTIFIER',
+    serial_number_raw: 'GD-CNG-2019-000044170-REV-A-LONG-IDENTIFIER',
+  }),
+  // A year-only next calibration. NEVER a countdown, never 1 Jan or 31 Dec.
+  detectorRow(6, {
+    detector_id: 'gd-yearonly', due_status: 'unknown', days_left: null,
+    next_calibration_date: null, next_calibration_precision: 'year_only',
+    next_calibration_display: '2027',
+  }),
+  // No date at all, plus the preserved Arabic source status beside it.
+  detectorRow(7, {
+    detector_id: 'gd-nodate', due_status: 'unknown', days_left: null,
+    next_calibration_date: null, next_calibration_precision: 'unknown',
+    next_calibration_display: null, source_status_raw: 'منتهي',
+  }),
+  // Area classification not recorded: counted in neither Open nor Closed.
+  detectorRow(8, { detector_id: 'gd-noarea', area_type: null, area_type_raw: null }),
+  // NULL manufacturer AND model together.
+  detectorRow(9, { detector_id: 'gd-nomake', manufacturer: null, model: null }),
+  ...Array.from({ length: 65 }, (_, k) => detectorRow(k + 10)),
+
+  // ---- Presence EVIDENCE. No device, so no detector_id, no serial, no dates.
+  {
+    detector_id: null, detector_presence: 'not_installed',
+    region_id: 'r-delta', region_name: 'Delta', station_id: 's-3', station_name: 'طاليــا',
+    unit_id: null, unit_name: null,
+    area_type: 'closed', area_type_raw: 'Close Area',
+    mapping_status: null, needs_mapping: false,
+    manufacturer: null, model: null, serial_number: null, serial_number_raw: null, serial_status: null,
+    last_calibration_date: null, last_calibration_precision: null, last_calibration_display: null,
+    next_calibration_date: null, next_calibration_precision: null, next_calibration_display: null,
+    days_left: null, due_status: 'unknown',
+    source_status_raw: 'Not exist in the station', needs_review: false, notes: null,
+  },
+  {
+    detector_id: null, detector_presence: 'unknown',
+    region_id: 'r-canal', region_name: 'Canal', station_id: 's-4', station_name: 'الادبيه - السويس',
+    unit_id: null, unit_name: null,
+    area_type: null, area_type_raw: null,
+    mapping_status: null, needs_mapping: false,
+    manufacturer: null, model: null, serial_number: null, serial_number_raw: null, serial_status: null,
+    last_calibration_date: null, last_calibration_precision: null, last_calibration_display: null,
+    next_calibration_date: null, next_calibration_precision: null, next_calibration_display: null,
+    days_left: null, due_status: 'unknown',
+    source_status_raw: null, needs_review: false, notes: null,
+  },
+]
+
 type Reply = { data: unknown; error: { message: string } | null; count?: number }
 
 const FAILURE = { message: 'permission denied for view v_station_summary' }
@@ -351,7 +485,8 @@ const EQUIPMENT_TABLES = new Set([
 function builder(table: string) {
   let head = false
   const filters: { region?: string; overdue?: boolean; unresolved?: boolean; search?: string; stationId?: string; unitId?: string; assetType?: string; mappingStatus?: string;
-    parentKind?: string; availability?: string; dueStatus?: string; dueIn?: string[]; parentId?: string } = {}
+    parentKind?: string; availability?: string; dueStatus?: string; dueIn?: string[]; parentId?: string;
+    presence?: string; areaType?: string } = {}
   // PostgREST applies .order() calls IN SEQUENCE - the first is the primary
   // key, later ones are tie-breaks. An earlier version of this stub overwrote
   // a single column instead, so a sort by Assets silently became a sort by
@@ -475,6 +610,43 @@ function builder(table: string) {
       if (head) return { data: null, error: null, count: list.length }
       return { data: list.slice(from, to + 1), error: null, count: list.length }
     }
+    // Global Gas Detector Management. Distinguished from the Prompt-10 Unit
+    // tab by the ABSENCE of a unit_id filter: the Unit tab always pins one.
+    if (table === 'v_gas_detector_management' && !filters.unitId) {
+      if (scenario === 'empty') return { data: [], error: null, count: 0 }
+      let list: Record<string, unknown>[] = DETECTOR_REGISTRY.slice()
+      if (scenario === 'scoped') list = list.filter((r) => r.region_id === 'r-east')
+      if (filters.presence) list = list.filter((r) => r.detector_presence === filters.presence)
+      if (filters.region) list = list.filter((r) => r.region_id === filters.region)
+      if (filters.stationId) list = list.filter((r) => r.station_id === filters.stationId)
+      if (filters.areaType) list = list.filter((r) => r.area_type === filters.areaType)
+      if (filters.mappingStatus) list = list.filter((r) => r.mapping_status === filters.mappingStatus)
+      if (filters.dueStatus) list = list.filter((r) => r.due_status === filters.dueStatus)
+      if (filters.dueIn) list = list.filter((r) => filters.dueIn!.includes(String(r.due_status)))
+      if (filters.search) {
+        const q = filters.search.toLowerCase()
+        list = list.filter((r) =>
+          ['serial_number', 'manufacturer', 'model', 'station_name', 'unit_name']
+            .some((k) => String(r[k] ?? '').toLowerCase().includes(q)),
+        )
+      }
+      list.sort((a, b) => {
+        for (const { col, asc } of orders) {
+          const x = a[col] as string | number | null
+          const y = b[col] as string | number | null
+          if (x === y) continue
+          // NULLs last, matching nullsFirst:false on the real query.
+          if (x === null || x === undefined) return 1
+          if (y === null || y === undefined) return -1
+          const cmp = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'ar')
+          if (cmp !== 0) return asc ? cmp : -cmp
+        }
+        return 0
+      })
+      // A head count is still a FILTERED count in PostgREST.
+      if (head) return { data: null, error: null, count: list.length }
+      return { data: list.slice(from, to + 1), error: null, count: list.length }
+    }
     // Unit workspace equipment. `emptytab` proves an empty tab is distinct
     // from a failed one; `error` proves a failure never renders as empty.
     if (EQUIPMENT_TABLES.has(table)) {
@@ -510,6 +682,8 @@ function builder(table: string) {
       if (col === 'parent_id') filters.parentId = value
       if (col === 'availability_status') filters.availability = value
       if (col === 'due_status') filters.dueStatus = value
+      if (col === 'detector_presence') filters.presence = value
+      if (col === 'area_type') filters.areaType = value
       return chain
     },
     gt: (col: string) => {

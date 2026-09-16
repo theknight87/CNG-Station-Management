@@ -901,3 +901,43 @@ A schema discrepancy was found and flagged rather than worked around: Prompt 6 s
 hundreds of vessel records as `needs_station_mapping`, but `station_id` is NOT NULL on
 both vessel tables, so that state is unreachable in canonical storage. See
 `docs/vessels-management.md` §5.
+
+
+## Gas Detector Management (Prompt 13)
+
+`/manage/gas-detectors` is the company-wide calibration registry, built on the existing
+`v_gas_detector_management` view from migration 0011. It added **no database objects**, and
+it is the fifth registry to share `RegistryTable`.
+
+It is a calibration registry, not a monitoring console: the schema stores no reading, gas
+concentration, alarm state, connectivity, sensor health or battery level, so none is shown
+and an assertion holds those columns absent.
+
+Two schema facts shape the screen, and both are asserted rather than assumed:
+
+- **`area_type` is not a detector column.** It lives on `gas_detector_presence` and is
+  joined by `(station_id, unit_id)`, so it classifies the AREA — shared across a unit, and
+  NULL where no presence row covers the detector. It is rendered in a neutral treatment
+  identical for `Open` and `Closed`, because a classification is not a status. There is no
+  `location` column anywhere in the schema, so no detector position is displayed or inferred.
+- **The view is a UNION.** Installed detector assets carry a `detector_id`; explicit
+  presence EVIDENCE carries NULL, because 138 source rows state that no detector exists
+  there and no asset row is fabricated to represent absence. The registry defaults to
+  installed detectors so a detector count always means real hardware.
+
+**A second Prompt-21 import blocker was found**, the same shape as the vessel one:
+`gas_detectors.station_id` is NOT NULL, so the 219 detector rows Prompt 6 staged as
+`needs_station_mapping` cannot enter the canonical table. Proved by attempting the insert.
+No constraint was relaxed, no station mapping fabricated, and no staged row dropped. See
+`docs/gas-detector-management.md` §4.
+
+No authoritative calibration interval exists anywhere in the project — `alert_rules` carries
+thresholds only, with no interval column — so the UI uses the stored `next_calibration_date`
+and computes nothing of its own. The gap is documented rather than filled with a hard-coded
+year.
+
+Mapping mutation remains deferred for the third consecutive prompt: `gas_detectors` has no
+audit trigger and its mapping columns are client-writable, so attribution is forgeable and
+unrecorded.
+
+See `docs/gas-detector-management.md`.

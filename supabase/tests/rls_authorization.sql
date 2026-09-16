@@ -110,6 +110,29 @@ INSERT INTO installed_relief_valves (id, station_id, region_id, mapping_status, 
 SELECT 'e5700000-0000-0000-0000-0000000000e6', NULL, r_east, 'needs_station_mapping',
        'TESTDATA-EAST-STATION', 'East', 'Storage', 'storage_vessel' FROM f;
 
+
+-- Gas detectors (Prompt 13). East and West, resolved and unit-unresolved, plus
+-- presence EVIDENCE rows that carry no detector asset at all.
+INSERT INTO gas_detectors (id, station_id, region_id, unit_id, mapping_status, manufacturer, model, serial_number, serial_status)
+SELECT 'e5700000-0000-0000-0000-0000000000e7', 'e5700000-0000-0000-0000-0000000000e1', r_east,
+       'e5700000-0000-0000-0000-0000000000e2', 'resolved', 'Honeywell', 'XNX', 'TESTDATA-EAST-GD', 'assigned' FROM f;
+INSERT INTO gas_detectors (id, station_id, region_id, unit_id, mapping_status, manufacturer, model, serial_number, serial_status)
+SELECT 'e5700000-0000-0000-0000-0000000000f7', 'e5700000-0000-0000-0000-0000000000f1', r_west,
+       'e5700000-0000-0000-0000-0000000000f2', 'resolved', 'Draeger', 'PIR', 'TESTDATA-WEST-GD', 'assigned' FROM f;
+-- Station proven, Unit NOT. No unit is guessed for it anywhere.
+INSERT INTO gas_detectors (id, station_id, region_id, unit_id, mapping_status, serial_number, serial_status)
+SELECT 'e5700000-0000-0000-0000-0000000000e8', 'e5700000-0000-0000-0000-0000000000e1', r_east,
+       NULL, 'needs_unit_mapping', 'TESTDATA-EAST-GD-NOUNIT', 'assigned' FROM f;
+
+-- Presence evidence: the source states no detector exists. NO gas_detectors
+-- row is created to represent that absence.
+INSERT INTO gas_detector_presence (station_id, region_id, unit_id, detector_presence, presence_raw, area_type, area_type_raw)
+SELECT 'e5700000-0000-0000-0000-0000000000e1', r_east, 'e5700000-0000-0000-0000-0000000000e2',
+       'installed', 'Exist in the station', 'closed', 'Close Area' FROM f;
+INSERT INTO gas_detector_presence (station_id, region_id, unit_id, detector_presence, presence_raw, area_type, area_type_raw)
+SELECT 'e5700000-0000-0000-0000-0000000000f1', r_west, 'e5700000-0000-0000-0000-0000000000f2',
+       'not_installed', 'Not exist in the station', 'open', 'Open Area' FROM f;
+
 INSERT INTO warehouse_relief_valves (id, availability_status, serial_number)
 VALUES ('e5700000-0000-0000-0000-0000000000a5', 'available_calibrated', 'TESTDATA-WH-1');
 
@@ -1196,6 +1219,216 @@ BEGIN
   SELECT count(*) INTO n FROM v_vessel_management WHERE unit_id IS NULL AND mapping_status = 'resolved';
   PERFORM pg_temp.ok(n = 0,
     'VES-18 a resolved vessel always carries a confirmed Unit, so a Unit tab cannot show an unresolved one');
+  RESET ROLE;
+END $$;
+
+
+-- ---------------------------------------------------------------------------
+-- Gas Detector Management (Prompt 13)
+--
+-- The registry widens WHAT is listed, never WHO may see it. Every assertion
+-- below runs as a real role through the real policies.
+-- ---------------------------------------------------------------------------
+DO $$
+DECLARE n bigint; cols int;
+BEGIN
+  ---------------------------------------------------------------- viewer, East
+  PERFORM pg_temp.become('clerk_view_east');
+
+  SELECT count(*) INTO n FROM v_gas_detector_management WHERE detector_id IS NOT NULL;
+  PERFORM pg_temp.ok(n = 2, 'GD-1 an East viewer sees only East detectors (2 of 3)');
+
+  -- Naming the West row directly changes nothing: RLS filters, it does not hide.
+  SELECT count(*) INTO n FROM v_gas_detector_management
+   WHERE detector_id = 'e5700000-0000-0000-0000-0000000000f7';
+  PERFORM pg_temp.ok(n = 0, 'GD-2 a West detector cannot be named directly by an East viewer (IDOR)');
+
+  -- The same through the base table, in case a later view is added.
+  SELECT count(*) INTO n FROM gas_detectors WHERE id = 'e5700000-0000-0000-0000-0000000000f7';
+  PERFORM pg_temp.ok(n = 0, 'GD-3 nor through the gas_detectors table itself');
+
+  -- Search is retrieval, not an authorization bypass.
+  SELECT count(*) INTO n FROM v_gas_detector_management WHERE serial_number ILIKE '%TESTDATA-WEST-GD%';
+  PERFORM pg_temp.ok(n = 0, 'GD-4 search cannot surface an unauthorized detector by serial');
+
+  SELECT count(*) INTO n FROM v_gas_detector_management WHERE manufacturer ILIKE '%Draeger%';
+  PERFORM pg_temp.ok(n = 0, 'GD-5 nor by manufacturer');
+
+  SELECT count(*) INTO n FROM v_gas_detector_management WHERE station_name ILIKE '%WEST%';
+  PERFORM pg_temp.ok(n = 0, 'GD-6 nor by station name');
+
+  -- The count behind pagination is RLS-scoped too, so a total cannot leak the
+  -- existence of a row the caller may not read.
+  -- 2 East detector assets. The East presence row says 'installed', and the
+  -- view's evidence branch emits only NON-installed presence, so it adds no
+  -- second row for a station that already has a detector.
+  SELECT count(*) INTO n FROM v_gas_detector_management;
+  PERFORM pg_temp.ok(n = 2,
+    'GD-7 the pagination total counts only authorized rows, and never double-counts an installed presence row');
+
+  -- Filters narrow an authorized set; they never widen it.
+  SELECT count(*) INTO n FROM v_gas_detector_management WHERE area_type = 'open';
+  PERFORM pg_temp.ok(n = 0, 'GD-8 an Area Type filter cannot reach the West open-area row');
+
+  SELECT count(*) INTO n FROM v_gas_detector_management WHERE detector_presence = 'not_installed';
+  PERFORM pg_temp.ok(n = 0, 'GD-9 a Presence filter cannot reach West presence evidence');
+
+  SELECT count(*) INTO n FROM v_gas_detector_management WHERE mapping_status = 'needs_unit_mapping';
+  PERFORM pg_temp.ok(n = 1, 'GD-10 an unresolved East detector is visible to an authorized East reader');
+
+  -- Detail expansion is the same query, so it leaks nothing extra.
+  SELECT count(*) INTO n FROM v_gas_detector_management
+   WHERE detector_id = 'e5700000-0000-0000-0000-0000000000f7' AND area_type_raw IS NOT NULL;
+  PERFORM pg_temp.ok(n = 0, 'GD-11 expanding a detail cannot expose an unauthorized record');
+
+  -- A viewer is read-only: hiding a control is not protection.
+  --
+  -- NOTE the shape. `authenticated` HOLDS the UPDATE grant on gas_detectors,
+  -- so this raises no privilege error; the row simply fails the policy's
+  -- USING clause and the statement matches nothing. Zero rows changed IS the
+  -- security property, so that is what is asserted — an exception-only test
+  -- here would have reported a false PASS for the wrong reason.
+  UPDATE gas_detectors SET mapping_status = 'resolved'
+   WHERE id = 'e5700000-0000-0000-0000-0000000000e8';
+  GET DIAGNOSTICS n = ROW_COUNT;
+  PERFORM pg_temp.ok(n = 0,
+    'GD-12 a viewer changes no row when resolving a mapping in their own region');
+
+  RESET ROLE;
+
+  --------------------------------------------------------------- engineer, East
+  PERFORM pg_temp.become('clerk_eng_east');
+
+  -- Same shape as GD-12: the West row fails the UPDATE policy's USING clause,
+  -- so nothing is touched. Zero rows changed is the property that matters.
+  UPDATE gas_detectors SET unit_id = 'e5700000-0000-0000-0000-0000000000f2'
+   WHERE id = 'e5700000-0000-0000-0000-0000000000f7';
+  GET DIAGNOSTICS n = ROW_COUNT;
+  PERFORM pg_temp.ok(n = 0, 'GD-13 an East engineer changes no row on a West detector');
+
+  -- And the West detector is genuinely untouched, not merely invisible.
+  RESET ROLE;
+  SELECT count(*) INTO n FROM gas_detectors
+   WHERE id = 'e5700000-0000-0000-0000-0000000000f7'
+     AND unit_id = 'e5700000-0000-0000-0000-0000000000f2';
+  PERFORM pg_temp.ok(n = 1,
+    'GD-13b the West detector still carries its own Unit, unchanged by the attempt');
+  PERFORM pg_temp.become('clerk_eng_east');
+
+  SELECT count(*) INTO n FROM v_gas_detector_management WHERE region_name = 'West';
+  PERFORM pg_temp.ok(n = 0, 'GD-14 an East engineer sees no West row through the management view');
+
+  RESET ROLE;
+
+  ------------------------------------------------------------------------ anon
+  PERFORM pg_temp.become(NULL);
+  SET LOCAL ROLE anon;
+  PERFORM pg_temp.ok(pg_temp.denied('SELECT count(*) FROM gas_detectors'),
+    'GD-15 anon cannot read gas_detectors');
+  PERFORM pg_temp.ok(pg_temp.denied('SELECT count(*) FROM gas_detector_presence'),
+    'GD-16 anon cannot read gas_detector_presence');
+  PERFORM pg_temp.ok(pg_temp.denied('SELECT count(*) FROM v_gas_detector_management'),
+    'GD-17 anon cannot read the gas detector management view');
+  RESET ROLE;
+END $$;
+
+-- Structural guarantees for the view the detector registry reads.
+DO $$
+DECLARE definer int; anon_grants int; write_grants int; nullable int; enum_has int;
+BEGIN
+  SELECT count(*) INTO definer
+    FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace
+   WHERE ns.nspname = 'public' AND c.relname = 'v_gas_detector_management'
+     AND NOT coalesce((c.reloptions::text LIKE '%security_invoker=true%'), false);
+  PERFORM pg_temp.ok(definer = 0, 'GD-18 the gas detector management view is security_invoker');
+
+  SELECT count(*) INTO anon_grants
+    FROM information_schema.role_table_grants
+   WHERE grantee = 'anon' AND table_schema = 'public' AND table_name = 'v_gas_detector_management';
+  PERFORM pg_temp.ok(anon_grants = 0, 'GD-19 anon holds no grant on the gas detector management view');
+
+  SELECT count(*) INTO write_grants
+    FROM information_schema.role_table_grants
+   WHERE table_schema = 'public' AND table_name = 'v_gas_detector_management'
+     AND grantee IN ('anon', 'authenticated', 'service_role', 'PUBLIC')
+     AND privilege_type IN ('INSERT', 'UPDATE', 'DELETE', 'TRUNCATE');
+  PERFORM pg_temp.ok(write_grants = 0,
+    format('GD-20 the read-only detector view cannot be written through (found %s)', write_grants));
+
+  -- ------------------------------------------------------------------------
+  -- MANDATORY canonical-compatibility check (prompt 13 section 9).
+  --
+  -- `asset_mapping_status` DEFINES needs_station_mapping, but gas_detectors
+  -- cannot HOLD it: station_id is NOT NULL. Prompt 6 staged 219 detector rows
+  -- in exactly that state, so this is a Prompt-21 import blocker, recorded
+  -- here rather than worked around by relaxing the constraint.
+  -- ------------------------------------------------------------------------
+  SELECT count(*) INTO enum_has FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
+   WHERE t.typname = 'asset_mapping_status' AND e.enumlabel = 'needs_station_mapping';
+  PERFORM pg_temp.ok(enum_has = 1,
+    'GD-21 asset_mapping_status defines needs_station_mapping');
+
+  SELECT count(*) INTO nullable FROM information_schema.columns
+   WHERE table_schema = 'public' AND table_name = 'gas_detectors'
+     AND column_name = 'station_id' AND is_nullable = 'YES';
+  PERFORM pg_temp.ok(nullable = 0,
+    'GD-22 BLOCKER: gas_detectors.station_id is NOT NULL, so needs_station_mapping is unreachable (Prompt 21)');
+
+  -- Proven by attempting it, not merely by reading the catalogue.
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$INSERT INTO gas_detectors (station_id, region_id, mapping_status)
+       SELECT NULL, id, 'needs_station_mapping' FROM regions LIMIT 1$q$),
+    'GD-23 a station-unconfirmed detector is rejected by the not-null constraint');
+
+  -- There is no equipment parent to resolve: a detector hangs off a Unit.
+  SELECT count(*) INTO nullable FROM information_schema.columns
+   WHERE table_schema = 'public' AND table_name = 'gas_detectors'
+     AND column_name IN ('compressor_id', 'storage_vessel_id', 'dispenser_id');
+  PERFORM pg_temp.ok(nullable = 0,
+    'GD-24 a gas detector carries no equipment parent column, so it has no equipment mapping state');
+
+  -- Area type is NOT a detector column. It classifies the AREA and lives on
+  -- gas_detector_presence, so it must never be read as a detector attribute.
+  SELECT count(*) INTO nullable FROM information_schema.columns
+   WHERE table_schema = 'public' AND table_name = 'gas_detectors' AND column_name = 'area_type';
+  PERFORM pg_temp.ok(nullable = 0, 'GD-25 area_type is not a column on gas_detectors');
+
+  SELECT count(*) INTO nullable FROM information_schema.columns
+   WHERE table_schema = 'public' AND table_name = 'gas_detector_presence' AND column_name = 'area_type';
+  PERFORM pg_temp.ok(nullable = 1, 'GD-26 area_type lives on gas_detector_presence, describing the area');
+
+  -- There is no detector location column anywhere, so none can be displayed.
+  SELECT count(*) INTO nullable FROM information_schema.columns
+   WHERE table_schema = 'public' AND table_name IN ('gas_detectors', 'gas_detector_presence')
+     AND column_name IN ('location', 'location_raw', 'position', 'placement');
+  PERFORM pg_temp.ok(nullable = 0, 'GD-27 no detector location column exists in the schema');
+
+  -- Live telemetry is not in this schema and must not be invented in the UI.
+  SELECT count(*) INTO nullable FROM information_schema.columns
+   WHERE table_schema = 'public' AND table_name = 'gas_detectors'
+     AND column_name IN ('reading', 'concentration', 'alarm_state', 'is_online',
+                         'battery_level', 'sensor_health', 'last_seen_at');
+  PERFORM pg_temp.ok(nullable = 0, 'GD-28 gas_detectors stores no live telemetry field');
+
+  -- Mapping attribution is still forgeable and unaudited, which is why the
+  -- mapping mutation UI stays deferred (prompt 13 section 26).
+  SELECT count(*) INTO nullable FROM pg_trigger
+   WHERE tgrelid = 'gas_detectors'::regclass AND NOT tgisinternal
+     AND tgname ILIKE '%audit%';
+  PERFORM pg_temp.ok(nullable = 0,
+    'GD-29 gas_detectors has no audit trigger, so mapping attribution is not yet trustworthy');
+END $$;
+
+-- The Prompt-10 Unit tab must keep its Unit scoping: the global registry
+-- widening must not have relaxed it.
+DO $$
+DECLARE n bigint;
+BEGIN
+  PERFORM pg_temp.become('clerk_admin');
+  SELECT count(*) INTO n FROM v_gas_detector_management
+   WHERE unit_id IS NULL AND mapping_status = 'resolved';
+  PERFORM pg_temp.ok(n = 0,
+    'GD-30 a resolved detector always carries a confirmed Unit, so a Unit tab cannot show an unresolved one');
   RESET ROLE;
 END $$;
 

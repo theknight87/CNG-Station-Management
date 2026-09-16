@@ -269,6 +269,30 @@ Installed and warehouse valves are never merged. Mapping MUTATION is deliberatel
 the database enforces hierarchy consistency, but mapping attribution is still forgeable and
 unaudited, so no mapping control is exposed.*
 
+*Gas Detector Management (Prompt 13) is built: `/manage/gas-detectors` — see
+`docs/gas-detector-management.md`. **No new migration**; it reads `v_gas_detector_management`
+from migration 0011. Two schema truths govern it: `area_type` lives on `gas_detector_presence`,
+not on `gas_detectors`, so it classifies the AREA and is never a detector location or a status;
+and the view UNIONs installed assets with explicit not-installed EVIDENCE, so the registry
+defaults to installed detectors and never counts recorded absence as a device. **A SECOND
+PROMPT-21 BLOCKER was confirmed**: `gas_detectors.station_id` is NOT NULL, so the 219 rows
+Prompt 6 staged as `needs_station_mapping` cannot enter the canonical table — the same shape as
+the vessel blocker (433 Storage, 403 Recovery). Proved by a rejected insert; nothing was relaxed
+or dropped. No authoritative calibration interval exists anywhere (`alert_rules` has thresholds
+only), so none is hard-coded and the gap is documented. Mapping mutation stays deferred for the
+same attribution reason as Prompts 11 and 12.*
+
+### Prompt-21 import blockers (must be resolved before the production import)
+
+| Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |
+| --- | --- | --- | --- |
+| Storage Vessels | 433 | `storage_vessels.station_id` is NOT NULL | Prompt 12 |
+| Recovery Tanks | 403 | `recovery_tanks.station_id` is NOT NULL | Prompt 12 |
+| Gas Detectors | 219 | `gas_detectors.station_id` is NOT NULL | Prompt 13 |
+
+Do not resolve these by relaxing a constraint, by fabricating a Station mapping, or by dropping
+the staged rows. The resolution is a Prompt-21 decision.
+
 *Vessels Management (Prompt 12) is built: `/manage/vessels/storage` and
 `/manage/vessels/recovery` — see `docs/vessels-management.md`. **No new migration.** Storage
 Vessels and Recovery Tanks stay distinct entities. A Recovery Tank cannot own an SRV (no
@@ -318,6 +342,7 @@ These rules are permanent and apply to every future prompt.
 | 10 | 217 | 72 | 134 |
 | 11 | 245 | 72 | 149 |
 | 12 | 270 | 72 | 166 |
+| 13 | 316 | 82 | 197 |
 
 Update this table when a prompt is accepted, so the next one has a baseline to compare
 against.

@@ -737,4 +737,95 @@ SELECT pg_temp.assert(
                    WHERE normalized_name IS DISTINCT FROM cng_normalize_name(unit_name)),
   'N9: stored normalized_name matches the current folding function');
 
+
+-- ---------------------------------------------------------------------------
+-- Gas detector constraints (Prompt 13).
+--
+-- These defend the data principles the registry depends on: a date and its
+-- precision cannot disagree, an unresolved detector cannot masquerade as
+-- resolved, and absence is evidence rather than a fabricated device.
+-- ---------------------------------------------------------------------------
+
+-- GDS1: a year-only next-calibration date cannot also carry a real date, so it
+-- can never leak into an exact countdown.
+SELECT pg_temp.assert_rejected($q$
+  INSERT INTO gas_detectors (station_id, region_id, mapping_status,
+                             next_calibration_date, next_calibration_precision)
+  SELECT s.id, s.region_id, 'needs_unit_mapping', DATE '2027-01-01', 'year_only'
+    FROM stations s LIMIT 1$q$,
+  'GDS1: a year_only next calibration cannot carry an exact date');
+
+-- GDS2: nor the reverse — an exact precision with no date at all.
+SELECT pg_temp.assert_rejected($q$
+  INSERT INTO gas_detectors (station_id, region_id, mapping_status,
+                             next_calibration_date, next_calibration_precision)
+  SELECT s.id, s.region_id, 'needs_unit_mapping', NULL, 'exact_date'
+    FROM stations s LIMIT 1$q$,
+  'GDS2: an exact_date precision cannot stand without a date');
+
+-- GDS3: the same rule holds for the LAST calibration date.
+SELECT pg_temp.assert_rejected($q$
+  INSERT INTO gas_detectors (station_id, region_id, mapping_status,
+                             last_calibration_date, last_calibration_precision)
+  SELECT s.id, s.region_id, 'needs_unit_mapping', NULL, 'exact_date'
+    FROM stations s LIMIT 1$q$,
+  'GDS3: last calibration precision and date cannot disagree either');
+
+-- GDS4: a detector cannot claim to be resolved without a confirmed Unit. This
+-- is what keeps the Unit tab honest.
+SELECT pg_temp.assert_rejected($q$
+  INSERT INTO gas_detectors (station_id, region_id, unit_id, mapping_status)
+  SELECT s.id, s.region_id, NULL, 'resolved' FROM stations s LIMIT 1$q$,
+  'GDS4: a resolved detector must carry a confirmed Unit');
+
+-- GDS5: and a detector awaiting unit mapping cannot secretly hold one.
+SELECT pg_temp.assert_rejected($q$
+  INSERT INTO gas_detectors (station_id, region_id, unit_id, mapping_status)
+  SELECT u.station_id, u.region_id, u.id, 'needs_unit_mapping' FROM units u LIMIT 1$q$,
+  'GDS5: needs_unit_mapping means the Unit really is absent');
+
+-- GDS6: MANDATORY canonical-compatibility check (prompt 13 section 9).
+-- station_id is NOT NULL, so needs_station_mapping cannot be stored. Prompt 6
+-- staged 219 detector rows in that state: a Prompt-21 import blocker.
+SELECT pg_temp.assert_rejected($q$
+  INSERT INTO gas_detectors (station_id, region_id, mapping_status)
+  SELECT NULL, id, 'needs_station_mapping' FROM regions LIMIT 1$q$,
+  'GDS6: BLOCKER - a station-unconfirmed gas detector cannot enter the canonical table');
+
+-- GDS7: a detector's region must be its station's region. The composite FK
+-- makes region_id a trustworthy authorization key rather than a loose copy.
+SELECT pg_temp.assert_rejected($q$
+  INSERT INTO gas_detectors (station_id, region_id, mapping_status)
+  SELECT s.id, r.id, 'needs_unit_mapping'
+    FROM stations s, regions r WHERE r.id <> s.region_id LIMIT 1$q$,
+  'GDS7: a detector cannot be filed under a region its station does not belong to');
+
+-- GDS8: recorded absence is storable as EVIDENCE, and storing it creates no
+-- detector row. This insert must be ACCEPTED: absence is worth keeping.
+CREATE TEMP TABLE gds8 AS SELECT id AS station_id, region_id FROM stations ORDER BY id DESC LIMIT 1;
+INSERT INTO gas_detector_presence (station_id, region_id, detector_presence, presence_raw)
+SELECT station_id, region_id, 'not_installed', 'Not exist in the station' FROM gds8;
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM gas_detector_presence p JOIN gds8 g USING (station_id)
+    WHERE p.detector_presence = 'not_installed') = 1
+  AND (SELECT count(*) FROM gas_detectors d JOIN gds8 g USING (station_id)) = 0,
+  'GDS8: recorded absence is storable as evidence, and fabricates no detector row');
+
+-- GDS9: area_type is recorded on the PRESENCE row, never on the detector.
+SELECT pg_temp.assert(
+  NOT EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema = 'public' AND table_name = 'gas_detectors'
+                 AND column_name = 'area_type')
+  AND EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema = 'public' AND table_name = 'gas_detector_presence'
+                 AND column_name = 'area_type'),
+  'GDS9: area_type classifies the area on the presence row, not the detector');
+
+-- GDS10: only one presence statement per unit, so two sources cannot silently
+-- disagree about whether a detector exists there.
+SELECT pg_temp.assert(
+  EXISTS (SELECT 1 FROM pg_indexes
+           WHERE tablename = 'gas_detector_presence' AND indexname = 'gdp_station_unit_uq'),
+  'GDS10: presence evidence is unique per station and unit');
+
 ROLLBACK;
