@@ -14,6 +14,7 @@ import {
   AckState, AlertAssetCell, AlertStationCell, AlertUnitCell, DeliveryState, ReadState,
   SubjectLabel, ThresholdBadge,
 } from '@/features/alerts/AlertPieces'
+import { EnableNotifications } from '@/features/alerts/EnableNotifications'
 import {
   DEFAULT_ALERT_QUERY, useAlertActions, useAlertSummary, useAlerts,
   type AlertQuery, type AlertRow, type AlertSort,
@@ -140,6 +141,7 @@ export function AlertsView() {
       <PageHeader
         title="Alerts"
         description="Calibration, inspection and test alerts raised for assets you are authorized to see."
+        actions={<EnableNotifications />}
       />
 
       <div className="flex min-w-0 flex-col gap-3">

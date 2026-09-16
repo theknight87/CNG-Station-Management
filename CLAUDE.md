@@ -320,6 +320,24 @@ has no Resend API key, no verified CNG sender and no VAPID pair, and none was in
 Resend ACCOUNT may be shared with the Coding System, its CREDENTIALS may not, and no cross-project
 dependency exists.*
 
+*Notification delivery (Prompt 15.1) is built: migration **0034** plus the `send-notifications`
+Edge Function and a Web Push opt-in — see `docs/alerts-notifications.md` §17. The
+Alert/Delivery separation is unchanged and now asserted: a delivery failure leaves the alert
+unchanged, un-acknowledged and un-duplicated, and a retry targets the SAME alert with a cap of
+five attempts. **Recipients are opt-in only** — with no `notification_preferences` rows nothing
+is enqueued, so nobody is silently subscribed, and production recipient policy remains DEFERRED.
+The sender is **not an open relay**: queue mode takes recipients from the database, test mode
+accepts only an address matching `CNG_ALERT_TEST_RECIPIENT`, and no browser role (not even admin)
+may enqueue, claim or complete a delivery. Push subscriptions are saved by
+`cng_save_push_subscription`, which takes no user parameter, so one user can never register, read
+or delete another's. Permission is requested ONLY from an explicit click. **The VAPID PUBLIC key
+is browser-visible by design** (`VITE_VAPID_PUBLIC_KEY`); the private key stays an Edge Function
+secret and appears in no frontend file. **THE LIVE TESTS WERE NOT PERFORMED**: this build
+environment answers 403 to CONNECT for `api.resend.com`, `api.supabase.com`, the Supabase project
+host and `api.cloudflare.com`, so the test email, hosted secret verification, function deployment
+and Cloudflare configuration are documented manual steps rather than completed ones — nothing was
+simulated. Cron, the Cairo business date and the invoke-secret model are unchanged.*
+
 ### Prompt-21 import blockers (must be resolved before the production import)
 
 | Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |
@@ -385,6 +403,7 @@ These rules are permanent and apply to every future prompt.
 | 13 | 316 | 82 | 197 |
 | 14 | 356 | 102 | 222 |
 | 15 | 389 | 129 | 265 |
+| 15.1 | 399 | 146 | 277 |
 
 Update this table when a prompt is accepted, so the next one has a baseline to compare
 against.

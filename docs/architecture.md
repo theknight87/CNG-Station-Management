@@ -1026,3 +1026,20 @@ guessed. The Resend *account* may be shared with the Coding System; its *credent
 not, and a repository-wide search confirms no cross-project dependency exists.
 
 See `docs/alerts-notifications.md`.
+
+Prompt 15.1 completed the delivery layer: migration **0034** (enqueue / claim / record
+functions plus a bounded `attempt_count`), the `send-notifications` Edge Function that
+calls Resend, a service worker, and an explicit Web Push opt-in on `/alerts`.
+
+The separation Prompt 15 established is now asserted rather than intended — a delivery
+failure provably leaves its alert unchanged, un-acknowledged and un-duplicated, and a
+retry is bound to the same alert. Recipients are opt-in: with no preference rows, nothing
+is enqueued. The sending endpoint is deliberately not a relay — queue mode resolves
+recipients from the database, test mode accepts only one configured address, and no
+browser role may drive sending.
+
+The VAPID public key is browser-visible by design; the private key remains an Edge
+Function secret and appears in no frontend file. The live steps — one test email, hosted
+secret verification, function deployment, and the Cloudflare Pages variable — could not be
+performed from the build environment, whose network policy answers 403 to CONNECT for
+Resend, Supabase and Cloudflare. They are documented as manual steps; none was simulated.

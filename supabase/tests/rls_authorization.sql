@@ -1918,5 +1918,83 @@ BEGIN
     'ALRT-40 read-state functions are granted to authenticated only');
 END $$;
 
+
+-- ---------------------------------------------------------------------------
+-- Push subscriptions and delivery isolation (Prompt 15.1)
+-- ---------------------------------------------------------------------------
+DO $$
+DECLARE n bigint; v_id uuid;
+BEGIN
+  PERFORM pg_temp.become('clerk_eng_east');
+
+  -- Saving a subscription attributes it to the CALLER, with no way to name
+  -- another user: the function takes no user parameter at all.
+  v_id := cng_save_push_subscription('https://push.test/eng-east', 'P256', 'AUTH', 'test-agent');
+  PERFORM pg_temp.ok(v_id IS NOT NULL, 'PUSH-1 a user can register their own push subscription');
+
+  RESET ROLE;
+  SELECT count(*) INTO n FROM push_subscriptions
+   WHERE endpoint = 'https://push.test/eng-east'
+     AND app_user_id = 'a0000000-0000-0000-0000-00000000000c';
+  PERFORM pg_temp.ok(n = 1,
+    'PUSH-2 the subscription is attributed to the SERVER-derived caller, not a supplied id');
+
+  -- Re-registering the same endpoint updates in place rather than duplicating.
+  PERFORM pg_temp.become('clerk_eng_east');
+  PERFORM cng_save_push_subscription('https://push.test/eng-east', 'P256-NEW', 'AUTH-NEW', 'test-agent-2');
+  RESET ROLE;
+  SELECT count(*) INTO n FROM push_subscriptions WHERE endpoint = 'https://push.test/eng-east';
+  PERFORM pg_temp.ok(n = 1, 'PUSH-3 re-subscribing the same endpoint updates rather than duplicating');
+
+  -- Another user cannot see, hijack or delete it.
+  PERFORM pg_temp.become('clerk_view_east');
+  SELECT count(*) INTO n FROM push_subscriptions;
+  PERFORM pg_temp.ok(n = 0, 'PUSH-4 a user cannot read another user''s push subscription or its key material');
+
+  -- Claiming someone else's endpoint must not reassign it. RLS makes the
+  -- UPDATE match nothing, and the INSERT then violates the endpoint unique
+  -- constraint, so the attempt fails rather than silently stealing the row.
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$SELECT cng_save_push_subscription('https://push.test/eng-east','X','Y','ua')$q$),
+    'PUSH-5 a user cannot take over another user''s existing push endpoint');
+
+  RESET ROLE;
+  SELECT count(*) INTO n FROM push_subscriptions
+   WHERE endpoint = 'https://push.test/eng-east'
+     AND app_user_id = 'a0000000-0000-0000-0000-00000000000c';
+  PERFORM pg_temp.ok(n = 1, 'PUSH-6 and the original owner still holds it');
+
+  PERFORM pg_temp.become('clerk_view_east');
+  DELETE FROM push_subscriptions WHERE endpoint = 'https://push.test/eng-east';
+  GET DIAGNOSTICS n = ROW_COUNT;
+  PERFORM pg_temp.ok(n = 0, 'PUSH-7 deleting another user''s subscription changes zero rows');
+  RESET ROLE;
+
+  ------------------------------------------------------------------------ anon
+  PERFORM pg_temp.become(NULL);
+  SET LOCAL ROLE anon;
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$SELECT cng_save_push_subscription('https://push.test/anon','X','Y','ua')$q$),
+    'PUSH-8 anon cannot register a push subscription');
+  PERFORM pg_temp.ok(pg_temp.denied('SELECT count(*) FROM push_subscriptions'),
+    'PUSH-9 anon cannot read push subscriptions');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$SELECT cng_enqueue_alert_deliveries('email')$q$),
+    'PUSH-10 anon cannot enqueue deliveries');
+  RESET ROLE;
+END $$;
+
+-- A signed-in user must not be able to drive sending: that would be an open
+-- mail relay behind a login.
+DO $$
+BEGIN
+  PERFORM pg_temp.become('clerk_admin');
+  PERFORM pg_temp.ok(pg_temp.denied($q$SELECT cng_enqueue_alert_deliveries('email')$q$),
+    'PUSH-11 not even an ADMIN may enqueue deliveries from the client');
+  PERFORM pg_temp.ok(pg_temp.denied($q$SELECT cng_next_pending_deliveries('email', 10)$q$),
+    'PUSH-12 nor claim pending deliveries, which would expose recipient addresses');
+  RESET ROLE;
+END $$;
+
 DO $$ BEGIN RAISE EXCEPTION 'RLS_SUITE_ROLLBACK'; END $$;
 ROLLBACK;

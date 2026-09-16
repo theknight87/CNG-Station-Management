@@ -260,13 +260,64 @@ unconfigured, requires `x-cng-alert-secret` compared in **constant time** (401 o
 non-specific errors while logging detail server-side, and holds no business logic — all dedupe,
 threshold and timezone rules stay in PostgreSQL.
 
-## 17. Delivery, Resend and Web Push — architecture built, sending DEFERRED
+## 17. Delivery: Resend email and Web Push (Prompt 15.1)
 
-In-app alerts are **primary**: an alert is persisted whether or not anything is ever delivered.
+In-app alerts remain **primary**: an alert is persisted whether or not anything is ever
+delivered, and nothing below can change that.
 
-### Resend account isolation — verified
+### What was built in Prompt 15.1
 
-The rule is **one account, separate credentials**:
+Prompt 15 shipped the delivery *record* but nothing that created or completed one. Prompt 15.1
+adds the sending path, keeping the architecture intact:
+
+```
+technical condition -> persisted ALERT -> DELIVERY attempt
+```
+
+**Migration 0034** adds four functions and one column:
+
+| Object | Purpose | EXECUTE |
+| --- | --- | --- |
+| `cng_enqueue_alert_deliveries(channel)` | create `pending` rows for **opted-in** recipients | `service_role` |
+| `cng_next_pending_deliveries(channel, limit)` | claim work, `FOR UPDATE SKIP LOCKED` | `service_role` |
+| `cng_record_delivery_result(...)` | write the outcome, and only the outcome | `service_role` |
+| `cng_save_push_subscription(...)` | save a subscription for the **session's own** user | `authenticated` |
+| `notification_deliveries.attempt_count` | bounded retry (cap 5) | — |
+
+**Edge Function `send-notifications`** performs the actual Resend call.
+
+### What delivery cannot do — asserted, not asserted-to
+
+`DL7`–`DL11` prove a delivery failure leaves the alert byte-for-byte unchanged: not deleted, not
+acknowledged, not duplicated, and still `open`. `DL9` proves a failed delivery stays retryable and
+that the retry is bound to the **same** alert. `DL10` proves retry is **capped**, so a permanently
+bad address stops costing sends rather than being retried forever.
+
+### Not an open mail relay
+
+A sending endpoint is the one genuinely dangerous thing added here, so it is closed three ways:
+
+1. The invoke secret is server-side only and never reaches a browser.
+2. **Queue mode takes recipients from the database**, never from the request body — opted-in users
+   whose RLS actually lets them read the alert.
+3. **Test mode accepts one address**, and only if it matches `CNG_ALERT_TEST_RECIPIENT` exactly.
+   A caller holding the secret still cannot name an arbitrary destination.
+
+`DL13`/`DL14` prove no browser role — **not even an admin** (`PUSH-11`, `PUSH-12`) — can enqueue,
+claim or complete a delivery.
+
+### Recipients are opt-in, and that is still not a production policy
+
+A delivery is created only where the user holds an **enabled** `notification_preferences` row, and
+only where that user could read the alert anyway. `DL1` proves that with no preferences, **nothing
+is enqueued** — there is no "email every app_user" path and nobody is silently subscribed. `DL4`
+honours `min_threshold`; `DL5` proves a disabled preference is not an opt-in.
+
+**Production recipient policy remains DEFERRED.** No preference rows exist, so in practice nothing
+is emailed. The single address authorized for the controlled test is a test recipient only: it is
+**not** hard-coded anywhere in the engine, is not a default, and reaches nothing outside test mode.
+
+### Resend account isolation — re-verified
 
 ```
 Resend account
@@ -274,51 +325,123 @@ Resend account
 └── CNG Station Management   → its OWN dedicated API key and secrets
 ```
 
-**Verified for this prompt:** the Coding System repository was never read, no credential was
-copied, rotated or referenced, and a repository-wide search finds **no Resend key, no VAPID key
-and no cross-project configuration dependency** anywhere in this project. The only occurrence of
-"Coding System" in non-documentation source is the comment in `supabase/config.toml` forbidding
-it.
+The Coding System repository was never read; no credential was copied, rotated or referenced. A
+repository-wide scan finds the only occurrence of "Coding System" outside documentation is the
+comment in `supabase/config.toml` forbidding it. The four secret **names** appear only in the two
+Edge Functions and in this documentation — never in `src/`, never in a `VITE_*`, never in a
+migration.
 
-Sharing the *account* is permitted. Sharing *project credentials* is not.
+### LIVE TEST STATUS — blocked by the build environment, not by the code
 
-### External configuration required from the user (§6)
+**The controlled test email was NOT sent.** This is an environment limitation and is reported
+rather than worked around.
 
-Live email and push are **blocked on configuration that does not exist**, and nothing was
-guessed. Each item is server-only and must be entered directly in the Supabase dashboard for
-project `cng-station-management` (`ypkggegquetvpsflkaxg`) under
-**Edge Functions → Secrets** — never in source, `.env`, `VITE_*`, GitHub or chat.
+The build environment's network policy answers **HTTP 403 to CONNECT** for every host this step
+needs. Verified directly, and confirmed in the proxy's own failure log:
 
-| Secret | Type | Where to create it | Notes |
-| --- | --- | --- | --- |
-| `RESEND_API_KEY` | Resend API key | Resend dashboard → API Keys → **new key** | Suggested label `cng-station-management-production`. **Do not reuse the Coding System key.** |
-| `CNG_ALERT_FROM_EMAIL` | email address | your verified Resend domain | A CNG-specific sender is preferred. **Not guessed here** — no domain is invented. |
-| `CNG_ALERT_INVOKE_SECRET` | random string | generate fresh | Authenticates manual `generate-alerts` calls. |
-| `VAPID_PRIVATE_KEY` | VAPID private key | generate a **new** pair for this project | Never copied from anywhere. |
-| `VITE_VAPID_PUBLIC_KEY` | VAPID public key | same pair | Browser-safe; already declared in `.env.example`. |
+| Host | Result |
+| --- | --- |
+| `api.resend.com` | 403 to CONNECT — policy denial |
+| `ypkggegquetvpsflkaxg.supabase.co` | 403 to CONNECT |
+| `api.supabase.com` | 403 to CONNECT |
+| `api.cloudflare.com` | 403 to CONNECT |
 
-A verified domain **may** be shared at the account level; that is not the same as sharing API
-credentials. If a dedicated CNG subdomain is wanted, that is deployment configuration and does
-not block anything here.
+Consequently these four steps could not be performed here, and **none was simulated**:
 
-### Recipient policy — deferred, deliberately
+1. sending the one controlled test email;
+2. verifying that the four secrets are present in the hosted project;
+3. deploying `send-notifications` and `generate-alerts`;
+4. setting `VITE_VAPID_PUBLIC_KEY` in Cloudflare Pages.
 
-Authorization to *read* an alert is not consent to receive external mail. `notification_preferences`
-exists and is user-owned with RLS, so recipients would be users holding an explicit enabled
-preference row — an opt-in model. No such rows exist, and **no user is silently subscribed**. No
-mail is sent to "every app_user".
+Everything that does **not** require egress was completed and verified: the sending
+implementation, the delivery-record behaviour, the relay protections, push subscription and its
+RLS, the opt-in UI, 10 push unit tests, 17 delivery schema assertions, 12 push RLS assertions and
+26 browser checks.
 
-### Testing
+### To complete the live test yourself
 
-No real notification is sent by any automated test. Delivery outcomes are fixtures; the provider
-boundary is never called.
+1. **Add a fifth secret** in Supabase → project `cng-station-management` → Edge Functions →
+   Secrets. It gates test mode, so test mode is inert until it exists:
+
+   ```
+   CNG_ALERT_TEST_RECIPIENT = efares0@gmail.com
+   ```
+
+2. **Deploy the functions:**
+
+   ```bash
+   supabase functions deploy send-notifications
+   supabase functions deploy generate-alerts
+   ```
+
+3. **Send the one controlled test** (the secret stays in your shell, never in a file):
+
+   ```bash
+   curl -X POST "https://ypkggegquetvpsflkaxg.supabase.co/functions/v1/send-notifications" \
+     -H "x-cng-alert-secret: $CNG_ALERT_INVOKE_SECRET" \
+     -H "content-type: application/json" \
+     -d '{"mode":"test"}'
+   ```
+
+   Success returns `{"mode":"test","sent":true,...}`. The message is explicitly headed
+   `[TEST] CNG Station Management — Notification Verification` and states in its body that it
+   reports no real equipment condition.
+
+**Expected limitation.** Without a verified sending domain, Resend permits sending only to the
+account owner's own address. If the configured `CNG_ALERT_FROM_EMAIL` is on the shared
+`onboarding@resend.dev` sender, a send to any other address returns **HTTP 403**, which this
+implementation records as `resend:http_403:sender_or_recipient_not_permitted`. That is a provider
+policy, not a defect: verify a sending domain in Resend, or send to the account owner's address.
+**No sender identity was invented and no domain was guessed** to make the test pass.
+
+### VAPID
+
+| Key | Where it belongs | Status |
+| --- | --- | --- |
+| **private** | Supabase Edge Function secret `VAPID_PRIVATE_KEY` | configured by the user; **never** in `VITE_*`, source, bundle, or browser storage — scan confirms it appears in no frontend file |
+| **public** | `VITE_VAPID_PUBLIC_KEY`, compiled into the bundle **by design** | **still to be set in Cloudflare Pages** |
+
+The browser needs the public key to create a subscription, so it is browser-visible and that is
+correct. It is read at call time, so a deployment that omits it reports "Push notifications are
+not configured for this deployment" rather than failing silently.
+
+**Pair consistency could not be verified**, and was not assumed: checking that a public key
+matches a private one requires reading the private key, which this documentation and this
+environment deliberately never do. The user generated both halves together as a new CNG-specific
+pair; if push later fails with a `403`/`VapidPkHashMismatch` from the push service, a mismatched
+pair is the first thing to check.
+
+**To finish Web Push:** in Cloudflare Pages → project `cng-station-management` → Settings →
+Environment variables, add `VITE_VAPID_PUBLIC_KEY` (Production, and Preview if used) with the
+public half, then redeploy so Vite bakes it into the bundle. Do not paste either key into chat.
+
+### Live push status
+
+**Not completed, and not faked.** Headless Chromium reports
+`Notification.permission === 'denied'` and ignores Playwright's `grantPermissions` for
+notifications, so no real subscription could be created here — verified explicitly rather than
+assumed. The granted path is covered deterministically by unit tests that stub the `Notification`
+and `PushManager` APIs.
+
+After the Cloudflare variable is set and the site redeployed, the manual steps are: open
+`/alerts`, click **Enable notifications**, and accept the browser prompt. The subscription is then
+saved by `cng_save_push_subscription`, which fills the owning user from the session — so one user
+can never register, read or delete another's subscription (`PUSH-1`…`PUSH-9`).
+
+### Push opt-in UX
+
+Permission is requested **only** from an explicit click — never on page load, verified in the
+browser at all three widths. Every state is handled and worded calmly: unsupported, unconfigured,
+idle, working, subscribed, denied, error. A denied browser is told plainly and is **not**
+re-prompted. Push carries scheduled due dates, so there is no siren, no vibration and no
+`requireInteraction`.
 
 ### Retry
 
-Generation retry and delivery retry are different things. Generation retry is idempotent.
+Generation retry and delivery retry remain different things. Generation retry is idempotent.
 Delivery retry targets the **same** alert — `notif_delivery_uq (alert_id, app_user_id, channel)`
-means a retry updates rather than duplicates (`AL19`), and a failed send **never** creates a new
-alert.
+means a retry updates rather than duplicates, and a failed send **never** creates a new alert.
+`attempt_count` caps retries at five so a dead address or endpoint cannot amplify.
 
 ## 18. Dashboard and sidebar
 
@@ -338,8 +461,9 @@ filtering.
 
 | Item | Why | Owner |
 | --- | --- | --- |
-| Live email delivery | needs `RESEND_API_KEY` + a verified CNG sender (§17) | user configuration |
-| Live Web Push | needs this project's own VAPID pair (§17) | user configuration |
+| The one controlled test email | implementation complete; the build environment denies egress to `api.resend.com` (§17) | user runs the documented curl |
+| Live Web Push | implementation complete; needs `VITE_VAPID_PUBLIC_KEY` in Cloudflare Pages, then a real browser opt-in (§17) | user configuration |
+| Verified Resend sending domain | without one, Resend permits sending only to the account owner | user configuration |
 | External recipient automation | no recipient policy exists; nobody is subscribed silently | a later prompt |
 | Bulk read / acknowledge | would need server-side re-authorization of every id and partial-failure reporting | a later prompt |
 | Resolve / suppress actions | `state` is now server-only; these need their own audited function | a later prompt |

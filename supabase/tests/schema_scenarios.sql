@@ -1220,4 +1220,174 @@ SELECT pg_temp.assert(
       AND array_to_string(proconfig, ',') LIKE '%search_path%') = 2,
   'AL25: both SECURITY DEFINER alert functions pin search_path');
 
+
+-- ---------------------------------------------------------------------------
+-- Notification delivery (Prompt 15.1).
+--
+-- The property under test is the SEPARATION: delivery consumes an alert and can
+-- never change one. Every assertion here is about what delivery cannot do.
+-- ---------------------------------------------------------------------------
+
+CREATE TEMP TABLE deliv AS SELECT id AS station_id, region_id FROM stations ORDER BY id LIMIT 1;
+
+INSERT INTO app_users (id, clerk_user_id, role, is_active, full_name, email) VALUES
+  ('d1000000-0000-0000-0000-00000000000a','deliv_admin','admin',   true,'Deliv Admin','admin@testdata.invalid'),
+  ('d1000000-0000-0000-0000-00000000000b','deliv_quiet','admin',   true,'Deliv Quiet','quiet@testdata.invalid'),
+  ('d1000000-0000-0000-0000-00000000000c','deliv_none', 'admin',   true,'Deliv NoPref','nopref@testdata.invalid');
+
+INSERT INTO alerts (id, alert_rule_id, subject, threshold, asset_type, asset_id,
+                    region_id, station_id, due_date, days_left)
+SELECT 'd1000000-0000-0000-0000-0000000000a1',
+       (SELECT id FROM alert_rules WHERE subject='srv_calibration' AND threshold='due_30'),
+       'srv_calibration','due_30','installed_relief_valve', gen_random_uuid(),
+       region_id, station_id, DATE '2026-10-16', 30 FROM deliv;
+
+-- DL1: with NO preferences at all, nothing is enqueued. Authorization to read
+-- an alert is not consent to be emailed about it, and nobody is auto-subscribed.
+SELECT pg_temp.assert(
+  (SELECT enqueued FROM cng_enqueue_alert_deliveries('email')) = 0,
+  'DL1: no opted-in recipients means no delivery is created - nobody is silently subscribed');
+
+-- DL2: an explicit opt-in produces a delivery for THIS alert.
+--
+-- Scoped to this block's alert throughout: earlier scenarios in this suite
+-- generate alerts of their own, so the enqueue's overall return value is not a
+-- stable number to assert on.
+INSERT INTO notification_preferences (app_user_id, subject, channel, is_enabled)
+VALUES ('d1000000-0000-0000-0000-00000000000a', NULL, 'email', true);
+SELECT enqueued FROM cng_enqueue_alert_deliveries('email') \gset dl2_
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM notification_deliveries
+    WHERE alert_id = 'd1000000-0000-0000-0000-0000000000a1'
+      AND app_user_id = 'd1000000-0000-0000-0000-00000000000a') = 1,
+  'DL2: an explicitly opted-in user receives a delivery row');
+
+-- DL3: and re-running enqueues nothing more. The unique constraint, not a
+-- read-then-write, is what guarantees it.
+SELECT enqueued FROM cng_enqueue_alert_deliveries('email') \gset dl3_
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM notification_deliveries
+    WHERE alert_id = 'd1000000-0000-0000-0000-0000000000a1') = 1,
+  'DL3: re-running the enqueue creates no duplicate delivery');
+
+-- DL4: min_threshold quietens a user below their chosen urgency. A due_30
+-- alert must not reach someone who asked for due_7 and more urgent only.
+INSERT INTO notification_preferences (app_user_id, subject, channel, is_enabled, min_threshold)
+VALUES ('d1000000-0000-0000-0000-00000000000b', NULL, 'email', true, 'due_7');
+SELECT enqueued FROM cng_enqueue_alert_deliveries('email') \gset dl4_
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM notification_deliveries
+    WHERE alert_id = 'd1000000-0000-0000-0000-0000000000a1'
+      AND app_user_id = 'd1000000-0000-0000-0000-00000000000b') = 0,
+  'DL4: a user whose urgency floor is higher than the alert receives nothing');
+
+-- DL5: a DISABLED preference is not an opt-in.
+INSERT INTO notification_preferences (app_user_id, subject, channel, is_enabled)
+VALUES ('d1000000-0000-0000-0000-00000000000c', NULL, 'email', false);
+SELECT enqueued FROM cng_enqueue_alert_deliveries('email') \gset dl5_
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM notification_deliveries
+    WHERE app_user_id = 'd1000000-0000-0000-0000-00000000000c') = 0,
+  'DL5: a disabled preference never produces a delivery');
+
+-- DL6: the claim function returns the work with the recipient resolved
+-- server-side. The address comes from app_users, never from a caller.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM cng_next_pending_deliveries('email', 50)
+    WHERE recipient = 'admin@testdata.invalid'
+      AND alert_id = 'd1000000-0000-0000-0000-0000000000a1') = 1,
+  'DL6: the sender is handed a recipient resolved from the database');
+
+-- DL7: recording a FAILURE leaves the alert completely untouched.
+CREATE TEMP TABLE dl_before AS
+  SELECT state, acknowledged_by, acknowledged_at, due_date, threshold
+    FROM alerts WHERE id = 'd1000000-0000-0000-0000-0000000000a1';
+SELECT cng_record_delivery_result(
+  (SELECT id FROM notification_deliveries WHERE alert_id='d1000000-0000-0000-0000-0000000000a1'),
+  'failed', NULL, 'resend:http_403:sender_or_recipient_not_permitted');
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM alerts a JOIN dl_before b
+     ON a.state = b.state AND a.due_date = b.due_date AND a.threshold = b.threshold
+      AND a.acknowledged_by IS NOT DISTINCT FROM b.acknowledged_by
+      AND a.acknowledged_at IS NOT DISTINCT FROM b.acknowledged_at
+    WHERE a.id = 'd1000000-0000-0000-0000-0000000000a1') = 1,
+  'DL7: a failed delivery leaves the alert unchanged - not deleted, not acknowledged');
+
+-- DL8: and creates no second alert.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM alerts WHERE id = 'd1000000-0000-0000-0000-0000000000a1') = 1
+  AND (SELECT count(*) FROM alerts
+        WHERE asset_id = (SELECT asset_id FROM alerts WHERE id='d1000000-0000-0000-0000-0000000000a1')) = 1,
+  'DL8: a delivery failure never generates a duplicate alert');
+
+-- DL9: a failed delivery stays claimable, so a retry targets the SAME alert.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM cng_next_pending_deliveries('email', 50)
+    WHERE alert_id = 'd1000000-0000-0000-0000-0000000000a1') = 1,
+  'DL9: a failed delivery is retryable, and the retry is bound to the same alert');
+
+-- DL10: retries are BOUNDED. After the cap the row stops being claimed, so a
+-- permanently bad address cannot be retried forever.
+UPDATE notification_deliveries SET attempt_count = 5
+ WHERE alert_id = 'd1000000-0000-0000-0000-0000000000a1';
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM cng_next_pending_deliveries('email', 50)
+    WHERE alert_id = 'd1000000-0000-0000-0000-0000000000a1') = 0,
+  'DL10: retry is capped, so a permanently failing recipient stops costing sends');
+
+-- DL11: a successful send stamps delivered_at and still changes no alert.
+UPDATE notification_deliveries SET attempt_count = 0
+ WHERE alert_id = 'd1000000-0000-0000-0000-0000000000a1';
+SELECT cng_record_delivery_result(
+  (SELECT id FROM notification_deliveries WHERE alert_id='d1000000-0000-0000-0000-0000000000a1'),
+  'sent', 'resend-msg-123', NULL);
+SELECT pg_temp.assert(
+  (SELECT status = 'sent' AND delivered_at IS NOT NULL AND provider_message_id = 'resend-msg-123'
+     FROM notification_deliveries WHERE alert_id='d1000000-0000-0000-0000-0000000000a1')
+  AND (SELECT state FROM alerts WHERE id='d1000000-0000-0000-0000-0000000000a1') = 'open',
+  'DL11: a successful send records the outcome and still leaves the alert open');
+
+-- DL12: provider error text is truncated, so a large provider body cannot be
+-- parked in an operational record.
+SELECT cng_record_delivery_result(
+  (SELECT id FROM notification_deliveries WHERE alert_id='d1000000-0000-0000-0000-0000000000a1'),
+  'failed', NULL, repeat('x', 2000));
+SELECT pg_temp.assert(
+  (SELECT length(error_detail) FROM notification_deliveries
+    WHERE alert_id='d1000000-0000-0000-0000-0000000000a1') = 500,
+  'DL12: stored provider error text is bounded');
+
+-- DL13: delivery functions are server-only. A browser that could drive sending
+-- would be an open mail relay.
+SELECT pg_temp.assert(
+  has_function_privilege('service_role','cng_enqueue_alert_deliveries(notification_channel)','EXECUTE')
+  AND NOT has_function_privilege('authenticated','cng_enqueue_alert_deliveries(notification_channel)','EXECUTE')
+  AND NOT has_function_privilege('authenticated','cng_next_pending_deliveries(notification_channel,integer)','EXECUTE')
+  AND NOT has_function_privilege('authenticated','cng_record_delivery_result(uuid,delivery_status,text,text)','EXECUTE'),
+  'DL13: only service_role may enqueue, claim or complete a delivery');
+
+SELECT pg_temp.assert(
+  NOT has_function_privilege('anon','cng_enqueue_alert_deliveries(notification_channel)','EXECUTE')
+  AND NOT has_function_privilege('anon','cng_next_pending_deliveries(notification_channel,integer)','EXECUTE'),
+  'DL14: anon may not reach any delivery function');
+
+-- DL15: the push subscription function IS reachable by users, and by nobody else.
+SELECT pg_temp.assert(
+  has_function_privilege('authenticated','cng_save_push_subscription(text,text,text,text)','EXECUTE')
+  AND NOT has_function_privilege('anon','cng_save_push_subscription(text,text,text,text)','EXECUTE'),
+  'DL15: saving a push subscription is granted to authenticated only');
+
+-- DL16: it takes NO user parameter, so a caller cannot name another user.
+SELECT pg_temp.assert(
+  (SELECT pg_get_function_arguments(oid) FROM pg_proc WHERE proname='cng_save_push_subscription')
+    NOT ILIKE '%user%id%',
+  'DL16: cng_save_push_subscription accepts no user identifier - the owner comes from the session');
+
+-- DL17: the delivery functions pin search_path, as every definer function must.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM pg_proc
+    WHERE proname IN ('cng_enqueue_alert_deliveries','cng_next_pending_deliveries','cng_record_delivery_result')
+      AND prosecdef AND array_to_string(proconfig, ',') LIKE '%search_path%') = 3,
+  'DL17: every SECURITY DEFINER delivery function pins search_path');
+
 ROLLBACK;
