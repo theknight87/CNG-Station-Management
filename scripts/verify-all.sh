@@ -56,7 +56,7 @@ done
 # runs but asserts nothing (a failed connection, a renamed file, a truncated
 # run) must FAIL rather than report a cheerful zero - that is precisely the
 # silent coverage loss this gate exists to stop.
-declare -A MIN=( [schema_scenarios]=146 [rls_authorization]=560 )
+declare -A MIN=( [schema_scenarios]=146 [rls_authorization]=591 )
 
 for suite in schema_scenarios rls_authorization; do
   out="$(sudo -n -u postgres psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "supabase/tests/$suite.sql" 2>&1)"
@@ -89,7 +89,7 @@ if [ $up_fail -eq 0 ]; then
   line "production-equivalent base" "PASS (41 applied)"
   # The upgrade path from the CURRENT production migration count. 0038-0041 are
   # deployed; 0042 is what this prompt adds.
-  for f in supabase/migrations/0042_*.sql; do
+  for f in supabase/migrations/0042_*.sql supabase/migrations/0043_*.sql; do
     if sudo -n -u postgres psql -d "$UDB" -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null 2>&1; then
       line "upgrade $(basename "$f" .sql)" "PASS (exit 0)"
     else

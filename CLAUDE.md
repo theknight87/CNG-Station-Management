@@ -621,6 +621,31 @@ production is a first-class state**: "no canonical assets have been imported yet
 match the selected filters" are told apart and neither is an error. **NOT DEPLOYED and NOT LIVE
 VERIFIED.***
 
+***PROMPT 20A — a REAL COMPLETENESS DEFECT in Prompt 20**, found by independent review of
+commit 854389d. **One additive migration, 0043, containing two views.** The Data Quality report
+read `v_data_quality_queue` alone — CANONICAL assets only. Production has committed none, so the
+report read CLEAN while the staged import carried real unresolved evidence, including the
+`stale_source_decision` state Prompt 19B added precisely so a lapsed ruling stays visible. A
+compliance report saying "nothing to see" while the evidence exists is worse than no report.
+`v_report_data_quality` unions THREE layers: canonical (Region-scoped), staged
+(`v_admin_staged_mapping_queue`) and open `import_issues`, using the EXISTING `import_issue_type`
+enum — DQR-7 asserts no issue type was invented. **NO AUTHORIZATION WAS WEAKENED**: all three
+staging sources are already manager/admin-only by their own SELECT policies, and because the view
+is `security_invoker` each branch keeps its own RLS, so the layering is automatic — a viewer and an
+engineer read the canonical layer alone (DQR-12/13/17) and the Station-unconfirmed protection is
+intact (DQR-16). A Region-scoped user is TOLD staging is out of scope rather than left to infer it
+is absent. `stale_source_decision` is its own issue kind and its own summary metric, never
+collapsed into awaiting or recorded (DQR-4/5/6). Reports stays READ-ONLY: a manager who can now SEE
+staged evidence still cannot decide it (DQR-19), supersede it (DQR-20) or alter raw staged evidence
+(DQR-21). **SECOND DEFECT**: the gas-detector report read `v_gas_detector_management`, which
+deliberately UNIONs recorded ABSENCE — evidence that an area has no detector, carrying
+`detector_id IS NULL`. 0042 filtered it from the due report but the ASSET report did not, so
+absence could render as an installed detector AND a NULL identity column leaves paginated sorting
+without a stable key. `v_report_gas_detectors` applies the filter IN THE DATABASE (GDR-2/3/5); the
+due report is unchanged (GDR-6). One pre-existing assertion was corrected: MGR-6 counted
+`import_issues = 1` absolutely and so tracked a suite-wide fixture total rather than the access it
+means to assert. **NOT DEPLOYED and NOT LIVE VERIFIED.***
+
 ### Prompt-21 import blockers (must be resolved before the production import)
 
 | Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |
@@ -700,6 +725,7 @@ These rules are permanent and apply to every future prompt.
 | 19A | 486 | 146 | 479 |
 | 19B | 499 | 146 | 508 |
 | 20 | 547 | 146 | 560 |
+| 20A | 557 | 146 | 591 |
 
 Update this table when a prompt is accepted, so the next one has a baseline to compare
 against.

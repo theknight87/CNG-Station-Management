@@ -42,10 +42,17 @@ export function HosesReportSection() {
 
 export function DataQualityReportSection() {
   const appUser = useAppUser()
-  const isAdmin = appUser.status === 'active' && appUser.user.role === 'admin'
+  const role = appUser.status === 'active' ? appUser.user.role : null
+  const isAdmin = role === 'admin'
+  const seesStaging = role === 'admin' || role === 'manager'
   return (
     <div className="space-y-3">
       <AdminDataQualityLink isAdmin={isAdmin} />
+      <p className="text-xs text-muted-foreground">
+        {seesStaging
+          ? 'Three layers: canonical assets, staged pre-import rows, and open import issues. A staged row whose source content changed since it was decided is shown as a STALE SOURCE DECISION — it no longer applies and is never counted as confirmed.'
+          : 'This report covers canonical assets within your authorized Regions. Staged pre-import rows and raw import issues carry unconfirmed source text with no proven Region, so they remain visible to managers and administrators only — they are not absent, they are out of scope for this account.'}
+      </p>
       <ReportWorkspace spec={reportSpec('data-quality')} />
     </div>
   )

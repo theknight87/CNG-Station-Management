@@ -78,6 +78,21 @@ export function useReportSummary(
         }
       }
 
+      // A spec-declared breakdown, where the generic due/mapping split says
+      // nothing useful. Each value is counted under the SAME filters and the
+      // same RLS, so a zero is a real zero for that caller.
+      if (spec.summaryBreakdown) {
+        for (const b of spec.summaryBreakdown.values) {
+          const n = await count({ column: spec.summaryBreakdown.column, value: b.value })
+          // A kind with no records is omitted rather than shown as a row of
+          // zeroes: a management summary of twelve zeroes hides the one figure
+          // that is not zero.
+          if (n) {
+            results.push({ key: b.value, label: b.label, value: n, description: b.description })
+          }
+        }
+      }
+
       const mappingColumn = spec.filterColumns.mappingStatus
       if (mappingColumn && !filters.mappingStatus) {
         // "Unresolved" is every mapping state that is not `resolved`, counted as

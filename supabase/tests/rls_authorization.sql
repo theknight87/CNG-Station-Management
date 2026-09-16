@@ -204,6 +204,12 @@ INSERT INTO import_batches (id, source_file, status, rows_read)
 VALUES ('e5700000-0000-0000-0000-0000000000b5', 'TESTDATA.xlsx', 'dry_run', 1);
 INSERT INTO import_issues (import_batch_id, source_file, issue_type, severity)
 VALUES ('e5700000-0000-0000-0000-0000000000b5', 'TESTDATA.xlsx', 'unmatched_station', 'warning');
+-- A second open issue from the existing taxonomy, in a REGION, so the
+-- manager/admin-only rule can be told apart from a Region filter.
+INSERT INTO import_issues (import_batch_id, source_file, source_row, issue_type, severity, region_id, detail)
+SELECT 'e5700000-0000-0000-0000-0000000000b5', 'TESTDATA.xlsx', 9,
+       'suspected_part_number_in_serial_column', 'warning', r_west,
+       'TESTDATA suspected part number' FROM f;
 
 INSERT INTO alerts (alert_rule_id, subject, threshold, asset_type, asset_id, region_id, station_id, due_date, needs_mapping)
 SELECT (SELECT id FROM alert_rules WHERE subject='srv_calibration' AND threshold='due_30'),
@@ -588,8 +594,12 @@ BEGIN
                        WHERE id='e5700000-0000-0000-0000-0000000000e6') IS NOT NULL,
       'MGR-5 CAN resolve the station of an unmapped SRV');
 
+  -- ACCESS, not a suite-wide total. This counted `= 1` and so tracked how many
+  -- issue fixtures the whole file happens to hold — a number other prompts
+  -- legitimately change. What it means to assert is that a manager can read the
+  -- import issue queue at all, which a viewer and an engineer cannot.
   SELECT count(*) INTO n FROM import_issues;
-  PERFORM pg_temp.ok(n = 1, 'MGR-6 has data-quality access');
+  PERFORM pg_temp.ok(n >= 1, 'MGR-6 has data-quality access');
 
   UPDATE warehouse_relief_valves SET notes='mgr-wh' WHERE id='e5700000-0000-0000-0000-0000000000a5';
   PERFORM pg_temp.ok((SELECT notes FROM warehouse_relief_valves
@@ -3923,6 +3933,174 @@ BEGIN
   SELECT count(*) INTO n FROM information_schema.tables
    WHERE table_schema = 'public' AND table_name LIKE '%report%' AND table_type = 'BASE TABLE';
   PERFORM pg_temp.ok(n = 0, 'RPTSEC-11 and no reporting table that could drift from the source');
+END $$;
+
+-- ===========================================================================
+-- REPORTS DATA QUALITY AND GAS DETECTORS (Prompt 20A, migration 0043).
+--
+-- Two corrections. The DQ report read canonical assets alone, so it looked
+-- clean while the staged import carried real unresolved evidence; and the gas
+-- detector report read a view that deliberately includes recorded ABSENCE,
+-- which is not a device.
+-- ===========================================================================
+DO $$
+DECLARE
+  v_east uuid; v_west uuid;
+  n integer;
+BEGIN
+  SELECT r_east, r_west INTO v_east, v_west FROM f;
+
+  ------------------------------------------------- ALL THREE LAYERS ARE PRESENT
+  PERFORM pg_temp.become('clerk_admin');
+  SELECT count(*) INTO n FROM v_report_data_quality WHERE source_layer = 'canonical';
+  PERFORM pg_temp.ok(n > 0, 'DQR-1 canonical asset data quality still appears');
+  SELECT count(*) INTO n FROM v_report_data_quality WHERE source_layer = 'staged';
+  PERFORM pg_temp.ok(n > 0,
+    'DQR-2 STAGED pre-import data quality appears — the gap this prompt corrects');
+  SELECT count(*) INTO n FROM v_report_data_quality WHERE source_layer = 'import_issue';
+  PERFORM pg_temp.ok(n > 0, 'DQR-3 open import issues appear');
+
+  -------------------------------------------- STALE SOURCE IS ITS OWN CONDITION
+  SELECT count(*) INTO n FROM v_report_data_quality
+   WHERE issue_kind = 'stale_source_decision';
+  PERFORM pg_temp.ok(n > 0,
+    'DQR-4 a stale_source_decision is visible in the Reports data-quality surface');
+  -- ...and is NOT collapsed into either neighbouring state.
+  SELECT count(*) INTO n FROM v_report_data_quality
+   WHERE issue_kind IN ('staged_awaiting_decision', 'staged_decision_recorded')
+     AND dq_key IN (SELECT dq_key FROM v_report_data_quality
+                     WHERE issue_kind = 'stale_source_decision');
+  PERFORM pg_temp.ok(n = 0,
+    'DQR-5 and never doubles as awaiting-decision or as a recorded decision');
+  SELECT count(*) INTO n FROM v_report_data_quality
+   WHERE issue_kind = 'stale_source_decision' AND source_layer <> 'staged';
+  PERFORM pg_temp.ok(n = 0, 'DQR-6 nor is it confused with a canonical mapping issue');
+
+  -- The existing import taxonomy is exposed as it is, not re-invented.
+  SELECT count(*) INTO n FROM v_report_data_quality
+   WHERE source_layer = 'import_issue'
+     AND issue_kind NOT IN (SELECT unnest(enum_range(NULL::import_issue_type))::text);
+  PERFORM pg_temp.ok(n = 0,
+    'DQR-7 every import issue kind is a real import_issue_type — none invented');
+
+  -- The key is unique across layers, so pagination has a stable tiebreak.
+  SELECT count(*) INTO n FROM (
+    SELECT dq_key FROM v_report_data_quality GROUP BY dq_key HAVING count(*) > 1
+  ) d;
+  PERFORM pg_temp.ok(n = 0, 'DQR-8 dq_key is unique across all three layers');
+  SELECT count(*) INTO n FROM v_report_data_quality WHERE dq_key IS NULL;
+  PERFORM pg_temp.ok(n = 0, 'DQR-9 and never NULL, so ordering is deterministic');
+  RESET ROLE;
+
+  --------------------------------------------------- MANAGER: company-wide
+  PERFORM pg_temp.become('clerk_manager');
+  SELECT count(*) INTO n FROM v_report_data_quality WHERE source_layer = 'staged';
+  PERFORM pg_temp.ok(n > 0, 'DQR-10 a manager also sees the staged layer');
+  SELECT count(*) INTO n FROM v_report_data_quality
+   WHERE source_layer = 'canonical' AND region_id = v_west;
+  PERFORM pg_temp.ok(n > 0, 'DQR-11 and canonical issues company-wide');
+  RESET ROLE;
+
+  ---------------------- ENGINEER AND VIEWER: canonical layer, own Regions only
+  PERFORM pg_temp.become('clerk_eng_east');
+  SELECT count(*) INTO n FROM v_report_data_quality WHERE source_layer = 'staged';
+  PERFORM pg_temp.ok(n = 0,
+    'DQR-12 an engineer sees NO staged evidence — unconfirmed source text has no proven Region to scope it by');
+  SELECT count(*) INTO n FROM v_report_data_quality WHERE source_layer = 'import_issue';
+  PERFORM pg_temp.ok(n = 0, 'DQR-13 nor any raw import issue');
+  SELECT count(*) INTO n FROM v_report_data_quality
+   WHERE source_layer = 'canonical' AND region_id = v_west;
+  PERFORM pg_temp.ok(n = 0, 'DQR-14 nor another Region''s canonical issues');
+  SELECT count(*) INTO n FROM v_report_data_quality
+   WHERE source_layer = 'canonical' AND region_id = v_east;
+  PERFORM pg_temp.ok(n > 0, 'DQR-15 but does see their own Region''s canonical issues');
+  -- The protection Prompt 19 established is intact: a Station-unconfirmed
+  -- canonical record is still not readable by a Region-scoped role.
+  SELECT count(*) INTO n FROM v_report_data_quality
+   WHERE source_layer = 'canonical' AND station_id IS NULL;
+  PERFORM pg_temp.ok(n = 0,
+    'DQR-16 and no Station-unconfirmed record leaks to an engineer');
+  RESET ROLE;
+
+  PERFORM pg_temp.become('clerk_view_east');
+  SELECT count(*) INTO n FROM v_report_data_quality WHERE source_layer <> 'canonical';
+  PERFORM pg_temp.ok(n = 0, 'DQR-17 a viewer sees the canonical layer alone');
+  RESET ROLE;
+
+  PERFORM pg_temp.as_anon();
+  PERFORM pg_temp.ok(pg_temp.denied('SELECT count(*) FROM v_report_data_quality'),
+    'DQR-18 anon reads no data-quality surface at all');
+  RESET ROLE;
+
+  ------------------------------------------ REPORTS CANNOT CORRECT ANYTHING
+  PERFORM pg_temp.become('clerk_manager');
+  -- A manager READS the staged layer in reports, and still cannot act on it.
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$SELECT cng_admin_decide_staged_mapping(
+        'e5719a00-0000-0000-0000-000000000011'::uuid,
+        'e5700000-0000-0000-0000-0000000000e1'::uuid)$q$),
+    'DQR-19 seeing staged evidence in a report grants no power to decide it');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$UPDATE import_mapping_decisions SET superseded_at = now()$q$),
+    'DQR-20 nor to supersede or re-review a decision');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$UPDATE import_staging_rows SET mapping_status = 'resolved'$q$),
+    'DQR-21 and raw staged evidence stays immutable');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$UPDATE v_report_data_quality SET issue_kind = 'resolved'$q$),
+    'DQR-22 the reporting view itself is not writable');
+  RESET ROLE;
+END $$;
+
+-- Recorded detector ABSENCE is evidence, not a device.
+DO $$
+DECLARE n integer; v_installed integer; v_absent integer; v_west uuid;
+BEGIN
+  -- Resolved BEFORE any SET ROLE: the temp fixture table is not readable as an
+  -- application role, and reaching for it there fails for the wrong reason.
+  SELECT r_west INTO v_west FROM f;
+  PERFORM pg_temp.become('clerk_admin');
+
+  -- The fixtures already carry both shapes: an INSTALLED detector on the East
+  -- unit, and a recorded ABSENCE on the West unit. No new fixture is needed to
+  -- prove this, which is the point — the absence row is ordinary source data.
+  SELECT count(*) FILTER (WHERE detector_id IS NOT NULL),
+         count(*) FILTER (WHERE detector_id IS NULL)
+    INTO v_installed, v_absent
+    FROM v_gas_detector_management;
+  PERFORM pg_temp.ok(v_installed > 0 AND v_absent > 0,
+    'GDR-1 the management view carries BOTH installed detectors and recorded absence');
+
+  SELECT count(*) INTO n FROM v_report_gas_detectors;
+  PERFORM pg_temp.ok(n = v_installed,
+    'GDR-2 the report view carries exactly the installed detectors');
+  SELECT count(*) INTO n FROM v_report_gas_detectors WHERE detector_id IS NULL;
+  PERFORM pg_temp.ok(n = 0,
+    'GDR-3 recorded absence never appears as an installed detector record');
+
+  -- A NULL identity column is what makes a paginated sort non-deterministic:
+  -- two NULL keys cannot be ordered against each other, so a row can appear on
+  -- two pages or on none.
+  PERFORM pg_temp.ok(v_absent > 0,
+    'GDR-4 absence rows exist to be excluded — the test is not vacuous');
+  SELECT count(*) INTO n FROM (
+    SELECT detector_id FROM v_report_gas_detectors
+     GROUP BY detector_id HAVING count(*) > 1
+  ) d;
+  PERFORM pg_temp.ok(n = 0, 'GDR-5 the report''s sort key is unique as well as NOT NULL');
+
+  -- The DUE report was already correct and stays correct.
+  SELECT count(*) INTO n FROM v_report_due_compliance
+   WHERE asset_type = 'gas_detector';
+  PERFORM pg_temp.ok(n = v_installed,
+    'GDR-6 the due report still counts installed detectors only — unchanged by this fix');
+  RESET ROLE;
+
+  -- And the report view is still Region-bounded, like its source.
+  PERFORM pg_temp.become('clerk_eng_east');
+  SELECT count(*) INTO n FROM v_report_gas_detectors WHERE region_id = v_west;
+  PERFORM pg_temp.ok(n = 0, 'GDR-7 an engineer reads no other Region''s detectors');
+  RESET ROLE;
 END $$;
 
 DO $$ BEGIN RAISE EXCEPTION 'RLS_SUITE_ROLLBACK'; END $$;

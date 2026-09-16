@@ -461,10 +461,13 @@ describe('SRV installed and warehouse stay apart', () => {
 describe('data quality is read-only', () => {
   it('offers no mapping control, only a pointer to Admin', async () => {
     db.role = 'admin'
-    db.rows.v_data_quality_queue = [{
-      asset_id: 'dq1', asset_type: 'hose', mapping_status: 'needs_unit_mapping',
-      review_reason: 'unit not proven', needs_review: true,
-      updated_at: '2026-09-01T00:00:00Z', unit_id: null,
+    db.rows.v_report_data_quality = [{
+      dq_key: 'canonical:dq1', record_id: 'dq1', source_layer: 'canonical',
+      asset_type: 'hose', issue_kind: 'needs_unit_mapping',
+      region_name: 'East', station_name: 'Abnub', raw_station: null,
+      detail: 'unit not proven', severity: null,
+      source_file: null, source_row: null, needs_review: true,
+      observed_at: '2026-09-01T00:00:00Z', unit_id: null,
     }]
     render(withRouter(<DataQualityReportSection />))
     await screen.findByText('unit not proven')
@@ -525,5 +528,144 @@ describe('NULL and identifiers on screen', () => {
     // SS-4R3A is a Part Number and lives in its own column, never the serial.
     expect(srvSpec.columns.find((c) => c.key === 'part_number')?.header).toBe('Part Number')
     expect(srvSpec.columns.find((c) => c.key === 'serial_number')?.header).toBe('Serial')
+  })
+})
+
+
+/**
+ * Prompt 20A — the completeness correction.
+ *
+ * The Data Quality report read canonical assets alone, so with no import
+ * committed it showed "clean" while the staged import carried real unresolved
+ * evidence. And the gas-detector report read a view that deliberately includes
+ * recorded ABSENCE, which is not a device.
+ */
+describe('data quality covers all three layers', () => {
+  const CANONICAL = {
+    dq_key: 'canonical:c1', record_id: 'c1', source_layer: 'canonical',
+    asset_type: 'installed_relief_valve', issue_kind: 'needs_equipment_mapping',
+    region_name: 'East', station_name: 'Abnub', raw_station: null,
+    detail: 'parent not proven', severity: null,
+    source_file: null, source_row: null, needs_review: true,
+    observed_at: '2026-09-03T00:00:00Z', unit_id: 'un1',
+  }
+  const STAGED_STALE = {
+    dq_key: 'staged:s1', record_id: 's1', source_layer: 'staged',
+    asset_type: 'storage_vessel', issue_kind: 'stale_source_decision',
+    region_name: null, station_name: 'Abnub', raw_station: 'ابنوب',
+    detail: 'V.xlsx#Sheet1#11', severity: null,
+    source_file: 'V.xlsx', source_row: 11, needs_review: true,
+    observed_at: '2026-09-02T00:00:00Z', unit_id: null,
+  }
+  const IMPORT_ISSUE = {
+    dq_key: 'issue:i1', record_id: 'i1', source_layer: 'import_issue',
+    asset_type: null, issue_kind: 'suspected_part_number_in_serial_column',
+    region_name: 'West', station_name: null, raw_station: 'SS-4R3A',
+    detail: 'part number in a serial column', severity: 'warning',
+    source_file: 'SRV.xlsx', source_row: 9, needs_review: true,
+    observed_at: '2026-09-01T00:00:00Z', unit_id: null,
+  }
+
+  it('reads the unified view, not the canonical queue alone', async () => {
+    db.role = 'admin'
+    db.rows.v_report_data_quality = [CANONICAL, STAGED_STALE, IMPORT_ISSUE]
+    render(withRouter(<DataQualityReportSection />))
+    await screen.findByText('parent not proven')
+    expect(db.queries.some((q) => q.table === 'v_report_data_quality')).toBe(true)
+    // The old source, read alone, is what made the report look clean.
+    expect(db.queries.some((q) => q.table === 'v_data_quality_queue')).toBe(false)
+  })
+
+  it('shows canonical, staged and import-issue evidence together', async () => {
+    db.role = 'admin'
+    db.rows.v_report_data_quality = [CANONICAL, STAGED_STALE, IMPORT_ISSUE]
+    render(withRouter(<DataQualityReportSection />))
+    expect(await screen.findByText('parent not proven')).toBeDefined()
+    expect(screen.getByText('V.xlsx#Sheet1#11')).toBeDefined()
+    expect(screen.getByText('part number in a serial column')).toBeDefined()
+    expect(screen.getByText('canonical')).toBeDefined()
+    expect(screen.getByText('staged')).toBeDefined()
+    expect(screen.getByText('import_issue')).toBeDefined()
+  })
+
+  it('shows a stale source decision as its own, distinctly named condition', async () => {
+    db.role = 'admin'
+    db.rows.v_report_data_quality = [STAGED_STALE]
+    render(withRouter(<DataQualityReportSection />))
+    expect(await screen.findByText('stale_source_decision')).toBeDefined()
+    // Never relabelled as awaiting, nor as a recorded decision.
+    expect(screen.queryByText('staged_awaiting_decision')).toBeNull()
+    expect(screen.queryByText('staged_decision_recorded')).toBeNull()
+  })
+
+  it('counts a stale source decision separately in the summary', async () => {
+    db.role = 'admin'
+    db.rows.v_report_data_quality = [STAGED_STALE]
+    db.counts.v_report_data_quality = 3
+    render(withRouter(<DataQualityReportSection />))
+    expect(await screen.findByText('Stale Source Decision')).toBeDefined()
+    expect(screen.getByText('Awaiting Decision')).toBeDefined()
+  })
+
+  it('tells a Region-scoped role that staging is out of scope, not absent', async () => {
+    db.role = 'viewer'
+    db.rows.v_report_data_quality = [CANONICAL]
+    render(withRouter(<DataQualityReportSection />))
+    expect(await screen.findByText(/remain visible to managers and administrators only/i))
+      .toBeDefined()
+    expect(screen.getByText(/not absent, they are out of scope for this account/i)).toBeDefined()
+  })
+
+  it('describes the three layers to a manager', async () => {
+    db.role = 'manager'
+    db.rows.v_report_data_quality = [CANONICAL, STAGED_STALE]
+    render(withRouter(<DataQualityReportSection />))
+    expect(await screen.findByText(/three layers/i)).toBeDefined()
+    expect(screen.getByText(/never counted as confirmed/i)).toBeDefined()
+  })
+
+  it('offers no re-review, map or confirm action anywhere', async () => {
+    db.role = 'admin'
+    db.rows.v_report_data_quality = [CANONICAL, STAGED_STALE, IMPORT_ISSUE]
+    render(withRouter(<DataQualityReportSection />))
+    await screen.findByText('V.xlsx#Sheet1#11')
+    for (const action of [/re-review/i, /^map$/i, /^confirm/i, /^decide/i, /supersede/i]) {
+      expect(screen.queryByRole('button', { name: action })).toBeNull()
+    }
+    expect(db.rpcCalls).toEqual([])
+    expect(db.writes).toEqual([])
+  })
+})
+
+describe('gas detectors exclude recorded absence', () => {
+  it('reads the installed-only view, not the management view', async () => {
+    db.rows.v_report_gas_detectors = [{
+      detector_id: 'g1', serial_number: 'GD-1', region_name: 'East',
+      station_display: 'Abnub', unit_id: 'un1',
+    }]
+    render(withRouter(<ReportWorkspace spec={reportSpec('gas-detectors')} />))
+    await screen.findByText('GD-1')
+    expect(db.queries.some((q) => q.table === 'v_report_gas_detectors')).toBe(true)
+    // The management view UNIONs recorded absence; the asset report must not
+    // read it, or "this area has no detector" becomes a detector.
+    expect(db.queries.some((q) => q.table === 'v_gas_detector_management')).toBe(false)
+  })
+
+  it('orders by a detector identity that cannot be NULL', async () => {
+    db.rows.v_report_gas_detectors = [{
+      detector_id: 'g1', serial_number: 'GD-1', unit_id: 'un1',
+    }]
+    render(withRouter(<ReportWorkspace spec={reportSpec('gas-detectors')} />))
+    await screen.findByText('GD-1')
+    const ops = queriesFor('v_report_gas_detectors')[0].ops
+    // A NULL sort key is what makes a paginated result non-deterministic: two
+    // NULLs cannot be ordered against each other.
+    expect(ops.filter((o) => o.startsWith('order:')).at(-1)).toBe('order:detector_id:asc')
+    expect(reportSpec('gas-detectors').idColumn).toBe('detector_id')
+  })
+
+  it('leaves the due report reading installed detectors only, as before', () => {
+    // 0042 already filtered detector_id IS NOT NULL; 20A changes nothing there.
+    expect(reportSpec('due').view).toBe('v_report_due_compliance')
   })
 })

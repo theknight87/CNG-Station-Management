@@ -17,10 +17,10 @@ workspace and the management registries read:
 | SRV (installed) | `v_installed_srv_management` |
 | SRV (warehouse) | `v_warehouse_srv_management` |
 | Vessels | `v_vessel_management` (`asset_type` keeps Storage and Recovery distinct) |
-| Gas Detectors | `v_gas_detector_management` |
+| Gas Detectors | `v_report_gas_detectors` (Prompt 20A — see §1a) |
 | Hoses | `v_hose_registry` |
 | Notification Activity | `v_alert_inbox` |
-| Data Quality | `v_data_quality_queue` |
+| Data Quality | `v_report_data_quality` (Prompt 20A — see §1a) |
 
 Reports **read** those. Building parallel reporting tables would have created a
 second place for the truth to live, and a second place is where drift starts.
@@ -30,6 +30,67 @@ second place for the truth to live, and a second place is where drift starts.
 was added.
 
 **No new RPC. No new table. No new index.** Asserted: `RPTSEC-10`, `RPTSEC-11`.
+
+## 1a. Two corrections (Prompt 20A)
+
+Independent review found one material completeness gap and one related
+detector-row issue. Migration **0043** adds two views; nothing else changed.
+
+### Defect 1 — Data Quality read canonical assets only
+
+`v_data_quality_queue` covers **committed canonical assets**. Production has
+committed none, so the report read *clean* while the staged import carried real
+unresolved evidence — including the `stale_source_decision` state Prompt 19B
+added precisely so a lapsed ruling stays visible. A compliance report saying
+"nothing to see" while the evidence exists is worse than no report.
+
+`v_report_data_quality` unions **three layers**:
+
+| Layer | Source | Visible to |
+| --- | --- | --- |
+| `canonical` | `v_data_quality_queue` + Region/Station names | everyone, **Region-scoped** |
+| `staged` | `v_admin_staged_mapping_queue` | manager / admin only |
+| `import_issue` | open rows of `import_issues`, using the **existing** `import_issue_type` enum | manager / admin only |
+
+**No authorization was weakened to do this.** `import_staging_rows`,
+`import_issues` and `import_mapping_decisions` are all manager/admin-only by
+their *existing* SELECT policies, because raw source text is never an
+authorization boundary (§10) and a record whose Station is unconfirmed has no
+proven Region to scope it by. Since the view is `security_invoker`, each branch
+keeps its own RLS and the layering is automatic — a viewer reads the canonical
+layer alone (`DQR-17`), an engineer likewise (`DQR-12`, `DQR-13`), and the
+Station-unconfirmed protection is intact (`DQR-16`). No policy relaxed, no grant
+widened, no Admin-only view exposed to a Region-scoped role.
+
+A Region-scoped user is **told** that staging is out of scope rather than left to
+infer it is absent.
+
+`stale_source_decision` is its own `issue_kind`, its own summary metric, and is
+never collapsed into "awaiting" or "recorded" (`DQR-4`, `DQR-5`, `DQR-6`). No
+issue type was invented: `DQR-7` asserts every import-issue kind is a real
+`import_issue_type` value.
+
+Reports remains **read-only**: `DQR-19` proves that a manager who can now *see*
+staged evidence still cannot decide it, `DQR-20` that no decision can be
+superseded, `DQR-21` that raw staged evidence is immutable, `DQR-22` that the
+view itself is not writable.
+
+### Defect 2 — recorded detector absence rendered as a detector
+
+`v_gas_detector_management` deliberately unions installed detectors with recorded
+**absence** — a "not installed" row is evidence that an area has no detector, and
+carries `detector_id IS NULL`. Migration 0042 filtered those out of the *due*
+report, but the gas-detector *asset* report did not.
+
+Two consequences: recorded absence could be read as an installed detector with no
+serial and no calibration; and a NULL identity column leaves a paginated sort
+without a stable key, where a row can appear on two pages or on none.
+
+`v_report_gas_detectors` applies the filter **in the database**, so it is not a
+presentation decision about what counts as a physical asset, and the report
+orders by a column that cannot be NULL (`GDR-2`, `GDR-3`, `GDR-5`). The due
+report is unchanged (`GDR-6`). `GDR-1` and `GDR-4` assert the fixtures really do
+contain both shapes, so the test is not vacuous.
 
 ## 2. `v_report_due_compliance` — the only new object
 
@@ -179,15 +240,16 @@ Neither is presented as an error, and no sample row is ever invented.
 
 | | Count | Prompt 19B baseline |
 | --- | --- | --- |
-| Frontend tests | 547 | 499 |
+| Frontend tests | 557 | 499 |
 | Schema assertions | 146 | 146 |
-| Authorization assertions | 560 | 508 |
-| Migrations from zero | 42 | 41 |
+| Authorization assertions | 591 | 508 |
+| Migrations from zero | 43 | 41 |
 
-Upgrade replay: production-equivalent base at **41**, then 0042, then both SQL
-suites against the upgraded database.
+Upgrade replay: production-equivalent base at **41**, then 0042 and 0043, then
+both SQL suites against the upgraded database.
 
-**NOT DEPLOYED and NOT LIVE VERIFIED.** 0042 exists in the repository only.
+**NOT DEPLOYED and NOT LIVE VERIFIED.** 0042 and 0043 exist in the repository
+only.
 
 ## 11. Deferred / non-goals
 

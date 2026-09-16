@@ -59,6 +59,18 @@ export interface ReportSpec {
   orderBy: { column: string; ascending: boolean }[]
   /** Asset-type choices where the report covers more than one family. */
   assetTypeOptions?: { value: string; label: string }[]
+  /**
+   * Extra summary counts, each a value of one column.
+   *
+   * Used where the generic due-state breakdown says nothing useful — the Data
+   * Quality report's meaningful split is by KIND of issue, and a lapsed
+   * pre-import decision must be countable on its own rather than folded into a
+   * general "unresolved" figure.
+   */
+  summaryBreakdown?: {
+    column: string
+    values: { value: string; label: string; description: string }[]
+  }
   /** A row links into the workspace that owns the record, where one exists. */
   drillThrough?: (row: ReportRow) => string | null
 }
@@ -214,7 +226,12 @@ export const REPORT_SPECS: ReportSpec[] = [
     id: 'gas-detectors',
     label: 'Gas Detectors',
     description: 'Installed detectors and their calibration state.',
-    view: 'v_gas_detector_management',
+    // `v_report_gas_detectors`, not `v_gas_detector_management`: the management
+    // view deliberately UNIONs recorded ABSENCE, which is evidence that an area
+    // has no detector rather than a device. Reporting absence as an installed
+    // asset would be false, and its NULL `detector_id` would leave pagination
+    // without a stable key (Prompt 20A).
+    view: 'v_report_gas_detectors',
     idColumn: 'detector_id',
     columns: [
       ...HIERARCHY_COLUMNS,
@@ -270,22 +287,34 @@ export const REPORT_SPECS: ReportSpec[] = [
     id: 'data-quality',
     label: 'Data Quality',
     description:
-      'Unresolved and flagged records, for visibility. Corrections stay in Admin.',
-    view: 'v_data_quality_queue',
-    idColumn: 'asset_id',
+      'Unresolved and flagged records across canonical assets, staged pre-import rows and open import issues. Read-only: corrections stay in Admin.',
+    // Three layers in one view, each keeping its OWN RLS. A viewer or engineer
+    // reads the canonical layer within their Regions and nothing else; a
+    // manager or admin reads all three. Reading only the canonical layer — as
+    // this report did before Prompt 20A — made the report look clean while the
+    // staged import carried real unresolved evidence.
+    view: 'v_report_data_quality',
+    idColumn: 'dq_key',
     columns: [
+      { key: 'source_layer', header: 'Layer' },
+      { key: 'issue_kind', header: 'Issue' },
       { key: 'asset_type', header: 'Asset Type' },
-      { key: 'mapping_status', header: 'Mapping Status', render: 'mapping_status' },
-      { key: 'review_reason', header: 'Reason' },
-      { key: 'needs_review', header: 'Needs Review' },
-      { key: 'updated_at', header: 'Last Updated', kind: 'date' },
+      { key: 'region_name', header: 'Region' },
+      { key: 'station_name', header: 'Station' },
+      { key: 'raw_station', header: 'Raw Source Value' },
+      { key: 'detail', header: 'Detail' },
+      { key: 'severity', header: 'Severity' },
+      { key: 'source_file', header: 'Source File' },
+      { key: 'source_row', header: 'Source Row', kind: 'number', align: 'right' },
+      { key: 'observed_at', header: 'Last Updated', kind: 'date' },
     ],
-    filters: ['region', 'station', 'unit', 'assetType', 'mappingStatus'],
+    filters: ['region', 'station', 'unit', 'assetType', 'search'],
     filterColumns: {
       region: 'region_id', station: 'station_id', unit: 'unit_id',
-      assetType: 'asset_type', mappingStatus: 'mapping_status',
+      assetType: 'asset_type',
+      search: ['issue_kind', 'detail', 'raw_station', 'source_file'],
     },
-    orderBy: [{ column: 'updated_at', ascending: false }],
+    orderBy: [{ column: 'observed_at', ascending: false }],
     assetTypeOptions: [
       { value: 'installed_relief_valve', label: 'Installed SRV' },
       { value: 'storage_vessel', label: 'Storage Vessel' },
@@ -293,6 +322,40 @@ export const REPORT_SPECS: ReportSpec[] = [
       { value: 'gas_detector', label: 'Gas Detector' },
       { value: 'hose', label: 'Hose' },
     ],
+    summaryBreakdown: {
+      column: 'issue_kind',
+      values: [
+        {
+          value: 'stale_source_decision', label: 'Stale Source Decision',
+          description:
+            'A previous pre-import mapping decision no longer applies because the source content changed. Distinct from never having decided, and never treated as confirmed.',
+        },
+        {
+          value: 'staged_awaiting_decision', label: 'Awaiting Decision',
+          description: 'A staged row no human has ruled on yet',
+        },
+        {
+          value: 'staged_decision_recorded', label: 'Decision Recorded',
+          description: 'A staged row with a confirmed decision still matching its source content',
+        },
+        {
+          value: 'needs_station_mapping', label: 'Needs Station Mapping',
+          description: 'A canonical asset whose Station the source did not prove',
+        },
+        {
+          value: 'needs_unit_mapping', label: 'Needs Unit Mapping',
+          description: 'A canonical asset whose Unit the source did not prove',
+        },
+        {
+          value: 'needs_equipment_mapping', label: 'Needs Equipment Mapping',
+          description: 'A canonical SRV whose equipment parent the source did not prove',
+        },
+        {
+          value: 'conflict', label: 'Conflict',
+          description: 'Source evidence disagrees and a human must resolve it',
+        },
+      ],
+    },
   },
   {
     id: 'activity',
