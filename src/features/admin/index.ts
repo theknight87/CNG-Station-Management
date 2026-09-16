@@ -1,1 +1,5 @@
 export { AdminView } from './AdminView'
+export { AdminUsersSection } from './sections/AdminUsersSection'
+export { AdminAlertSettingsSection } from './sections/AdminAlertSettingsSection'
+export { AdminDataQualitySection } from './sections/AdminDataQualitySection'
+export { AdminAuditLogSection } from './sections/AdminAuditLogSection'

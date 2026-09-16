@@ -12,6 +12,9 @@ import { VesselSection } from '@/features/units/sections/VesselSection'
 import { InstalledSrvSection } from '@/features/relief-valves/sections/InstalledSrvSection'
 import { WarehouseSrvSection } from '@/features/relief-valves/sections/WarehouseSrvSection'
 import { VesselRegistrySection } from '@/features/vessels/sections/VesselRegistrySection'
+import {
+  AdminAlertSettingsSection, AdminAuditLogSection, AdminDataQualitySection, AdminUsersSection,
+} from '@/features/admin'
 import { AdminPage } from '@/pages/AdminPage'
 import { AlertsPage } from '@/pages/AlertsPage'
 import { DashboardPage } from '@/pages/DashboardPage'
@@ -125,10 +128,17 @@ export const router = createBrowserRouter([
       // Admin. The landing route is a page, not a redirect: an engineer or
       // viewer who reaches it must see the permission state, and a redirect
       // would bounce them somewhere that says nothing.
-      { path: 'admin', element: <AdminPage /> },
-      { path: 'admin/users', element: <AdminPage /> },
-      { path: 'admin/data-quality', element: <AdminPage /> },
-      { path: 'admin/import', element: <AdminPage /> },
+      {
+        path: 'admin',
+        element: <AdminPage />,
+        children: [
+          { index: true, element: <Navigate to="/admin/users" replace /> },
+          { path: 'users', element: <AdminUsersSection /> },
+          { path: 'alert-settings', element: <AdminAlertSettingsSection /> },
+          { path: 'data-quality', element: <AdminDataQualitySection /> },
+          { path: 'audit-log', element: <AdminAuditLogSection /> },
+        ],
+      },
 
       { path: '*', element: <NotFoundPage /> },
     ],

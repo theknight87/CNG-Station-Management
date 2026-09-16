@@ -490,6 +490,30 @@ host and `api.cloudflare.com`, so the test email, hosted secret verification, fu
 and Cloudflare configuration are documented manual steps rather than completed ones — nothing was
 simulated. Cron, the Cairo business date and the invoke-secret model are unchanged.*
 
+*The Admin Module (Prompt 19) is built: `/admin/users`, `/admin/alert-settings`,
+`/admin/data-quality`, `/admin/audit-log` — see `docs/admin-module.md`. **One additive
+migration, 0038.** The read-first gap analysis found a REAL DEFECT rather than a missing
+screen: `authenticated` already held DIRECT `UPDATE (role, is_active)` on `app_users` and full
+INSERT/UPDATE/DELETE on `user_region_access`, gated only by `cng_is_admin()`. The policy was
+correct; the SHAPE was not — the audit row was a separate client call an admin could simply not
+make, nothing stopped an admin demoting or deactivating themselves or removing the LAST ACTIVE
+ADMINISTRATOR, and a stale tab could silently overwrite a newer decision. Both grants are
+REVOKED and replaced by narrow SECURITY DEFINER functions that verify admin, derive the actor
+server-side, check a row-version precondition and write the audit IN THE SAME STATEMENT: **not
+even an ADMIN may now change a role or a Region grant directly** (ADMSEC-13/14). Mapping status
+is **DERIVED in SQL from what was proven, never supplied**, so a screen cannot declare a record
+resolved by asserting it; the pre-existing composite foreign keys and `irv_status_shape_ck` do
+the hierarchy enforcement and NONE was relaxed or re-implemented. `cng_admin_map_srv` initially
+omitted `resolved_by`/`resolved_at` and `irv_resolved_attribution_ck` REJECTED the resolution —
+the constraint doing exactly the job its comment claims. Only `is_enabled` is editable on an
+alert rule (subject/threshold/days_before are rule IDENTITY; editing them would reinterpret
+alerts already raised), and disabling deletes nothing. **No count is hard-coded**: the 1,104
+staged-blocker figure is a PIPELINE fact and a frontend test fails on it appearing as a literal
+anywhere in the shipped module. **Deferred with reasons recorded**: engineer Region-scoped
+mapping (a definer function bypasses the RLS that would bound them, so the scope needs its own
+hostile pass), bulk mapping, and vessel/detector/hose mapping mutation. **NOT DEPLOYED and NOT
+LIVE VERIFIED** — 0038 is not applied to the hosted project.*
+
 ### Prompt-21 import blockers (must be resolved before the production import)
 
 | Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |
@@ -562,6 +586,7 @@ These rules are permanent and apply to every future prompt.
 | 15.3C | 418 | 146 | 302 |
 | 16-18 | 431 | 146 | 311 |
 | 18A | 433 | 146 | 332 |
+| 19 | 451 | 146 | 406 |
 
 Update this table when a prompt is accepted, so the next one has a baseline to compare
 against.

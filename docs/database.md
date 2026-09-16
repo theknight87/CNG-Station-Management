@@ -772,3 +772,35 @@ the schema now implements them — narrowly, as enumerated data rather than as g
 - Three questions remain open from the data analysis: the hose coverage gap for five regions,
   `16/8/3033`, and whether the 456 overdue vessel certificates are genuinely lapsed. None blocks
   the schema.
+
+
+---
+
+## Migration 0038 — the admin module (Prompt 19)
+
+Additive. It adds no table and no column; it **removes** two grants and adds six functions and
+four views.
+
+**Revoked:** `UPDATE (role, is_active)` on `app_users`, and `INSERT, UPDATE, DELETE` on
+`user_region_access`, both from `authenticated`. `full_name` and `email` are identity rather than
+authorization and are left alone.
+
+**Added — functions** (all `SECURITY DEFINER` except where noted, `SET search_path = pg_catalog,
+public`, `EXECUTE` to `authenticated` only, no identity parameter): `cng_require_admin()`
+(STABLE, raises 42501), `cng_check_precondition()` (IMMUTABLE, raises `stale_write` /
+ERRCODE 40001), `cng_admin_set_user_role`, `cng_admin_set_user_active`, `cng_admin_grant_region`,
+`cng_admin_revoke_region`, `cng_admin_set_alert_rule_enabled`, `cng_admin_map_srv`.
+
+**Added — views**, all `security_invoker = true`, so the existing policies decide visibility and
+the views add no reach: `v_admin_users`, `v_admin_audit_log`, `v_admin_data_quality`,
+`v_admin_srv_mapping_queue`. ADMSEC-29..35 prove a non-admin reads only their own row and anon
+reads nothing.
+
+**Not changed, deliberately:** every composite foreign key and check constraint on
+`installed_relief_valves`. `cng_admin_map_srv` relies on `irv_unit_station_fk`,
+`irv_compressor_unit_fk` and its siblings, `irv_status_shape_ck` and
+`irv_resolved_attribution_ck` rather than re-implementing them, and the function sets
+`resolved_by`/`resolved_at` from the server-derived actor so the attribution constraint is
+satisfied honestly.
+
+**Not deployed.** 0038 exists in the repository only; the hosted project is still at 37.

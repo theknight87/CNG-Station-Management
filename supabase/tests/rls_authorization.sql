@@ -377,7 +377,12 @@ BEGIN
       $q$INSERT INTO user_region_access (app_user_id, region_id) VALUES ('a0000000-0000-0000-0000-00000000000c',%L)$q$,
       v_west_region)),
       'ENG-21 cannot grant self access to West');
-  DELETE FROM user_region_access WHERE app_user_id='a0000000-0000-0000-0000-00000000000d';
+  -- Previously a no-op cleanup that RLS reduced to zero rows. Since 0038 the
+  -- engineer has no DELETE grant at all, so it is now a DENIAL to assert rather
+  -- than a statement to run -- a strictly stronger outcome.
+  PERFORM pg_temp.ok(pg_temp.denied(
+      $q$DELETE FROM user_region_access WHERE app_user_id='a0000000-0000-0000-0000-00000000000d'$q$),
+      'ENG-21b cannot delete a Region grant at all');
   -- verified below, privileged
   SELECT count(*) INTO n FROM app_users;
   PERFORM pg_temp.ok(n = 1, 'ENG-23 sees only own user row, not the directory');
@@ -534,17 +539,23 @@ BEGIN
   SELECT count(*) INTO n FROM audit_logs;
   PERFORM pg_temp.ok(n >= 0, 'ADMIN-2 can read audit logs');
 
-  UPDATE app_users SET role='engineer' WHERE clerk_user_id='clerk_view_east';
+  -- PROMPT 19 CHANGED THE MECHANISM, NOT THE INTENT. These three previously
+  -- performed DIRECT table writes; migration 0038 revoked those grants so that a
+  -- privileged change cannot happen without its audit row. The capability is
+  -- unchanged and still asserted here -- it now runs through the audited
+  -- function, and ADMIN-13/14 below prove the direct path is closed.
+  PERFORM cng_admin_set_user_role(
+    (SELECT id FROM app_users WHERE clerk_user_id='clerk_view_east'), 'engineer');
   PERFORM pg_temp.ok((SELECT role FROM app_users WHERE clerk_user_id='clerk_view_east')='engineer',
       'ADMIN-3 can change a user role');
-  UPDATE app_users SET role='viewer' WHERE clerk_user_id='clerk_view_east';
+  PERFORM cng_admin_set_user_role(
+    (SELECT id FROM app_users WHERE clerk_user_id='clerk_view_east'), 'viewer');
 
-  INSERT INTO user_region_access (app_user_id, region_id, can_map)
-  VALUES ('a0000000-0000-0000-0000-00000000000e', v_west, false);
+  PERFORM cng_admin_grant_region('a0000000-0000-0000-0000-00000000000e', v_west, false);
   PERFORM pg_temp.ok(true, 'ADMIN-4 can grant region access');
-  DELETE FROM user_region_access
-   WHERE app_user_id='a0000000-0000-0000-0000-00000000000e' AND region_id=v_west;
-  PERFORM pg_temp.ok(true, 'ADMIN-5 can revoke region access');
+  PERFORM pg_temp.ok(
+    cng_admin_revoke_region('a0000000-0000-0000-0000-00000000000e', v_west) = 1,
+    'ADMIN-5 can revoke region access');
 
   PERFORM pg_temp.ok(pg_temp.denied($q$UPDATE app_users SET clerk_user_id='stolen'
       WHERE clerk_user_id='clerk_view_east'$q$),
@@ -2380,6 +2391,504 @@ BEGIN
       format('PREF-15 %s sees only their own preference, whatever their role', persona));
     RESET ROLE;
   END LOOP;
+END $$;
+
+-- ===========================================================================
+-- ADMIN MODULE (Prompt 19, migration 0038).
+--
+-- The Admin surface is the most privileged thing in the product, so these are
+-- written as ATTACKS rather than as happy paths. Every one of ADMIN-1..12 is a
+-- non-admin trying to reach a privileged mutation directly through the database,
+-- which is exactly what a browser can attempt regardless of what the UI shows.
+-- ===========================================================================
+DO $$
+DECLARE
+  v_admin uuid;
+  v_west  uuid;
+  v_east  uuid;
+  v_region uuid;
+  n       integer;
+BEGIN
+  SELECT id INTO v_admin FROM app_users WHERE clerk_user_id = 'clerk_admin';
+  SELECT id INTO v_west  FROM app_users WHERE clerk_user_id = 'clerk_eng_west';
+  SELECT id INTO v_east  FROM app_users WHERE clerk_user_id = 'clerk_eng_east';
+  SELECT r_east INTO v_region FROM f;
+
+  --------------------------------------------------------------------- VIEWER
+  PERFORM pg_temp.become('clerk_view_east');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_set_user_role(%L, 'admin')$q$, v_west)),
+    'ADMSEC-1 viewer cannot change a role');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_set_user_active(%L, false)$q$, v_west)),
+    'ADMSEC-2 viewer cannot deactivate a user');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_grant_region(%L, %L, true)$q$, v_west, v_region)),
+    'ADMSEC-3 viewer cannot grant Region access');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$SELECT cng_admin_set_alert_rule_enabled((SELECT id FROM alert_rules LIMIT 1), false)$q$),
+    'ADMSEC-4 viewer cannot change an alert rule');
+  RESET ROLE;
+
+  ------------------------------------------------------------------- ENGINEER
+  PERFORM pg_temp.become('clerk_eng_east');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_set_user_role(%L, 'admin')$q$, v_west)),
+    'ADMSEC-5 engineer cannot change a role');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_grant_region(%L, %L, true)$q$, v_west, v_region)),
+    'ADMSEC-6 engineer cannot grant Region access');
+  -- Privilege escalation attempt against THEMSELVES, the likeliest real attack.
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_set_user_role(%L, 'admin')$q$, v_east)),
+    'ADMSEC-7 engineer cannot promote THEMSELVES to admin');
+  RESET ROLE;
+
+  -------------------------------------------------------------------- MANAGER
+  -- A manager keeps their technical permissions but gains no user administration.
+  PERFORM pg_temp.become('clerk_manager');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_set_user_role(%L, 'viewer')$q$, v_west)),
+    'ADMSEC-8 manager cannot change a role');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_set_user_active(%L, false)$q$, v_west)),
+    'ADMSEC-9 manager cannot deactivate a user');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$SELECT cng_admin_map_srv('00000000-0000-0000-0000-000000000000'::uuid,
+                                '00000000-0000-0000-0000-000000000000'::uuid)$q$),
+    'ADMSEC-10 manager cannot perform Admin-only mapping resolution');
+  RESET ROLE;
+
+  ----------------------------------------------------------------------- anon
+  PERFORM pg_temp.as_anon();
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_set_user_role(%L, 'admin')$q$, v_west)),
+    'ADMSEC-11 anon cannot change a role');
+  PERFORM pg_temp.ok(pg_temp.denied('SELECT count(*) FROM v_admin_users'),
+    'ADMSEC-12 anon cannot read the admin user list');
+  RESET ROLE;
+
+  ---------------------------------------------- the DIRECT paths are now closed
+  -- Even an ADMIN must go through the audited function: the raw grants are gone,
+  -- so an unaudited role change is not expressible.
+  PERFORM pg_temp.become('clerk_admin');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$UPDATE app_users SET role = 'viewer' WHERE id = %L$q$, v_west)),
+    'ADMSEC-13 not even an ADMIN may UPDATE a role directly, bypassing the audit');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$INSERT INTO user_region_access (app_user_id, region_id) VALUES (%L, %L)$q$,
+    v_west, v_region)),
+    'ADMSEC-14 nor insert a Region grant directly');
+  RESET ROLE;
+END $$;
+
+-- Admin CAN administer — and cannot strand the product.
+DO $$
+DECLARE
+  v_admin uuid;
+  v_west  uuid;
+  v_region uuid;
+  v_ts    timestamptz;
+  n       integer;
+  v_role  app_role;
+BEGIN
+  SELECT id INTO v_admin FROM app_users WHERE clerk_user_id = 'clerk_admin';
+  SELECT id INTO v_west  FROM app_users WHERE clerk_user_id = 'clerk_eng_west';
+  SELECT r_east INTO v_region FROM f;
+
+  PERFORM pg_temp.become('clerk_admin');
+
+  -- Authorized administration works.
+  v_ts := cng_admin_set_user_role(v_west, 'manager');
+  RESET ROLE;
+  SELECT role INTO v_role FROM app_users WHERE id = v_west;
+  PERFORM pg_temp.ok(v_role = 'manager', 'ADMSEC-15 an admin can change a role');
+
+  -- ...and it is AUDITED, with a server-derived actor.
+  SELECT count(*) INTO n FROM audit_logs
+   WHERE action = 'user_role_changed' AND entity_id = v_west AND actor_id = v_admin;
+  PERFORM pg_temp.ok(n = 1, 'ADMSEC-16 the role change is audited to the real actor');
+
+  -- LAST ACTIVE ADMIN protection: there is exactly one admin in the fixtures.
+  PERFORM pg_temp.become('clerk_admin');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_set_user_role(%L, 'viewer')$q$, v_admin)),
+    'ADMSEC-17 an admin cannot demote themselves');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_set_user_active(%L, false)$q$, v_admin)),
+    'ADMSEC-18 an admin cannot deactivate themselves');
+  RESET ROLE;
+  SELECT count(*) INTO n FROM app_users WHERE role = 'admin' AND is_active;
+  PERFORM pg_temp.ok(n >= 1,
+    'ADMSEC-19 the product is never left with zero active administrators');
+
+  -- STALE WRITE protection.
+  PERFORM pg_temp.become('clerk_admin');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_set_user_role(%L, 'viewer', %L::timestamptz)$q$,
+    v_west, '2020-01-01T00:00:00Z')),
+    'ADMSEC-20 a stale write is refused rather than silently applied');
+
+  -- Region grants: idempotent, never duplicated.
+  PERFORM cng_admin_grant_region(v_west, v_region, true);
+  PERFORM cng_admin_grant_region(v_west, v_region, false);
+  RESET ROLE;
+  SELECT count(*) INTO n FROM user_region_access
+   WHERE app_user_id = v_west AND region_id = v_region;
+  PERFORM pg_temp.ok(n = 1, 'ADMSEC-21 a repeated Region grant updates rather than duplicating');
+  -- Scoped to THIS user: other blocks in the suite legitimately change Region
+  -- access too, and a bare count would track them instead of the two calls above.
+  SELECT count(*) INTO n FROM audit_logs
+   WHERE action = 'region_access_changed'
+     AND (after_data ->> 'app_user_id')::uuid = v_west;
+  PERFORM pg_temp.ok(n = 2, 'ADMSEC-22 both Region actions on this user are audited');
+
+  -- A malformed / unknown target is refused, not silently ignored.
+  PERFORM pg_temp.become('clerk_admin');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$SELECT cng_admin_set_user_role('00000000-0000-0000-0000-000000000000'::uuid, 'admin')$q$),
+    'ADMSEC-23 an unknown target user is refused');
+  RESET ROLE;
+END $$;
+
+-- AUDIT HISTORY IS NOT REWRITABLE — by anyone, including an admin.
+DO $$
+BEGIN
+  PERFORM pg_temp.become('clerk_admin');
+  PERFORM pg_temp.ok(pg_temp.denied($q$UPDATE audit_logs SET summary = 'tampered'$q$),
+    'ADMSEC-24 an ADMIN cannot rewrite audit history');
+  PERFORM pg_temp.ok(pg_temp.denied($q$DELETE FROM audit_logs$q$),
+    'ADMSEC-25 nor delete it');
+  PERFORM pg_temp.ok(pg_temp.denied($q$UPDATE asset_mapping_audit SET reason = 'tampered'$q$),
+    'ADMSEC-26 nor rewrite the mapping audit');
+  -- Actor spoofing on a direct insert is still refused.
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$INSERT INTO audit_logs (action, entity_table, actor_id)
+       VALUES ('admin_action', 'app_users', %L)$q$,
+    (SELECT id FROM app_users WHERE clerk_user_id = 'clerk_eng_west'))),
+    'ADMSEC-27 the audit actor cannot be spoofed');
+  RESET ROLE;
+END $$;
+
+-- ===========================================================================
+-- MANUAL MAPPING MATRIX (Prompt 19 §18).
+--
+-- The mapping lifecycle is a claim about PHYSICAL REALITY, so every step must be
+-- proven, never assumed. These assert the full transition chain, and — more
+-- importantly — that each way of SKIPPING a step is refused by the database.
+-- Nothing here relaxes a composite foreign key or a check constraint; the
+-- rejections below are those pre-existing constraints doing their job.
+-- ===========================================================================
+DO $$
+DECLARE
+  v_e_station uuid := 'e5700000-0000-0000-0000-0000000000e1';
+  v_w_station uuid := 'e5700000-0000-0000-0000-0000000000f1';
+  v_e_unit    uuid := 'e5700000-0000-0000-0000-0000000000e2';
+  v_w_unit    uuid := 'e5700000-0000-0000-0000-0000000000f2';
+  v_e_comp    uuid := 'e5700000-0000-0000-0000-0000000000e3';
+  v_w_comp    uuid := 'e5700000-0000-0000-0000-0000000000f3';
+  v_w_vessel  uuid := 'e5700000-0000-0000-0000-0000000000f4';
+  -- e6 is already advanced to needs_unit_mapping by MGR-5 earlier in this suite,
+  -- so the matrix creates its OWN untouched record rather than asserting a
+  -- transition that another block has already made.
+  v_srv       uuid := 'e5700000-0000-0000-0000-0000000000ed';
+  v_admin     uuid;
+  v_raw_before text;
+  v_file_before text;
+  v_status    srv_mapping_status;
+  v_ts        timestamptz;
+  n           integer;
+BEGIN
+  SELECT id INTO v_admin FROM app_users WHERE clerk_user_id = 'clerk_admin';
+  INSERT INTO installed_relief_valves
+    (id, station_id, region_id, mapping_status, source_station_name_raw,
+     source_region_raw, location_raw, expected_parent_kind, source_file,
+     source_sheet, source_row)
+  SELECT v_srv, NULL, r_east, 'needs_station_mapping',
+         'TESTDATA-EAST-STATION', 'East', 'Stage', 'compressor',
+         'TESTDATA-MAP.xlsx', 'Sheet1', 42 FROM f;
+
+  SELECT source_station_name_raw, source_file
+    INTO v_raw_before, v_file_before
+    FROM installed_relief_valves WHERE id = v_srv;
+
+  PERFORM pg_temp.become('clerk_admin');
+
+  -- BEFORE: a valve whose Station is not even confirmed is not in any Unit tab.
+  SELECT count(*) INTO n FROM v_unit_srvs WHERE id = v_srv;
+  PERFORM pg_temp.ok(n = 0,
+    'MAP-0 an unmapped SRV is absent from the Unit SRV tab before mapping');
+
+  ------------------------------------------------- needs_station -> needs_unit
+  SELECT mapping_status, updated_at INTO v_status, v_ts
+    FROM cng_admin_map_srv(v_srv, v_e_station, NULL, NULL, NULL, NULL,
+                           'MAP-1 station confirmed from the work order');
+  PERFORM pg_temp.ok(v_status = 'needs_unit_mapping',
+    'MAP-1 confirming only the Station advances to needs_unit_mapping, not further');
+
+  -- The status is DERIVED. Proving the Station does not silently prove a Unit.
+  SELECT count(*) INTO n FROM installed_relief_valves
+   WHERE id = v_srv AND unit_id IS NULL AND compressor_id IS NULL
+     AND storage_vessel_id IS NULL AND dispenser_id IS NULL;
+  PERFORM pg_temp.ok(n = 1, 'MAP-2 no Unit or equipment is invented by a Station mapping');
+
+  -- The Region follows the confirmed Station, not the unconfirmed raw source text.
+  SELECT count(*) INTO n FROM installed_relief_valves v
+    JOIN stations s ON s.id = v.station_id
+   WHERE v.id = v_srv AND v.region_id = s.region_id;
+  PERFORM pg_temp.ok(n = 1, 'MAP-3 the Region is taken from the confirmed Station');
+
+  --------------------------------------------- a Unit from the WRONG Station is refused
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_map_srv(%L, %L, %L)$q$, v_srv, v_e_station, v_w_unit)),
+    'MAP-4 a Unit that does not belong to the confirmed Station is rejected');
+
+  ------------------------------------------------- needs_unit -> needs_equipment
+  SELECT mapping_status INTO v_status
+    FROM cng_admin_map_srv(v_srv, v_e_station, v_e_unit, NULL, NULL, NULL,
+                           'MAP-5 unit confirmed on site');
+  PERFORM pg_temp.ok(v_status = 'needs_equipment_mapping',
+    'MAP-5 confirming the Unit advances to needs_equipment_mapping');
+
+  ------------------------------------- equipment from the WRONG Unit is refused
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_map_srv(%L, %L, %L, 'compressor', %L)$q$,
+    v_srv, v_e_station, v_e_unit, v_w_comp)),
+    'MAP-6 a Compressor belonging to another Unit is rejected');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_map_srv(%L, %L, %L, 'storage_vessel', %L)$q$,
+    v_srv, v_e_station, v_e_unit, v_w_vessel)),
+    'MAP-7 a Storage Vessel belonging to another Unit is rejected');
+
+  ------------------------------------------- the hierarchy cannot be short-circuited
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_map_srv(%L, %L, NULL, 'compressor', %L)$q$,
+    v_srv, v_e_station, v_e_comp)),
+    'MAP-8 equipment cannot be confirmed while the Unit is still unproven');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_map_srv(%L, NULL, %L)$q$, v_srv, v_e_unit)),
+    'MAP-9 a Unit cannot be confirmed while the Station is still unproven');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_map_srv(%L, %L, %L, 'compressor', NULL)$q$,
+    v_srv, v_e_station, v_e_unit)),
+    'MAP-10 a parent kind without a parent id is refused, not treated as a guess');
+
+  ------------------------------------------------ needs_equipment -> resolved
+  SELECT mapping_status, updated_at INTO v_status, v_ts
+    FROM cng_admin_map_srv(v_srv, v_e_station, v_e_unit, 'compressor', v_e_comp, NULL,
+                           'MAP-11 nameplate read on the stage 1 compressor');
+  PERFORM pg_temp.ok(v_status = 'resolved',
+    'MAP-11 confirming the equipment parent resolves the record');
+  SELECT count(*) INTO n FROM installed_relief_valves
+   WHERE id = v_srv AND compressor_id = v_e_comp
+     AND storage_vessel_id IS NULL AND dispenser_id IS NULL;
+  PERFORM pg_temp.ok(n = 1, 'MAP-12 a resolved SRV has exactly one equipment parent');
+
+  ------------------------------------------------------------- STALE write
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_map_srv(%L, %L, %L, 'compressor', %L, %L::timestamptz)$q$,
+    v_srv, v_e_station, v_e_unit, v_e_comp, '2020-01-01T00:00:00Z')),
+    'MAP-13 a mapping write against a stale row version is refused');
+  -- ...and the same call with the CURRENT version is accepted, so MAP-13 proves
+  -- the precondition rather than a broken signature.
+  SELECT mapping_status INTO v_status
+    FROM cng_admin_map_srv(v_srv, v_e_station, v_e_unit, 'compressor', v_e_comp, v_ts);
+  PERFORM pg_temp.ok(v_status = 'resolved',
+    'MAP-14 the same write with the current row version succeeds');
+
+  ------------------------------------------- the constraints, not the function
+  -- Two parents, and "resolved" with no parent, are refused at the TABLE level,
+  -- so no future caller can express them either.
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$UPDATE installed_relief_valves SET storage_vessel_id = %L WHERE id = %L$q$,
+    v_w_vessel, v_srv)),
+    'MAP-15 an SRV cannot be given a second equipment parent');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$UPDATE installed_relief_valves
+          SET compressor_id = NULL, mapping_status = 'resolved' WHERE id = %L$q$, v_srv)),
+    'MAP-16 resolved without an equipment parent is refused by the table');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$UPDATE installed_relief_valves
+          SET mapping_status = 'resolved' WHERE id = 'e5700000-0000-0000-0000-0000000000f5'$q$)),
+    'MAP-17 an unresolved SRV cannot be relabelled resolved without proof');
+  RESET ROLE;
+
+  ------------------------------------------------------- SOURCE EVIDENCE KEPT
+  SELECT count(*) INTO n FROM installed_relief_valves
+   WHERE id = v_srv
+     AND source_station_name_raw IS NOT DISTINCT FROM v_raw_before
+     AND source_file IS NOT DISTINCT FROM v_file_before;
+  PERFORM pg_temp.ok(n = 1,
+    'MAP-18 mapping never alters the raw source Station name or its provenance');
+
+  --------------------------------------------------------------- AUDIT TRAIL
+  SELECT count(*) INTO n FROM asset_mapping_audit
+   WHERE asset_type = 'installed_relief_valve' AND asset_id = v_srv
+     AND changed_by = v_admin;
+  PERFORM pg_temp.ok(n = 4,
+    'MAP-19 every accepted mapping step is recorded with the server-derived actor');
+  SELECT count(*) INTO n FROM asset_mapping_audit
+   WHERE asset_id = v_srv AND previous_mapping_status = 'needs_station_mapping'
+     AND new_mapping_status = 'needs_unit_mapping';
+  PERFORM pg_temp.ok(n = 1,
+    'MAP-20 the audit records the transition it made, not just the final state');
+  SELECT count(*) INTO n FROM audit_logs
+   WHERE action = 'mapping_changed' AND entity_id = v_srv AND actor_id = v_admin;
+  PERFORM pg_temp.ok(n = 4, 'MAP-21 the same steps appear in the general audit log');
+
+  -------------------------------------------------- a rejected step leaves NOTHING
+  SELECT count(*) INTO n FROM asset_mapping_audit
+   WHERE asset_id = v_srv AND new_unit_id = v_w_unit;
+  PERFORM pg_temp.ok(n = 0,
+    'MAP-22 a rejected mapping writes no audit row — the audit is atomic with the mutation');
+
+  -- AFTER: mapping — and only mapping — is what puts it there.
+  PERFORM pg_temp.become('clerk_admin');
+  SELECT count(*) INTO n FROM v_unit_srvs WHERE id = v_srv;
+  PERFORM pg_temp.ok(n = 1, 'MAP-23 the resolved SRV now appears in its Unit SRV tab');
+  -- The valve whose Unit is still unproven never reaches a Unit tab.
+  SELECT count(*) INTO n FROM v_unit_srvs
+   WHERE mapping_status IN ('needs_station_mapping', 'needs_unit_mapping');
+  PERFORM pg_temp.ok(n = 0,
+    'MAP-24 no SRV without a confirmed Unit is ever visible in a Unit SRV tab');
+  RESET ROLE;
+END $$;
+
+-- ===========================================================================
+-- ALERT SETTINGS MATRIX (Prompt 19 §19).
+--
+-- An alert rule is not a preference: it decides what the whole product warns
+-- about. So the only editable thing is whether it is ACTIVE. Subject, threshold
+-- and days_before are rule IDENTITY — editing them would silently reinterpret
+-- alerts that were already generated under the old meaning.
+-- ===========================================================================
+DO $$
+DECLARE
+  v_admin uuid;
+  v_rule  uuid;
+  v_ts    timestamptz;
+  v_alerts_before integer;
+  n       integer;
+  v_on    boolean;
+BEGIN
+  SELECT id INTO v_admin FROM app_users WHERE clerk_user_id = 'clerk_admin';
+  SELECT id INTO v_rule FROM alert_rules ORDER BY subject, threshold LIMIT 1;
+  SELECT count(*) INTO v_alerts_before FROM alerts;
+
+  PERFORM pg_temp.become('clerk_admin');
+
+  v_ts := cng_admin_set_alert_rule_enabled(v_rule, false);
+  RESET ROLE;
+  SELECT is_enabled INTO v_on FROM alert_rules WHERE id = v_rule;
+  PERFORM pg_temp.ok(v_on = false, 'ALSET-1 an admin can disable an alert rule');
+
+  -- Disabling stops FUTURE generation; it is not a way to erase history.
+  SELECT count(*) INTO n FROM alerts;
+  PERFORM pg_temp.ok(n = v_alerts_before,
+    'ALSET-2 disabling a rule deletes no alert that was already raised');
+
+  SELECT count(*) INTO n FROM audit_logs
+   WHERE action = 'alert_rule_changed' AND entity_id = v_rule AND actor_id = v_admin;
+  PERFORM pg_temp.ok(n = 1, 'ALSET-3 the change is audited to the server-derived actor');
+
+  PERFORM pg_temp.become('clerk_admin');
+  v_ts := cng_admin_set_alert_rule_enabled(v_rule, true, v_ts);
+  RESET ROLE;
+  SELECT is_enabled INTO v_on FROM alert_rules WHERE id = v_rule;
+  PERFORM pg_temp.ok(v_on = true, 'ALSET-4 and can re-enable it with the current row version');
+
+  PERFORM pg_temp.become('clerk_admin');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_set_alert_rule_enabled(%L, false, %L::timestamptz)$q$,
+    v_rule, '2020-01-01T00:00:00Z')),
+    'ALSET-5 a stale alert-rule write is refused');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$SELECT cng_admin_set_alert_rule_enabled('00000000-0000-0000-0000-000000000000'::uuid, false)$q$),
+    'ALSET-6 an unknown rule is refused, not silently created');
+
+  -- Rule IDENTITY is not editable by anyone, admin included. There is no
+  -- function for it and no direct grant.
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$UPDATE alert_rules SET days_before = 999 WHERE id = %L$q$, v_rule)),
+    'ALSET-7 not even an admin may change a rule threshold window directly');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$INSERT INTO alert_rules (subject, threshold, days_before)
+       VALUES ('srv_calibration', 'due_7', 7)$q$),
+    'ALSET-8 an admin cannot invent a new alert rule from the browser');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$DELETE FROM alert_rules WHERE id = %L$q$, v_rule)),
+    'ALSET-9 nor delete one');
+  RESET ROLE;
+
+  ------------------------------------------------------------- NON-ADMINS
+  PERFORM pg_temp.become('clerk_manager');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_set_alert_rule_enabled(%L, false)$q$, v_rule)),
+    'ALSET-10 a manager cannot change alert settings');
+  RESET ROLE;
+  PERFORM pg_temp.become('clerk_eng_east');
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_set_alert_rule_enabled(%L, false)$q$, v_rule)),
+    'ALSET-11 nor an engineer');
+  RESET ROLE;
+  PERFORM pg_temp.as_anon();
+  PERFORM pg_temp.ok(pg_temp.denied(format(
+    $q$SELECT cng_admin_set_alert_rule_enabled(%L, false)$q$, v_rule)),
+    'ALSET-12 nor anon');
+  RESET ROLE;
+
+  -- Changing a rule never touches an alert's acknowledgement state.
+  SELECT count(*) INTO n FROM audit_logs WHERE action = 'alert_rule_changed';
+  PERFORM pg_temp.ok(n = 2,
+    'ALSET-13 only the two ACCEPTED changes are audited — every refusal wrote nothing');
+END $$;
+
+-- The Prompt 19 §22 hostile pass: the READ side of the admin surface.
+--
+-- A privileged VIEW is the classic way a locked-down table leaks. Each of these
+-- is security_invoker, so the existing policies decide — and that claim is worth
+-- proving rather than asserting, because a later `security_definer` on any one
+-- of them would silently publish the whole user directory.
+DO $$
+DECLARE n integer; v_total integer; v_west uuid;
+BEGIN
+  -- Resolved BEFORE any SET ROLE: the temp fixture table is not readable as an
+  -- application role, and reaching for it there fails for the wrong reason.
+  SELECT r_west INTO v_west FROM f;
+  SELECT count(*) INTO v_total FROM app_users;
+  PERFORM pg_temp.ok(v_total > 1, 'ADMSEC-28 the fixture holds several users, so a leak would be visible');
+
+  PERFORM pg_temp.become('clerk_eng_east');
+  SELECT count(*) INTO n FROM v_admin_users;
+  PERFORM pg_temp.ok(n = 1, 'ADMSEC-29 an engineer reads only their OWN row from the admin user view');
+  -- ...and no Region grant belonging to anybody else comes with it.
+  SELECT count(*) INTO n FROM v_admin_users
+   WHERE clerk_user_id <> 'clerk_eng_east';
+  PERFORM pg_temp.ok(n = 0, 'ADMSEC-30 no other user''s Region access leaks through the view');
+  RESET ROLE;
+
+  PERFORM pg_temp.become('clerk_view_east');
+  SELECT count(*) INTO n FROM v_admin_users;
+  PERFORM pg_temp.ok(n = 1, 'ADMSEC-31 nor for a viewer');
+  RESET ROLE;
+
+  -- The mapping queue and the data-quality counts are ordinary asset reads, so
+  -- an engineer sees their Regions and no more. A count is a disclosure too.
+  PERFORM pg_temp.become('clerk_eng_east');
+  SELECT count(*) INTO n FROM v_admin_srv_mapping_queue
+   WHERE region_id = v_west;
+  PERFORM pg_temp.ok(n = 0,
+    'ADMSEC-32 the mapping queue never shows an engineer a valve outside their Regions');
+  RESET ROLE;
+
+  PERFORM pg_temp.as_anon();
+  PERFORM pg_temp.ok(pg_temp.denied('SELECT count(*) FROM v_admin_srv_mapping_queue'),
+    'ADMSEC-33 anon reads no mapping queue');
+  PERFORM pg_temp.ok(pg_temp.denied('SELECT count(*) FROM v_admin_audit_log'),
+    'ADMSEC-34 anon reads no audit history');
+  PERFORM pg_temp.ok(pg_temp.denied('SELECT count(*) FROM v_admin_data_quality'),
+    'ADMSEC-35 anon reads no data-quality counts');
+  RESET ROLE;
 END $$;
 
 DO $$ BEGIN RAISE EXCEPTION 'RLS_SUITE_ROLLBACK'; END $$;

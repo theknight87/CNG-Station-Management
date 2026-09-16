@@ -39,7 +39,9 @@ const ROUTE_LABELS: Record<string, string> = {
   dispensers: 'Dispensers',
   storage: 'Storage',
   users: 'Users',
+  'alert-settings': 'Alert Settings',
   'data-quality': 'Data Quality',
+  'audit-log': 'Audit Log',
   import: 'Import',
 }
 

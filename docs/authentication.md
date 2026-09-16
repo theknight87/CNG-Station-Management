@@ -499,6 +499,39 @@ route entries at the top of `src/routes.tsx`. Nothing else depends on them. Keep
 | --- | --- | --- |
 | Moving authz helpers to a non-exposed schema | Prompt 22 | Supabase's linter WARNs that `cng_current_role()` and `cng_has_region_grant()` are callable by `authenticated` via `/rest/v1/rpc/`. Not exploitable: neither takes a user-supplied identity, both answer only about the caller — so a caller learns their own role and their own grant, which they may already read. Tracked, not blocking |
 | Removing `/sign-in`, `/sign-up` and `/auth-test` | before production | temporary Prompt-5 routes, kept deliberately for acceptance testing (§11) |
-| Manager access to the user directory | business decision | currently manager has none, per "limit to actual operational need" |
-| Manager managing region access | business decision | currently admin only |
+| Manager access to the user directory | business decision | currently manager has none, per "limit to actual operational need"; re-confirmed and asserted in Prompt 19 (ADMSEC-8/9) |
+| Manager managing region access | business decision | currently admin only; asserted in Prompt 19 |
+| Engineer Region-scoped mapping (D8) | Prompt 20+ | the mapping path is admin-only in Prompt 19. A SECURITY DEFINER function bypasses the RLS that would otherwise bound an engineer to their Regions, so the scope must be enforced INSIDE the function and given its own hostile pass rather than added as a clause |
 | Notification delivery (Resend, VAPID, cron) | later phases | out of scope here |
+
+
+---
+
+## 14. Privileged mutation after Prompt 19
+
+Migration **0038** changed where authorization-bearing writes happen.
+
+`authenticated` no longer holds `UPDATE (role, is_active)` on `app_users`, nor any
+INSERT/UPDATE/DELETE on `user_region_access`. Those grants existed, correctly gated by
+`cng_is_admin()` in a policy — but a policy decides WHO may write, not whether the write is
+recorded. In that shape the audit row was a separate client call, nothing protected the last
+active administrator, and a stale tab could overwrite a newer decision.
+
+Every such change now goes through a `SECURITY DEFINER` function with a pinned `search_path`,
+**no user-supplied identity parameter**, and `EXECUTE` granted to `authenticated` only:
+
+| Function | What it changes |
+| --- | --- |
+| `cng_admin_set_user_role` | `app_users.role` |
+| `cng_admin_set_user_active` | `app_users.is_active` |
+| `cng_admin_grant_region` / `cng_admin_revoke_region` | `user_region_access` |
+| `cng_admin_set_alert_rule_enabled` | `alert_rules.is_enabled` only |
+| `cng_admin_map_srv` | SRV Station / Unit / equipment parent |
+
+Each verifies `cng_require_admin()` before reading any argument, derives the actor from the
+verified Clerk subject, checks the caller's `updated_at` precondition, and writes the audit row
+in the same statement. **Being callable is not being permitted** — the same posture
+`cng_acknowledge_alert` has held since Prompt 15.
+
+The consequence worth stating plainly: **not even an administrator may change a role or a Region
+grant directly any more.** An unaudited privilege change is no longer expressible from a browser.

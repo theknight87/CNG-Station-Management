@@ -1,37 +1,73 @@
-import { PermissionDenied } from '@/components/states/AppStates'
-import { NotImplemented } from '@/components/states/AppStates'
+import { NavLink, Outlet } from 'react-router-dom'
+
 import { PageContainer, PageHeader } from '@/components/layout/PageContainer'
+import { PermissionDenied } from '@/components/states/AppStates'
 import { useAppUser } from '@/hooks/useAppUser'
+import { cn } from '@/lib/utils'
 
 /**
- * Admin landing.
+ * The Admin workspace.
  *
- * Non-admins reach a PERMISSION state, not an empty page and not a redirect.
- * This is UX: the database refuses the underlying reads regardless (CLAUDE.md
- * §10), and this screen exists so a user understands WHY they see nothing
- * rather than assuming the system is broken.
+ * Sections are NESTED ROUTES, not local tab state, so each one is deep-linkable
+ * and the Back button behaves.
+ *
+ * THE ROLE CHECK HERE IS UX. It exists so a non-admin who reaches this URL reads
+ * why the screen is empty instead of assuming the product is broken. It is not
+ * the protection: migration 0038 revoked the underlying grants, and every
+ * privileged mutation is an admin-gated SECURITY DEFINER function, so a user who
+ * edits this component out of the bundle gains exactly nothing.
  */
+const SECTIONS = [
+  { to: '/admin/users', label: 'Users' },
+  { to: '/admin/alert-settings', label: 'Alert Settings' },
+  { to: '/admin/data-quality', label: 'Data Quality' },
+  { to: '/admin/audit-log', label: 'Audit Log' },
+]
+
 export function AdminView() {
   const appUser = useAppUser()
   const role = appUser.status === 'active' ? appUser.user.role : null
+
+  if (role !== 'admin') {
+    return (
+      <PageContainer>
+        <PageHeader
+          title="Admin"
+          description="Users, region access, alert settings and the data-quality workflow."
+        />
+        <PermissionDenied
+          what="administration"
+          detail="Administration covers users, region access, alert settings and mapping resolution. It is restricted to administrators, and the database enforces that independently of what this screen shows."
+        />
+      </PageContainer>
+    )
+  }
 
   return (
     <PageContainer>
       <PageHeader
         title="Admin"
-        description="Users, region access, imports and the data-quality workflow."
+        description="Users, region access, alert settings, the data-quality workflow and the audit log."
       />
-      {role === 'admin' ? (
-        <NotImplemented
-          feature="Administration"
-          phase="planned for Prompts 10-14 and 21 — users and region access, station alias confirmation, the SRV mapping queue, and the controlled import"
-        />
-      ) : (
-        <PermissionDenied
-          what="administration"
-          detail="Administration covers users, region access, imports and data-quality resolution. It is restricted to administrators, and the database enforces that independently of what this screen shows."
-        />
-      )}
+      <nav aria-label="Admin sections" className="flex flex-wrap gap-1 border-b">
+        {SECTIONS.map((section) => (
+          <NavLink
+            key={section.to}
+            to={section.to}
+            className={({ isActive }) =>
+              cn(
+                'border-b-2 px-2 py-1 text-sm',
+                isActive
+                  ? 'border-[--brand-strong] font-medium text-[--brand-strong]'
+                  : 'border-transparent text-muted-foreground hover:text-foreground',
+              )
+            }
+          >
+            {section.label}
+          </NavLink>
+        ))}
+      </nav>
+      <Outlet />
     </PageContainer>
   )
 }
