@@ -435,6 +435,23 @@ precedence UI. **One migration, 0036** — additive; the two delivery claim func
 recreated only because PostgreSQL cannot widen a RETURNS TABLE in place, and both stay
 `service_role` only. Live verification is UNCHANGED and nothing new is claimed as live-verified.*
 
+***PROMPTS 16-18 ARE DEPLOYED (Prompt 16-18A)** — see `docs/alerts-notifications.md` §27.
+Production: **36 migrations**, `send-notifications` **v5** ACTIVE, `generate-alerts` NOT
+redeployed (the reconciliation changed no file under it). Migration 0036 verified IN PRODUCTION by
+query: `cng_mark_all_alerts_read` exists with `prosecdef = false` (**SECURITY INVOKER preserved**)
+and `authenticated`-only grants, both claim functions remain `service_role` ONLY, 0 `authenticated`
+UPDATE columns on `alerts`, 0 public tables without RLS. Both widened claim functions were
+EXECUTED against the real schema (0 rows, no state change) so the new SQL is proven to run in
+production, not only in replay. **CNG_APP_URL IS NOT VERIFIED, and a controlled test email would
+NOT verify it**: test mode sends a FIXED body, while the deep link is built by `alertEmail()` in
+QUEUE mode only, and production holds 0 alerts and 0 preferences, so no queue email exists without
+fabricating an alert. NO EMAIL WAS SENT and NO PUSH WAS SENT. The push subscription is intact
+(1 active, failure_count 0). **THE FRONTEND IS DEPLOYED BUT NOT VERIFIED**: this environment is
+403-blocked at CONNECT for `cng-station-management.pages.dev`, so the bell, unread count,
+mark-all-as-read, `/settings` preferences and push enable/disable are TEST VERIFIED ONLY and need
+owner browser verification. Three words are kept strictly apart in the docs: TEST VERIFIED,
+DEPLOYED, LIVE VERIFIED.*
+
 *Notification delivery (Prompt 15.1) is built: migration **0034** plus the `send-notifications`
 Edge Function and a Web Push opt-in — see `docs/alerts-notifications.md` §17. The
 Alert/Delivery separation is unchanged and now asserted: a delivery failure leaves the alert

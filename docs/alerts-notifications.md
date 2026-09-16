@@ -1040,3 +1040,77 @@ legible, and half-building that would be worse than the current honest scope.
 
 Deferred and unchanged: production recipient policy, bulk acknowledge (deliberately never
 offered), resolve/suppress actions, mapping mutation, and the 1,104 staged Prompt-21 blocker rows.
+
+## 27. Prompt 16-18A — production deployment
+
+### 27.1 Three different words, kept apart
+
+This section uses them strictly. **TEST VERIFIED** = covered by the automated suite only.
+**DEPLOYED** = present and running in production. **LIVE VERIFIED** = someone or something
+actually exercised it against production and observed the result.
+
+### 27.2 Database — DEPLOYED and LIVE VERIFIED
+
+Migration **0036** applied to `cng-station-management` (`ypkggegquetvpsflkaxg`, org
+`hlzsgygfczzdubcvmkjh`), taking production from **35 to 36** migrations. Verified by query
+afterwards, not inferred:
+
+| Check | Result |
+| --- | --- |
+| `cng_mark_all_alerts_read` exists | yes |
+| its `prosecdef` | **false — SECURITY INVOKER preserved** |
+| its grants | `authenticated` only; `anon` false; `service_role` false |
+| `cng_next_pending_deliveries` / `_push_deliveries` | `service_role` **only**; `authenticated` and `anon` false |
+| `search_path` pinned on all three | yes |
+| `authenticated` UPDATE columns on `alerts` | **0** (the 0033 fix still holds) |
+| public tables without RLS | **0** |
+| notification-table RLS policies | 8 |
+
+Both widened claim functions were then **executed against the real schema** — zero pending
+deliveries, so no rows and no state change, but it proves the new SQL parses, plans and runs in
+production rather than only in a replay database.
+
+### 27.3 Edge Functions — DEPLOYED
+
+`send-notifications` → **version 5, ACTIVE**, `verify_jwt = false`. An unauthenticated POST from
+inside the hosted database answered a clean **401**, which proves the new bundle boots and
+resolves `../_shared/webpush.ts`. `generate-alerts` was **not** redeployed: the reconciliation
+changed no file under it, and redeploying an unchanged function only adds risk.
+
+### 27.4 CNG_APP_URL — NOT VERIFIED, and a test email would not verify it
+
+The variable is read after the invoke-secret check, so it cannot be probed without the secret —
+the same deliberate ordering that stops an unauthenticated caller enumerating configuration.
+
+**More importantly, a controlled test email would not exercise it.** Test mode sends a fixed
+`[TEST] … Notification Verification` body; the deep link is built by `alertEmail()`, which runs
+only in **queue** mode against a real alert. Production currently holds **0 alerts and 0
+notification preferences**, so no queue email can be produced without fabricating an alert —
+which is forbidden.
+
+**No email was sent.** Sending one would have consumed the owner's verified transport to prove
+nothing. The deep-link path is TEST VERIFIED in code and will be LIVE VERIFIED the first time a
+real alert is delivered by email.
+
+### 27.5 Frontend — DEPLOYED, NOT VERIFIED
+
+`main` was pushed, which triggers the existing Cloudflare Pages project. **No second Pages
+project was created.** This environment answers 403 at CONNECT for `cng-station-management.pages.dev`,
+so the build result and every browser behaviour are outside what can be checked from here.
+
+These are **TEST VERIFIED only** and need the owner in a browser: the notification bell renders,
+the unread count is correct, `/alerts` renders, **Mark all as read** works, `/settings`
+preferences render and save, and push Enable/Disable behaves — plus no new console errors.
+
+### 27.6 Web Push — subscription intact after deployment
+
+`push_subscriptions`: **1 active, `failure_count` 0**. The reconciliation did not regress
+subscription handling. **No push was sent**: nothing in this deployment changed the send path's
+behaviour, only the message text, and the existing subscription's health is observable without
+disturbing it.
+
+### 27.7 Production state
+
+36 migrations · `send-notifications` v5 · `generate-alerts` v3 · cron `cng-generate-alerts` live ·
+alerts 0 · deliveries 0 · preferences 0 · active push subscriptions 1 · business date
+2026-09-16 (Africa/Cairo). `pg_net` was enabled for the boot probe and **dropped again**.
