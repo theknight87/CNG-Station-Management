@@ -713,7 +713,9 @@ CLAUDE.md, architecture, file structure, risks. No code.
 
 **Phase 1 — Foundation**
 Vite/React/TS scaffold, Tailwind + shadcn/ui, React Router shell, Cloudflare Pages project
-and first deploy of an empty shell. New Supabase organization and project created. New Clerk
+and first deploy of an empty shell. **CORRECTION (Prompt 15.2A): the Cloudflare Pages project
+was never created.** The scaffold, Supabase project and Clerk application were; the hosting half
+of this phase was not, and nothing has ever been deployed. See `docs/deployment-cloudflare.md`. New Supabase organization and project created. New Clerk
 application created and wired; protected routes working. `.env.example` written.
 
 **Phase 2 — Core schema and RLS**

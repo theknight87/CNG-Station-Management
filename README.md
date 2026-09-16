@@ -18,7 +18,7 @@ its safety-critical components — notably Safety Relief Valves (SRVs).
 | Authentication | Clerk — app `CNG Station Management` *(wired in a later phase)* |
 | Database | Supabase PostgreSQL — project `cng-station-management` *(no tables yet)* |
 | Authorization | Supabase Row Level Security |
-| Hosting | Cloudflare Pages — project `cng-station-management` |
+| Hosting | Cloudflare Pages — project `cng-station-management` *(**NOT YET CREATED** — no CNG Pages project exists; see `docs/deployment-cloudflare.md`)* |
 | Email | Resend |
 | Web Push | standard Web Push with this project's own VAPID keys |
 | Scheduling | Supabase Cron + Edge Functions |

@@ -339,6 +339,23 @@ inlined by Vite at build time, so the Cloudflare Pages variable requires a REDEP
 `efares0@gmail.com` stays test-only — it appears in no migration, view, default, seed or frontend
 file.*
 
+*CORRECTION (Prompt 15.2A) — **there is no CNG Cloudflare Pages project, and this application has
+never been deployed anywhere.** Prompt 15.2's statement that `VITE_VAPID_PUBLIC_KEY` was "set in
+Cloudflare Pages" and that only a redeploy remained was FALSE: I could not see Cloudflare (403 at
+CONNECT, no tooling) and inferred the project existed. The account holds exactly one Pages project,
+`cargas-coding-system` → `coding-system-new.pages.dev`, which is the separate Coding System and
+must never be modified, inspected, copied from or attached to. `docs/architecture.md` Phase 1 is
+corrected too: the scaffold, Supabase project and Clerk application were created; the Pages project
+never was. Settings for the new isolated project were determined by READING the repository and
+running a clean build (exit 0), not guessed — npm, `npm run build` (`tsc -b && vite build`, the
+typecheck stays), output `dist`, `NODE_VERSION=22` because Vite 8 needs Node >=20.19/22.12, and SPA
+routing already handled by `public/_redirects` which Vite copies into `dist` (so NO Cloudflare-side
+rewrite rule is to be added). Only the four `VITE_*` publishable values plus `NODE_VERSION` go to
+Cloudflare; VAPID private, Resend, invoke secret, test recipient, Clerk secret and the service-role
+key never do — a static build inlines whatever it is given, so "encrypted" there is not private.
+Full instructions: `docs/deployment-cloudflare.md`. Cloudflare is NOT LIVE VERIFIED and must not be
+marked so until the independent project exists and has deployed.*
+
 *Notification delivery (Prompt 15.1) is built: migration **0034** plus the `send-notifications`
 Edge Function and a Web Push opt-in — see `docs/alerts-notifications.md` §17. The
 Alert/Delivery separation is unchanged and now asserted: a delivery failure leaves the alert

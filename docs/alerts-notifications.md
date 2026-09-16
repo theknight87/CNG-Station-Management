@@ -399,7 +399,7 @@ policy, not a defect: verify a sending domain in Resend, or send to the account 
 | Key | Where it belongs | Status |
 | --- | --- | --- |
 | **private** | Supabase Edge Function secret `VAPID_PRIVATE_KEY` | configured by the user; **never** in `VITE_*`, source, bundle, or browser storage — scan confirms it appears in no frontend file |
-| **public** | `VITE_VAPID_PUBLIC_KEY`, compiled into the bundle **by design** | **still to be set in Cloudflare Pages** |
+| **public** | `VITE_VAPID_PUBLIC_KEY`, compiled into the bundle **by design** | **has nowhere to be set yet — no CNG Cloudflare Pages project exists** (§22) |
 
 The browser needs the public key to create a subscription, so it is browser-visible and that is
 correct. It is read at call time, so a deployment that omits it reports "Push notifications are
@@ -411,9 +411,10 @@ environment deliberately never do. The user generated both halves together as a 
 pair; if push later fails with a `403`/`VapidPkHashMismatch` from the push service, a mismatched
 pair is the first thing to check.
 
-**To finish Web Push:** in Cloudflare Pages → project `cng-station-management` → Settings →
-Environment variables, add `VITE_VAPID_PUBLIC_KEY` (Production, and Preview if used) with the
-public half, then redeploy so Vite bakes it into the bundle. Do not paste either key into chat.
+**To finish Web Push:** the CNG Cloudflare Pages project must be **created first** — it does not
+exist (§22, and `docs/deployment-cloudflare.md`). Only then can `VITE_VAPID_PUBLIC_KEY` be added
+(Production, and Preview if used) and the site built, so Vite bakes the public half into the
+bundle. Do not paste either key into chat.
 
 ### Live push status
 
@@ -462,7 +463,7 @@ filtering.
 | Item | Why | Owner |
 | --- | --- | --- |
 | The one controlled test email | implementation complete and **deployed**; the build environment still denies egress to `api.resend.com`, and sending requires presenting `CNG_ALERT_INVOKE_SECRET`, which is deliberately never read here (§21) | user runs the documented curl |
-| Live Web Push | implementation complete; `VITE_VAPID_PUBLIC_KEY` is set in Cloudflare Pages but Vite bakes `VITE_*` at BUILD time, so a redeploy is required, then a real browser opt-in (§21) | user configuration |
+| Live Web Push | implementation complete, but **there is no deployed site at all**: the CNG Cloudflare Pages project has never been created (§22) | user creates the Pages project |
 | Verified Resend sending domain | without one, Resend permits sending only to the account owner | user configuration |
 | External recipient automation | no recipient policy exists; nobody is subscribed silently | a later prompt |
 | Bulk read / acknowledge | would need server-side re-authorization of every id and partial-failure reporting | a later prompt |
@@ -552,20 +553,19 @@ already recorded in §17. Its recipient still resolves **server-side** from
 default, no seed and no frontend file — verified by repository search — and no recipient policy was
 created from it.
 
-### 21.6 Web Push — a build-time gap, stated precisely
+### 21.6 Web Push — SUPERSEDED BY §22
 
-`VITE_VAPID_PUBLIC_KEY` is now set in Cloudflare Pages. **Vite inlines `VITE_*` values at BUILD
-time, not at run time**, so a deployment produced before the variable existed does not contain it
-and will keep reporting "Push notifications are not configured for this deployment". The required
-action is one **redeploy** of the Cloudflare Pages project `cng-station-management` (Deployments →
-Retry deployment / redeploy the production branch), after which `/alerts` → **Enable
-notifications** → accept the browser prompt completes the subscription. No Cloudflare API access is
-available from this environment and no DNS or unrelated Cloudflare setting was touched.
+This section originally reported that `VITE_VAPID_PUBLIC_KEY` had been set in Cloudflare Pages and
+that only a redeploy remained. **That was wrong, and §22 corrects it.** No CNG Cloudflare Pages
+project exists, so there was no project on which the variable could have been set and nothing to
+redeploy. The build-time fact itself still holds — Vite inlines `VITE_*` at build time, not run
+time — but it is not the blocker. The blocker is that the application has never been deployed.
 
-A real browser subscription remains **unverified**: headless Chromium reports
-`Notification.permission === 'denied'` and ignores Playwright's `grantPermissions` for
-notifications. That limitation is asserted explicitly in the suite rather than worked around, and
-the granted path is covered by unit tests. **No push message was sent, and none was claimed.**
+A real browser subscription remains **unverified** for a second, independent reason: headless
+Chromium reports `Notification.permission === 'denied'` and ignores Playwright's
+`grantPermissions` for notifications. That limitation is asserted explicitly in the suite rather
+than worked around, and the granted path is covered by unit tests. **No push message was sent, and
+none was claimed.**
 
 ### 21.7 Supabase security advisors
 
@@ -597,3 +597,84 @@ Run directly, exit code taken as the verdict, no output filtered:
 | build / lint / tests / brand | exit 0 | **exit 0** | PASS |
 
 No count decreased. Prompt 15.2 changed no application code, so equality is the expected result.
+
+## 22. CORRECTION — there is no CNG Cloudflare Pages project (Prompt 15.2A)
+
+### 22.1 What was wrong
+
+Prompt 15.2 reported that `VITE_VAPID_PUBLIC_KEY` was "set in Cloudflare Pages" and that Web Push
+needed only "one redeploy". **Both statements were false.** The user's Cloudflare account contains
+exactly one Pages project — `cargas-coding-system` → `coding-system-new.pages.dev`, fed by
+`theknight87/coding-system-new` — and that is the **separate Coding System application**, which
+this project must never touch.
+
+I could not see Cloudflare from this environment (`api.cloudflare.com` answers **403 at CONNECT**,
+re-checked, and no Cloudflare tooling is connected), so I took the user's report that a variable
+had been added and assumed the project it would have been added to existed. That was an inference
+presented as a verified fact, which is exactly what §7a of CLAUDE.md exists to prevent. The error
+is recorded here rather than quietly edited away.
+
+**The correct state: CNG Station Management has never been deployed anywhere.** There is no
+`*.pages.dev` URL, no production build of this application in existence, and consequently no
+frontend that could hold the VAPID public key, reach Clerk, or reach Supabase.
+
+This also corrects `docs/architecture.md`, whose Phase 1 claimed a "Cloudflare Pages project and
+first deploy of an empty shell". The scaffold, the Supabase project and the Clerk application were
+created in that phase. **The hosting half never was.**
+
+### 22.2 Isolation
+
+`cargas-coding-system` was not inspected, modified, redeployed, copied from, or attached to
+anything. Its environment variables, secrets, build settings, domains and VAPID keys are
+irrelevant to this project and were not read. CNG Station Management requires its **own** Pages
+project, and the repository confirms no coupling exists: a search of `src/`, `public/`,
+`supabase/` and `index.html` finds **no reference to the Coding System** of any kind.
+
+### 22.3 Deployment settings — determined from the repository, not guessed
+
+Verified by reading `package.json`, `vite.config.ts` and `public/`, and by running a clean
+production build (`rm -rf dist && npm run build`, **exit 0**):
+
+| Setting | Value | Evidence |
+| --- | --- | --- |
+| Package manager | **npm** | `package-lock.json` is the only lockfile |
+| Build command | **`npm run build`** | = `tsc -b && vite build`; the typecheck is part of the build and must stay |
+| Output directory | **`dist`** | Vite default, unchanged in `vite.config.ts`; confirmed by the build |
+| Production branch | **`claude/stoic-noether-tu4jpm`** | the designated development branch |
+| Node version | **`NODE_VERSION = 22`** | Vite 8 requires Node `^20.19 \|\| >=22.12`; pin it rather than inherit a stale default |
+| SPA routing | **already handled in the repository** | `public/_redirects` contains `/*  /index.html  200` and Vite copies it to `dist/_redirects` — verified in the build output. **No Cloudflare-side rewrite rule is needed, and none should be added.** |
+| Root directory | repository root | no monorepo |
+
+### 22.4 Public frontend variables — and what must never go there
+
+`VITE_*` values are compiled into the bundle and are readable by anyone who loads the site. Only
+publishable identifiers belong there. Exactly four are referenced by the source
+(`grep import.meta.env src/`):
+
+| Variable | Why it is browser-safe |
+| --- | --- |
+| `VITE_CLERK_PUBLISHABLE_KEY` | Clerk publishable key (`pk_...`) |
+| `VITE_SUPABASE_URL` | must be the CNG project `ypkggegquetvpsflkaxg` |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | publishable, RLS-governed; authorization lives in the database |
+| `VITE_VAPID_PUBLIC_KEY` | the public half of the pair, by design |
+
+**Never placed in Cloudflare:** `VAPID_PRIVATE_KEY`, `RESEND_API_KEY`, `CNG_ALERT_INVOKE_SECRET`,
+`CNG_ALERT_TEST_RECIPIENT`, the Clerk secret key, the Clerk webhook signing secret, or the
+Supabase service-role key. Those are Supabase Edge Function secrets and stay server-side. A
+"secret" Cloudflare Pages variable does not change this: if the build inlines it into the bundle
+it is public regardless of how it was stored.
+
+### 22.5 Status — NOT deployed, NOT verified
+
+No Cloudflare change was made, because none could be made safely or at all. Every item below is
+**PENDING**, not failed, and none may be marked LIVE VERIFIED until the independent project
+exists and has deployed successfully:
+
+| Item | Status |
+| --- | --- |
+| CNG Cloudflare Pages project exists | **NO** |
+| `*.pages.dev` URL | **none** |
+| SPA routing at `/`, `/dashboard`, `/alerts`, `/regions` | **unverified against a deployment** (`_redirects` is correct in the build output) |
+| Clerk auth against the CNG application | **unverified** |
+| Frontend talks only to `ypkggegquetvpsflkaxg` | **unverified live**; it is what `VITE_SUPABASE_URL` will select, and no other project is referenced in the source |
+| No Coding System dependency | **verified in the repository** (no reference found); unverified live, there being nothing live |
