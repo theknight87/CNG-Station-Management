@@ -765,3 +765,112 @@ an existing subscription.
 **No push message has ever been delivered end to end.** This fix makes subscribing work; sending is
 a separate layer that remains architected but unsent (§17, §21.5), and the one controlled test
 email is still outstanding.
+
+## 24. Prompt 15.3 — server-side Web Push delivery
+
+### 24.1 It extends the existing system; it does not sit beside it
+
+`web_push` has been a value of `notification_channel` since migration **0001**, and
+`push_subscriptions` has existed since **0009**. `cng_enqueue_alert_deliveries` and
+`cng_record_delivery_result` (0034) are channel-agnostic and are **reused unchanged**. Email and
+Web Push are therefore two channels of one delivery system: same alerts, same
+`notif_delivery_uq (alert_id, app_user_id, channel)` dedupe, same five-attempt cap, same
+Alert/Delivery separation. The request's `channel` defaults to `email`, so every caller written
+before this prompt behaves exactly as it did.
+
+### 24.2 Why the crypto is hand-written
+
+`supabase/functions/_shared/webpush.ts` implements RFC 8291 (aes128gcm) and RFC 8292 (VAPID) on
+`crypto.subtle` alone — no Node API, no Deno API, no network, no dependency. Two reasons, in
+order: the usual libraries assume Node's `crypto` module, and a self-contained module can be
+**unit-tested in this repository's ordinary test run**, which a remote import cannot be. It never
+reads an environment variable, never logs, and never touches the database.
+
+### 24.3 Security model
+
+| Property | How it holds |
+| --- | --- |
+| Signing is server-side only | `VAPID_PRIVATE_KEY` is an Edge Function secret, read once to sign, never returned, logged, persisted or included in an error. A test asserts it appears nowhere in the request. |
+| The frontend holds only the public half | unchanged from Prompt 15.1: `VITE_VAPID_PUBLIC_KEY` is browser-visible by design. **The pair was NOT regenerated.** |
+| No caller-supplied destination | the request body has no endpoint, user or message parameter on either channel. Queue targets come from delivery rows built from opted-in preferences; test targets come from the configured test user's own subscriptions. |
+| No browser role can send | all four new functions are `service_role` only. `authenticated` and `anon` — **administrators included** — are denied (`WPUSH-1`…`WPUSH-10`). |
+| One user cannot reach another's subscription | `cng_save_push_subscription` still takes no user parameter; `cng_test_push_targets` resolves by the configured address alone (`WPUSH-18`). |
+| The sender's own reach is minimal | `service_role` holds **no SELECT on `push_subscriptions`** — it can only act through the four narrow functions (`WPUSH-11`). |
+| Opt-in preserved | permission is still requested only from an explicit click; nothing subscribes anyone. |
+
+Every new function is `SECURITY DEFINER` with `SET search_path = pg_catalog, public`, `REVOKE ALL
+... FROM PUBLIC`, and `GRANT EXECUTE ... TO service_role` only.
+
+**`cng_test_push_targets(p_email)` takes an address, which deserves a word.** It is not a
+caller-chosen destination: no browser role may execute it, and its only caller passes
+`CNG_ALERT_TEST_RECIPIENT` from the Edge Function's own environment. A request cannot influence
+the value, so it cannot be used to probe whether an address has an account or to enumerate
+endpoints.
+
+### 24.4 Stale versus transient — the distinction that protects real users
+
+| Push service says | Action |
+| --- | --- |
+| **404 / 410** | the endpoint is gone. `cng_deactivate_push_subscription` sets `is_active = false`. **Soft, never a DELETE** (CLAUDE.md §10) — the owner keeps the record. |
+| 429, 5xx, timeout, network error | transient. `failure_count` increments and **nothing else**. The subscription stays active. |
+| success | `last_success_at` set and `failure_count` reset to 0. |
+
+`cng_record_push_endpoint_result` is *structurally incapable* of deactivating, so a push service
+having a bad minute can never silently unsubscribe a user (`WPUSH-12`). Deactivating one endpoint
+leaves that user's other browsers alone (`WPUSH-16`).
+
+### 24.5 One delivery, many browsers
+
+An email recipient has one address; a push recipient has one subscription **per browser**. The
+delivery contract stays one row per user per alert, so `cng_next_pending_push_deliveries`
+aggregates that user's active subscriptions into a single row. The existing
+`cng_next_pending_deliveries` LEFT JOINs `push_subscriptions` and would emit one row per browser —
+claiming and counting the same delivery twice — which is precisely why web_push gets its own claim
+function rather than a widened shared one. **Reached on at least one device counts as delivered.**
+No live browser records `skipped`, so it is not retried forever, and the alert is untouched.
+
+### 24.6 Retry and dedupe, unchanged
+
+`FOR UPDATE SKIP LOCKED`, `attempt_count < 5`, and a retry that targets the **same** delivery row.
+A failed push leaves the alert open, un-acknowledged, un-deleted and un-duplicated
+(`WPUSH-21`…`WPUSH-23`), and email for the same alert remains a separate delivery (`WPUSH-24`).
+Acknowledgement semantics are untouched.
+
+### 24.7 The controlled test
+
+`POST {"mode":"test","channel":"web_push"}` — the invoke secret is still required, and the body
+still names nothing. It resolves the configured test user's own opted-in subscriptions, sends
+**"CNG Station Management" / "Web Push delivery test successful."**, and a click opens `/alerts`.
+It creates **no alert and no delivery row** — a test is a test, not an operational record — and
+mutates no real alert. With no subscription it answers `409 no_active_subscription` rather than
+inventing a destination. The payload carries `test: true`, so `sw.js` gives it its own
+notification tag and it never collapses onto a real alert.
+
+### 24.8 One new Edge Function secret is required
+
+The function needs the **public** key to build the `k=` parameter and to import the signing key:
+
+| Name | Value |
+| --- | --- |
+| `VAPID_PUBLIC_KEY` | the same public half already in Cloudflare as `VITE_VAPID_PUBLIC_KEY` |
+| `CNG_VAPID_SUBJECT` | *optional*; defaults to `mailto:$CNG_ALERT_FROM_EMAIL` |
+
+This is not a secret — it is browser-visible by design — but the Edge runtime has no access to the
+Cloudflare build variable, so it must be set on the Supabase side too. Without it the function
+answers `503 web_push_not_configured` and sends nothing.
+
+### 24.9 Service worker
+
+Reviewed as required. `skipWaiting()` / `clients.claim()` from Prompt 15.2B are **retained**,
+because the worker still caches nothing and intercepts no fetch — the only condition under which
+early takeover is safe. The single change is the test notification tag. The 15.2B lifecycle
+regression tests remain in place and still pass.
+
+### 24.10 What is NOT verified
+
+**No push message has ever been delivered to a real push service.** The tests prove the
+implementation is self-consistent — a message it encrypts decrypts back with the subscription's own
+private key, the RFC 8291 header layout is correct, and the VAPID signature verifies against the
+public key — but a round trip against my own implementation cannot prove Google's or Mozilla's push
+service accepts the bytes. **That is exactly what the live test is for, and nothing here stands in
+for it.** The function was deliberately **not deployed**: this change is for review first.

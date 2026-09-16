@@ -1996,5 +1996,192 @@ BEGIN
   RESET ROLE;
 END $$;
 
+-- ===========================================================================
+-- WEB PUSH DELIVERY (migration 0035).
+--
+-- The whole security argument for server-side push is that NO browser role can
+-- reach any of it. If a signed-in user could execute these, they could
+-- enumerate other users' endpoints and key material, or send to them.
+-- ===========================================================================
+DO $$
+DECLARE n integer;
+BEGIN
+  ---------------------------------------------------------------- authenticated
+  PERFORM pg_temp.become('clerk_eng_east');
+  PERFORM pg_temp.ok(pg_temp.denied($q$SELECT cng_next_pending_push_deliveries(10)$q$),
+    'WPUSH-1 a signed-in user cannot claim push deliveries or read endpoint key material');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$SELECT cng_test_push_targets('admin@example.test')$q$),
+    'WPUSH-2 a signed-in user cannot look up another user''s push targets');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$SELECT cng_deactivate_push_subscription('https://push.test/eng-east')$q$),
+    'WPUSH-3 a signed-in user cannot deactivate a subscription out of band');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$SELECT cng_record_push_endpoint_result('https://push.test/eng-east', false)$q$),
+    'WPUSH-4 a signed-in user cannot forge a delivery outcome');
+  RESET ROLE;
+
+  ----------------------------------------------------------------------- admin
+  -- Being an administrator is not a sending capability.
+  PERFORM pg_temp.become('clerk_admin');
+  PERFORM pg_temp.ok(pg_temp.denied($q$SELECT cng_next_pending_push_deliveries(10)$q$),
+    'WPUSH-5 not even an ADMIN may claim push deliveries');
+  PERFORM pg_temp.ok(pg_temp.denied($q$SELECT cng_test_push_targets('admin@example.test')$q$),
+    'WPUSH-6 not even an ADMIN may resolve push targets');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$SELECT cng_deactivate_push_subscription('https://push.test/eng-east')$q$),
+    'WPUSH-7 not even an ADMIN may deactivate a subscription');
+  RESET ROLE;
+
+  ------------------------------------------------------------------------ anon
+  PERFORM pg_temp.as_anon();
+  PERFORM pg_temp.ok(pg_temp.denied($q$SELECT cng_next_pending_push_deliveries(10)$q$),
+    'WPUSH-8 anon cannot claim push deliveries');
+  PERFORM pg_temp.ok(pg_temp.denied($q$SELECT cng_test_push_targets('admin@example.test')$q$),
+    'WPUSH-9 anon cannot resolve push targets');
+  PERFORM pg_temp.ok(pg_temp.denied(
+    $q$SELECT cng_record_push_endpoint_result('https://push.test/eng-east', true)$q$),
+    'WPUSH-10 anon cannot record a push outcome');
+  RESET ROLE;
+END $$;
+
+-- The sender's own behaviour, as service_role. These are the rules that decide
+-- whether a real user silently stops receiving notifications.
+--
+-- Note the shape of every step: the CALL runs as service_role, the VERIFICATION
+-- reads as superuser. That is not test convenience — service_role holds no
+-- SELECT on push_subscriptions at all, so the sender can only ever touch
+-- subscriptions through the four narrow functions. WPUSH-11 asserts it.
+DO $$
+DECLARE
+  v_user   uuid;
+  v_other  uuid;
+  n        integer;
+  v_active boolean;
+  v_fail   integer;
+  v_email  text;
+BEGIN
+  SELECT id INTO v_user  FROM app_users WHERE clerk_user_id = 'clerk_eng_east';
+  SELECT id INTO v_other FROM app_users WHERE clerk_user_id = 'clerk_admin';
+  -- The shared fixtures carry no email, so give this persona one. It stands in
+  -- for CNG_ALERT_TEST_RECIPIENT, which in production is an Edge Function
+  -- secret and never a value from a request.
+  v_email := 'testdata-push@example.test';
+  UPDATE app_users SET email = v_email WHERE id = v_user;
+
+  INSERT INTO push_subscriptions (app_user_id, endpoint, p256dh, auth)
+  VALUES (v_user,  'https://push.test/wp-a', 'PA', 'AA'),
+         (v_user,  'https://push.test/wp-b', 'PB', 'AB'),
+         (v_other, 'https://push.test/wp-c', 'PC', 'AC');
+
+  SET LOCAL ROLE service_role;
+  PERFORM pg_temp.ok(pg_temp.denied('SELECT count(*) FROM push_subscriptions'),
+    'WPUSH-11 the SENDER role cannot read push_subscriptions directly -- only through the four functions');
+  RESET ROLE;
+
+  -- A TRANSIENT failure must never unsubscribe anyone.
+  SET LOCAL ROLE service_role;
+  PERFORM cng_record_push_endpoint_result('https://push.test/wp-a', false);
+  RESET ROLE;
+  SELECT is_active, failure_count INTO v_active, v_fail
+    FROM push_subscriptions WHERE endpoint = 'https://push.test/wp-a';
+  PERFORM pg_temp.ok(v_active AND v_fail = 1,
+    'WPUSH-12 a transient failure records itself and leaves the subscription ACTIVE');
+
+  -- A success clears the failure count rather than letting it creep upward.
+  SET LOCAL ROLE service_role;
+  PERFORM cng_record_push_endpoint_result('https://push.test/wp-a', true);
+  RESET ROLE;
+  SELECT is_active, failure_count INTO v_active, v_fail
+    FROM push_subscriptions WHERE endpoint = 'https://push.test/wp-a';
+  PERFORM pg_temp.ok(v_active AND v_fail = 0, 'WPUSH-13 a success resets the failure count');
+
+  -- 404/410 is the only path to deactivation, and it is a soft state change.
+  SET LOCAL ROLE service_role;
+  PERFORM cng_deactivate_push_subscription('https://push.test/wp-a');
+  RESET ROLE;
+  SELECT is_active INTO v_active FROM push_subscriptions WHERE endpoint = 'https://push.test/wp-a';
+  PERFORM pg_temp.ok(NOT v_active, 'WPUSH-14 a gone subscription is deactivated');
+  SELECT count(*) INTO n FROM push_subscriptions WHERE endpoint = 'https://push.test/wp-a';
+  PERFORM pg_temp.ok(n = 1, 'WPUSH-15 and is NOT deleted -- the owner keeps the record');
+
+  -- One endpoint at a time. A stale row must not take the user's other browser
+  -- down with it.
+  SELECT is_active INTO v_active FROM push_subscriptions WHERE endpoint = 'https://push.test/wp-b';
+  PERFORM pg_temp.ok(v_active,
+    'WPUSH-16 deactivating one endpoint leaves the user''s other browsers active');
+
+  -- The controlled test resolves targets from the stored account only, and
+  -- never reaches an inactive subscription or another user's.
+  SET LOCAL ROLE service_role;
+  -- Asserted by MEMBERSHIP, not by a total: this persona also owns a
+  -- subscription created earlier in the suite, and a bare count would silently
+  -- track that instead of the rule under test.
+  SELECT count(*) INTO n FROM cng_test_push_targets(v_email)
+    WHERE endpoint = 'https://push.test/wp-a';
+  PERFORM pg_temp.ok(n = 0, 'WPUSH-17 test targets exclude a DEACTIVATED endpoint');
+  SELECT count(*) INTO n FROM cng_test_push_targets(v_email)
+    WHERE endpoint = 'https://push.test/wp-b';
+  PERFORM pg_temp.ok(n = 1, 'WPUSH-17b and include the user''s live one');
+  SELECT count(*) INTO n FROM cng_test_push_targets(v_email)
+    WHERE endpoint = 'https://push.test/wp-c';
+  PERFORM pg_temp.ok(n = 0, 'WPUSH-18 test targets never include another user''s subscription');
+  SELECT count(*) INTO n FROM cng_test_push_targets('nobody@example.test');
+  PERFORM pg_temp.ok(n = 0,
+    'WPUSH-19 an address with no account resolves to nothing rather than erroring open');
+  PERFORM pg_temp.ok(pg_temp.denied($q$SELECT cng_test_push_targets('')$q$),
+    'WPUSH-20 an empty test recipient is refused');
+  RESET ROLE;
+END $$;
+
+-- A push delivery failure must leave the ALERT exactly as it was. This is the
+-- Alert/Delivery separation, asserted on the push channel.
+DO $$
+DECLARE
+  v_alert  uuid;
+  v_user   uuid;
+  v_del    uuid;
+  v_state  alert_state;
+  v_ack    uuid;
+  n        integer;
+BEGIN
+  SELECT id INTO v_user FROM app_users WHERE clerk_user_id = 'clerk_eng_east';
+  SELECT id INTO v_alert FROM alerts LIMIT 1;
+  IF v_alert IS NULL THEN
+    PERFORM pg_temp.ok(false, 'WPUSH-21 fixture alert missing');
+    RETURN;
+  END IF;
+
+  INSERT INTO notification_deliveries (alert_id, app_user_id, channel, status)
+  VALUES (v_alert, v_user, 'web_push', 'pending')
+  ON CONFLICT (alert_id, app_user_id, channel) DO UPDATE SET status = 'pending'
+  RETURNING id INTO v_del;
+
+  SET LOCAL ROLE service_role;
+  PERFORM cng_record_delivery_result(v_del, 'failed', NULL, 'webpush:http_500');
+  RESET ROLE;
+
+  SELECT state, acknowledged_by INTO v_state, v_ack FROM alerts WHERE id = v_alert;
+  PERFORM pg_temp.ok(v_state = 'open' AND v_ack IS NULL,
+    'WPUSH-21 a failed push leaves the alert open and un-acknowledged');
+  SELECT count(*) INTO n FROM alerts WHERE id = v_alert;
+  PERFORM pg_temp.ok(n = 1, 'WPUSH-22 and does not delete or duplicate it');
+
+  -- Retry targets the SAME delivery row: web_push cannot duplicate a send.
+  SELECT count(*) INTO n FROM notification_deliveries
+   WHERE alert_id = v_alert AND app_user_id = v_user AND channel = 'web_push';
+  PERFORM pg_temp.ok(n = 1,
+    'WPUSH-23 a retry updates the same delivery row rather than creating a second');
+
+  -- And email for the same alert is a SEPARATE delivery, not a shared one.
+  INSERT INTO notification_deliveries (alert_id, app_user_id, channel, status)
+  VALUES (v_alert, v_user, 'email', 'pending')
+  ON CONFLICT (alert_id, app_user_id, channel) DO NOTHING;
+  SELECT count(*) INTO n FROM notification_deliveries
+   WHERE alert_id = v_alert AND app_user_id = v_user;
+  PERFORM pg_temp.ok(n = 2,
+    'WPUSH-24 email and web_push are distinct channels for the same alert');
+END $$;
+
 DO $$ BEGIN RAISE EXCEPTION 'RLS_SUITE_ROLLBACK'; END $$;
 ROLLBACK;

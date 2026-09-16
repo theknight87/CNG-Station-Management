@@ -53,7 +53,7 @@ done
 # runs but asserts nothing (a failed connection, a renamed file, a truncated
 # run) must FAIL rather than report a cheerful zero - that is precisely the
 # silent coverage loss this gate exists to stop.
-declare -A MIN=( [schema_scenarios]=146 [rls_authorization]=277 )
+declare -A MIN=( [schema_scenarios]=146 [rls_authorization]=302 )
 
 for suite in schema_scenarios rls_authorization; do
   out="$(sudo -n -u postgres psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "supabase/tests/$suite.sql" 2>&1)"

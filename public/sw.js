@@ -47,7 +47,9 @@ self.addEventListener('push', (event) => {
       icon: '/brand/favicon-96.png',
       badge: '/brand/favicon-96.png',
       // Collapse repeats for the same alert instead of stacking duplicates.
-      tag: payload.alert_id || 'cng-alert',
+      // A delivery TEST gets its own tag so it never collapses onto, or
+      // replaces, a real alert notification.
+      tag: payload.test ? 'cng-delivery-test' : payload.alert_id || 'cng-alert',
       data: { url: payload.url || '/alerts' },
       // No vibration and no requireInteraction: a due date is a scheduling
       // fact, not an emergency, and the UI must not imply otherwise.

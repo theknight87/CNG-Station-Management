@@ -376,6 +376,27 @@ from an explicit click, `cng_save_push_subscription` still takes no user paramet
 grant was touched. The regression test was **proved to fail against the old code** before being
 accepted.*
 
+*Server-side Web Push delivery (Prompt 15.3) is built — see `docs/alerts-notifications.md` §24.
+**One migration, 0035**, adding four `service_role`-ONLY SECURITY DEFINER functions with pinned
+`search_path`. It EXTENDS the existing delivery system rather than duplicating it: `web_push` has
+been in `notification_channel` since 0001, `push_subscriptions` since 0009, and
+`cng_enqueue_alert_deliveries`/`cng_record_delivery_result` are reused UNCHANGED; the request's
+`channel` defaults to `email`, so every prior caller is unaffected. RFC 8291/8292 are implemented
+on Web Crypto alone in `supabase/functions/_shared/webpush.ts` — no dependency, no Node or Deno
+API — chosen so the crypto is UNIT-TESTABLE here, which a remote import would not be. **The VAPID
+pair was not regenerated and no Cloudflare variable was changed.** The private key is signed with
+server-side only and appears in no request, log, row or bundle (asserted). **404/410 is the ONLY
+path to deactivating a subscription**, and that is soft, never a DELETE; a transient failure
+increments `failure_count` and nothing else, so a push service having a bad minute can never
+silently unsubscribe anyone. `service_role` holds NO SELECT on `push_subscriptions` — it acts only
+through the four functions. A user with several browsers still has ONE delivery row; reached on at
+least one device counts as delivered. The controlled test creates no alert and no delivery record,
+accepts no endpoint/user/message from the caller, and answers 409 rather than inventing a
+destination. **A NEW Edge Function secret is required: `VAPID_PUBLIC_KEY`** (the public half,
+already in Cloudflare; the Edge runtime cannot read a Cloudflare build variable). **NOT LIVE
+VERIFIED: no push message has ever reached a real push service**, and the function was deliberately
+NOT deployed — this is for review first.*
+
 *Notification delivery (Prompt 15.1) is built: migration **0034** plus the `send-notifications`
 Edge Function and a Web Push opt-in — see `docs/alerts-notifications.md` §17. The
 Alert/Delivery separation is unchanged and now asserted: a delivery failure leaves the alert
@@ -462,6 +483,7 @@ These rules are permanent and apply to every future prompt.
 | 15.1 | 399 | 146 | 277 |
 | 15.2 | 399 | 146 | 277 |
 | 15.2B | 405 | 146 | 277 |
+| 15.3 | 416 | 146 | 302 |
 
 Update this table when a prompt is accepted, so the next one has a baseline to compare
 against.

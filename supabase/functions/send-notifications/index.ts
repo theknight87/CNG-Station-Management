@@ -1,10 +1,18 @@
 /**
- * Notification delivery for CNG Station Management — EMAIL (Resend).
+ * Notification delivery for CNG Station Management — EMAIL (Resend) and WEB PUSH.
  *
- * SCOPE: email only. Web Push SENDING is not implemented here; the browser
- * subscription path exists (see cng_save_push_subscription and the /alerts
- * opt-in), but nothing in this function delivers a push message. Saying so
- * plainly matters more than implying a capability that is not here.
+ * TWO CHANNELS, ONE DELIVERY SYSTEM. `email` and `web_push` are distinct values
+ * of `notification_channel` sharing the same alerts, the same delivery rows and
+ * the same dedupe/retry rules. This is not a second notification system bolted
+ * alongside the first: `cng_enqueue_alert_deliveries` and
+ * `cng_record_delivery_result` are reused unchanged for both, and the request's
+ * `channel` defaults to `email`, so every existing caller behaves exactly as
+ * before.
+ *
+ * WEB PUSH SIGNS SERVER-SIDE, ALWAYS. The VAPID private key exists only as an
+ * Edge Function secret. It is never returned, never logged, never written to a
+ * delivery row, and never present in any frontend bundle — only the PUBLIC key
+ * reaches a browser. See supabase/functions/_shared/webpush.ts.
  *
  * ARCHITECTURE, PRESERVED FROM PROMPT 15:
  *
@@ -38,9 +46,16 @@
  *    record a user can read.
  * 5. Secrets are read from Deno.env and are never logged, echoed or returned.
  *    The VAPID PRIVATE key stays here; only the PUBLIC key reaches a browser.
+ * 6. RECIPIENTS ARE NEVER NAMED BY THE CALLER, on either channel. Push
+ *    destinations come from `push_subscriptions` rows the owning user created
+ *    themselves, reached through service_role-only functions no browser can
+ *    execute. A request cannot supply an endpoint, a user id or a message body,
+ *    so holding the invoke secret still does not make this a push relay.
  */
 
 import { createClient } from '@supabase/supabase-js'
+
+import { buildPushRequest, isSubscriptionGone } from '../_shared/webpush.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
@@ -49,6 +64,13 @@ const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
 const FROM_EMAIL = Deno.env.get('CNG_ALERT_FROM_EMAIL')
 /** The ONLY address test mode may send to. Absent => test mode is disabled. */
 const TEST_RECIPIENT = Deno.env.get('CNG_ALERT_TEST_RECIPIENT')
+/** Browser-visible by design; needed here for the `k=` parameter and to import the signing key. */
+const VAPID_PUBLIC_KEY = Deno.env.get('VAPID_PUBLIC_KEY')
+/** NEVER logged, returned, or stored. Read once, used to sign, discarded. */
+const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY')
+/** RFC 8292 `sub`. Falls back to the sending identity rather than inventing one. */
+const VAPID_SUBJECT =
+  Deno.env.get('CNG_VAPID_SUBJECT') ?? (FROM_EMAIL ? `mailto:${FROM_EMAIL}` : undefined)
 
 function secretMatches(provided: string, expected: string): boolean {
   const a = new TextEncoder().encode(provided)
@@ -152,6 +174,115 @@ async function sendEmail(
   return { ok: true, id }
 }
 
+
+/* -------------------------------------------------------------------------- *
+ * WEB PUSH
+ * -------------------------------------------------------------------------- */
+
+interface PushTarget { endpoint: string; p256dh: string; auth: string }
+
+/** Plain, factual notification content. Mirrors the email wording. */
+function alertPush(row: Record<string, unknown>): { title: string; body: string } {
+  const subj = SUBJECT_TEXT[String(row.subject)] ?? String(row.subject)
+  const when = THRESHOLD_TEXT[String(row.threshold)] ?? String(row.threshold)
+  const where = row.station_name ? ` at ${row.station_name}` : ''
+  return {
+    title: 'CNG Station Management',
+    body: `${subj}${where} ${when}. Due ${row.due_date}.`,
+  }
+}
+
+/**
+ * Send one message to one endpoint.
+ *
+ * Returns `gone` separately from `failed` because the two mean different
+ * things: `gone` is the push service saying the subscription no longer exists,
+ * and only that may deactivate it. A 500, a 429 or a dropped connection says
+ * nothing about validity and must leave the subscription usable.
+ */
+async function sendPush(
+  target: PushTarget,
+  payload: { title: string; body: string; url: string; test?: boolean },
+): Promise<{ ok: true } | { ok: false; gone: boolean; error: string }> {
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY || !VAPID_SUBJECT) {
+    return { ok: false, gone: false, error: sanitizeProviderError('webpush', null, 'not_configured') }
+  }
+  let request
+  try {
+    request = await buildPushRequest(
+      target,
+      { publicKey: VAPID_PUBLIC_KEY, privateKey: VAPID_PRIVATE_KEY, subject: VAPID_SUBJECT },
+      payload,
+    )
+  } catch (e) {
+    // Construction failures name a CATEGORY, never key material. The messages
+    // webpush.ts raises are fixed tokens chosen for exactly this reason.
+    const hint = e instanceof Error ? e.message.slice(0, 40) : 'build_failed'
+    return { ok: false, gone: false, error: sanitizeProviderError('webpush', null, hint) }
+  }
+
+  let res: Response
+  try {
+    res = await fetch(request.url, { method: 'POST', headers: request.headers, body: request.body })
+  } catch {
+    return { ok: false, gone: false, error: sanitizeProviderError('webpush', null, 'unreachable') }
+  }
+  if (res.ok) return { ok: true }
+
+  const gone = isSubscriptionGone(res.status)
+  return {
+    ok: false,
+    gone,
+    // The body is NOT stored: a push service response can echo the endpoint.
+    error: sanitizeProviderError('webpush', res.status, gone ? 'subscription_gone' : undefined),
+  }
+}
+
+/**
+ * Deliver to every active browser the user has, and report whether ANY
+ * succeeded.
+ *
+ * One delivery row covers one user per alert whatever their device count, so
+ * the record reflects "this user was reached", not "this browser was". A gone
+ * endpoint is deactivated as it is found; the others are unaffected.
+ */
+async function sendPushToTargets(
+  supabase: ReturnType<typeof createClient>,
+  targets: PushTarget[],
+  payload: { title: string; body: string; url: string; test?: boolean },
+): Promise<{ delivered: number; gone: number; failed: number; lastError: string | null }> {
+  let delivered = 0
+  let gone = 0
+  let failed = 0
+  let lastError: string | null = null
+
+  for (const target of targets) {
+    const result = await sendPush(target, payload)
+    if (result.ok) {
+      delivered += 1
+      await supabase.rpc('cng_record_push_endpoint_result', {
+        p_endpoint: target.endpoint,
+        p_succeeded: true,
+      })
+      continue
+    }
+    lastError = result.error
+    if (result.gone) {
+      gone += 1
+      // ONLY 404/410 reaches this call. Deactivation is soft: the row stays.
+      await supabase.rpc('cng_deactivate_push_subscription', { p_endpoint: target.endpoint })
+    } else {
+      failed += 1
+      // Records the failure WITHOUT deactivating.
+      await supabase.rpc('cng_record_push_endpoint_result', {
+        p_endpoint: target.endpoint,
+        p_succeeded: false,
+      })
+    }
+  }
+  return { delivered, gone, failed, lastError }
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405)
 
@@ -165,14 +296,127 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ error: 'unauthorized' }, 401)
   }
 
-  let body: { mode?: string; to?: string; limit?: number } = {}
+  let body: { mode?: string; to?: string; limit?: number; channel?: string } = {}
   try {
     body = await req.json()
   } catch {
     body = {}
   }
   const mode = body.mode === 'test' ? 'test' : 'queue'
+  // Defaults to email, so every caller written before web_push existed keeps
+  // its exact previous behaviour.
+  const channel = body.channel === 'web_push' ? 'web_push' : 'email'
 
+  const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+
+  /* ------------------------------------------------------------------ *
+   * WEB PUSH
+   * ------------------------------------------------------------------ */
+  if (channel === 'web_push') {
+    if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY || !VAPID_SUBJECT) {
+      // Fails closed, and names no value.
+      console.error('send-notifications: web push is not configured')
+      return json({ error: 'web_push_not_configured' }, 503)
+    }
+
+    if (mode === 'test') {
+      if (!TEST_RECIPIENT) return json({ error: 'test_recipient_not_configured' }, 503)
+      // The request may not choose a destination on this channel either. There
+      // is no endpoint, user or message parameter to supply: targets are looked
+      // up from the CONFIGURED test user's own opted-in subscriptions.
+      if (body.to && body.to.trim().toLowerCase() !== TEST_RECIPIENT.trim().toLowerCase()) {
+        return json({ error: 'recipient_not_permitted' }, 403)
+      }
+
+      const { data: targets, error: targetError } = await supabase.rpc('cng_test_push_targets', {
+        p_email: TEST_RECIPIENT,
+      })
+      if (targetError) {
+        console.error('send-notifications: push test target lookup failed', targetError.message)
+        return json({ error: 'target_lookup_failed' }, 500)
+      }
+      const list = (targets ?? []) as PushTarget[]
+      if (list.length === 0) {
+        // Nobody is subscribed. Stating that is the correct outcome; inventing
+        // a destination would make this a relay.
+        return json({ mode: 'test', channel, sent: false, error: 'no_active_subscription' }, 409)
+      }
+
+      const result = await sendPushToTargets(supabase, list, {
+        title: 'CNG Station Management',
+        body: 'Web Push delivery test successful.',
+        url: '/alerts',
+        // Marks the notification as a TEST for anything that inspects it. No
+        // alert row is created, so this reports no real equipment condition.
+        test: true,
+      })
+      if (result.delivered === 0) {
+        console.error('send-notifications: push test send failed')
+        return json({ mode: 'test', channel, sent: false, error: result.lastError }, 502)
+      }
+      console.log('send-notifications: push test send accepted')
+      return json(
+        { mode: 'test', channel, sent: true, delivered: result.delivered, gone: result.gone, failed: result.failed },
+        200,
+      )
+    }
+
+    const { error: pushEnqueueError } = await supabase.rpc('cng_enqueue_alert_deliveries', {
+      p_channel: 'web_push',
+    })
+    if (pushEnqueueError) {
+      console.error('send-notifications: push enqueue failed', pushEnqueueError.message)
+      return json({ error: 'enqueue_failed' }, 500)
+    }
+
+    const pushLimit = Math.min(Math.max(Number(body.limit) || 25, 1), 100)
+    const { data: pending, error: pushClaimError } = await supabase.rpc(
+      'cng_next_pending_push_deliveries',
+      { p_limit: pushLimit },
+    )
+    if (pushClaimError) {
+      console.error('send-notifications: push claim failed', pushClaimError.message)
+      return json({ error: 'claim_failed' }, 500)
+    }
+
+    let pushSent = 0
+    let pushFailed = 0
+    let pushSkipped = 0
+    for (const row of (pending ?? []) as Record<string, unknown>[]) {
+      const targets = (row.subscriptions ?? []) as PushTarget[]
+      if (targets.length === 0) {
+        // Opted in, but no live browser. Recorded as skipped so it is not
+        // retried forever, and the ALERT is untouched.
+        await supabase.rpc('cng_record_delivery_result', {
+          p_delivery_id: row.delivery_id,
+          p_status: 'skipped',
+          p_error: 'no_active_subscription',
+        })
+        pushSkipped += 1
+        continue
+      }
+      const message = alertPush(row)
+      const result = await sendPushToTargets(supabase, targets, { ...message, url: '/alerts' })
+      // Reached on at least one device counts as delivered to that user.
+      const ok = result.delivered > 0
+      await supabase.rpc('cng_record_delivery_result', {
+        p_delivery_id: row.delivery_id,
+        p_status: ok ? 'sent' : 'failed',
+        p_error: ok ? null : result.lastError,
+      })
+      if (ok) pushSent += 1
+      else pushFailed += 1
+    }
+
+    console.log(`send-notifications: push sent=${pushSent} failed=${pushFailed} skipped=${pushSkipped}`)
+    return json({ mode: 'queue', channel, sent: pushSent, failed: pushFailed, skipped: pushSkipped }, 200)
+  }
+
+  /* ------------------------------------------------------------------ *
+   * EMAIL — unchanged from Prompt 15.1.
+   * ------------------------------------------------------------------ */
   if (!RESEND_API_KEY || !FROM_EMAIL) {
     // Email specifically is unconfigured. Say so without naming values.
     console.error('send-notifications: email is not configured')
@@ -219,10 +463,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
   /* ------------------------------------------------------------------ *
    * QUEUE MODE — recipients come from the database, never from the caller.
    * ------------------------------------------------------------------ */
-  const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  })
-
   const { error: enqueueError } = await supabase.rpc('cng_enqueue_alert_deliveries', {
     p_channel: 'email',
   })
