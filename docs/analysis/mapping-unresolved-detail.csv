@@ -1,1 +1,18 @@
-staging_row_id,source_file,source_sheet,source_row,source_row_key,source_row_hash,target_table,asset_family,raw_station,normalized_station,mapping_status,batch_preparation_id,preparation_category,existing_decision,decision_stale
+# Prompt 20H — row-level traceability contract.
+# DELIBERATELY NOT POPULATED. The actionable unit today is the identity GROUP, not the row:
+# canonical stations = 0, so no mapping decision can be recorded for any individual row yet
+# (mapping-workload-summary.md section 2). Hand-transcribing 1,104 rows of Arabic identity text
+# would also risk corrupting the identity this workload exists to establish.
+# Regenerate verbatim from production, READ-ONLY, when Stage A is complete:
+#
+#   SELECT s.source_row_key, s.source_file, s.source_sheet, s.source_row, s.source_row_hash,
+#          s.target_table, s.mapping_status,
+#          s.normalized->>'source_station_name_raw' AS raw_station,
+#          cng_normalize_name(s.normalized->>'source_station_name_raw') AS normalized_station,
+#          s.normalized->>'region' AS region
+#     FROM import_staging_rows s
+#    WHERE s.import_run_id = 'cdad1e5e-7faa-4f3b-9432-12a720f3dd64'
+#      AND s.mapping_status = 'needs_station_mapping'
+#      AND s.target_table IN ('storage_vessels','recovery_tanks','gas_detectors','hoses')
+#    ORDER BY raw_station, s.target_table, s.source_row_key;
+source_row_key,source_file,source_sheet,source_row,source_row_hash,target_table,mapping_status,raw_station,normalized_station,region
