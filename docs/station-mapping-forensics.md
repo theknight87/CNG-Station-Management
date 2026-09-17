@@ -867,3 +867,102 @@ suite rather than inside `schema_scenarios.sql`. Migrations 0044-0051 byte-ident
 `needs_station_mapping` with 0/0/0 FKs, **one distinct `updated_at` and 0 rows modified since
 creation**, decisions 281, audit 284, `asset_mapping_audit` 0, aliases 0, staging 7,163,
 stations 157, units 188, the 268 quarantine intact, 0 tables without RLS.
+
+## Prompt 25I — migration 0052 deployed; production content-bound preview verified; NO commit
+
+Production went **51 -> 52**, recorded once (`20260917234508 irv_station_batch`), file SHA-256
+`828dd03a852d40b21a7ec2796c2464458e9737adfa1cfbf74e4eb6f39dcef1ae` recomputed immediately before
+transmission and matching approved commit `4abd269` byte for byte. **One naming note**: the prompt
+referred to `0052_installed_srv_station_batch.sql`; the approved file is `0052_irv_station_batch.sql`.
+The hash and the commit identify it, and both match, so it is the reviewed file.
+
+**DEPLOYMENT PROVED BYTE-EXACT.** All three bodies were hashed FROM THE APPROVED FILE BEFORE
+deploying and compared to `pg_proc.prosrc` after: candidates `45c3d2fcf5aea0bda591015b233d855d`
+(3654), preview `72fc98d8d00635c349cb95a4493ace18` (4471), commit
+`107b62f57ab5d242c14cc248b18f02ae` (5806) — all identical. **NOTHING ELSE MOVED**:
+`cng_admin_map_srv` `cb66c7f9…`, `cng_require_admin` `ff29bdea…`, `cng_normalize_name` `3c4d8a93…`
+and `cng_irv_import_commit` `f19350d3…` are bit-identical.
+
+**THE MIGRATION EXECUTES NO DML.** Machine-scanned with bodies and `--` lines stripped: **15
+statements** — 3 `CREATE OR REPLACE FUNCTION`, 3 `COMMENT`, 3 `GRANT EXECUTE`, 6 `REVOKE` — and
+ZERO INSERT/UPDATE/DELETE/TRUNCATE/ALTER/DROP/POLICY/INDEX/CONSTRAINT/CREATE TYPE, no
+`quote_ident`. (A naive `;` split reports 16 because one semicolon sits inside the commit's COMMENT
+string literal, at `'subject; it takes no actor parameter…'`; the corrected count is 15 — the same
+artefact class corrected in 24C.) Schema shape unchanged: 33 tables, 241 constraints, 70 policies,
+0 tables without RLS.
+
+**DEPLOYED SECURITY IS EXACTLY AS APPROVED**: commit SECURITY DEFINER and VOLATILE, calling
+`cng_require_admin()`; both read paths SECURITY INVOKER and STABLE, so they cannot write and RLS
+bounds them; `search_path` pinned on all three; EXECUTE **anon 0 / PUBLIC 0 / service_role 0 /
+authenticated 3** — so the batch can never be run or attributed by a machine identity; **0 actor
+parameters** on any of the three; no dynamic SQL.
+
+**DEPLOYMENT WROTE NOTHING**: Station FKs 0, ONE distinct `updated_at` with 0 rows modified since
+creation, `asset_mapping_audit` 0, `audit_logs` 284, decisions 281, aliases 0.
+
+**PRODUCTION PREVIEW FROM THE DEPLOYED FUNCTION — FINGERPRINT
+`d5a60e87ea600e7e15f29b9cad95d2668f1c500c12b0bc118322616f964f9f8d`.** This is now an EXECUTABLE
+token under the 22B rule, and it is **EXACTLY the value 25H computed analytically**, which confirms
+that inline reproduction was faithful.
+
+eligible **1,054** / identities **127** · byte-exact **839** (100 identities) · normalization-only
+**215** (27) · **127 distinct target Stations** · Delta 558 / East 283 / West 213 · no-candidate
+**1,596** · cross-Region-only **12** · multi-candidate **0** · every other exclusion class 0 ·
+**rows_that_would_get_a_unit 0** · canonical total 2,662. Sum 1,054 + 1,596 + 12 = 2,662.
+**A SECOND RUN RETURNED A BYTE-IDENTICAL ROW** — every count and the fingerprint unchanged.
+
+**EVIDENCE-CLASS SUBSETS ARE NOT SERVER-SUPPORTED, AND NO SUBSET FINGERPRINT IS OFFERED.** The
+deployed `cng_irv_station_batch_candidates()` and `cng_irv_station_batch_preview()` take **NO
+ARGUMENTS**, and the commit takes only `(fingerprint, row count, identity count, reason)` — **0
+class/mechanism/subset/selector parameters exist**. So 0052 binds the FULL 1,054-row set only. A
+BYTE_EXACT_ONLY (839/100) or NORMALIZATION_ONLY (215/27) fingerprint could only be produced by
+filtering client-side, which is NOT executable and is not presented. **0052 was not altered and no
+migration 0053 was created.**
+
+**CONTENT BINDING VERIFIED IN THE DEPLOYED BODY**: all fifteen per-SRV fields are present in the
+fingerprint expression — srv id, source key, source hash, Region, raw Station, normalized Station,
+evidence mechanism, current status, the three explicit NULL-FK markers, target Station, target
+Station Region, row version and expected resulting status — plus identity-level grouping by
+(Region, normalized identity). The commit re-derives BOTH the preview and the candidate set inside
+its own transaction. **No caller can submit a candidate list or a target Station list**: there is no
+array or list parameter anywhere.
+
+**THE 993 ONE-UNIT TRAP, RECOMPUTED AND STILL REFUSED**: eligible rows by target-Station Unit count
+are **1 Unit: 993 · 2 Units: 41 · 3 Units: 6 · 4 Units: 5 · 0 Units: 9** (= 1,054). The deployed
+preview reports `rows_that_would_get_a_unit = 0`, and the commit's UPDATE names neither `unit_id`
+nor any equipment column, so no Unit is expressible for any of them.
+
+**THE 12 CROSS-REGION ROWS ARE FIREWALLED**: 12 rows, **1 identity**, source Region **Alex**, with
+the same-named Station existing **only in West**. They carry `target_station_id` NULL and
+`evidence_mechanism` NULL, are classified `X_CROSS_REGION_ONLY`, and are therefore absent from the
+eligible set and from the fingerprint, which is built only from eligible rows. No alias was created,
+no Region altered, no West Station substituted.
+
+**RLS CONSEQUENCE (read-only, nothing changed)**: `irv_select` is
+`CASE WHEN station_id IS NOT NULL THEN cng_can_read_region(region_id) ELSE cng_can_access_unmapped_srv() END`.
+Today every one of the 2,662 takes the second branch (`cng_is_manager_or_admin()`): **Admin yes,
+Manager yes, Engineer no, Viewer no**. After a hypothetical Station-only mapping the 1,054 take the
+first branch: Admin yes, Manager yes, **Engineer and Viewer Region-scoped via
+`cng_has_region_grant`** — Station mapping alone suffices, no Unit and no RLS change needed.
+**CURRENT STATE, so this is not confused with present visibility: 1 active Admin and 0 Region
+grants**, so today nobody but that Admin sees anything either way.
+
+**BROWSER/API CONTRACT READY, BROWSER E2E STILL OWNER-PENDING**: all **45** columns
+`/manage/srvs/installed` selects exist in `v_installed_srv_management` (0 missing); the view returns
+**2,662** rows with `station_display` falling back to the raw source name on all 2,662, and
+`parent_kind`/`parent_id`/`unit_id` NULL on all. Due buckets: valid 1,735 · overdue 302 · unknown
+329 · due_60 154 · due_7 95 · due_today 39 · due_15 6 · due_30 2.
+
+**Gate exit 0**: frontend 627, schema 274, authorization 624, 52 migrations from zero, upgrade
+replay "nothing pending", report contract PASS; batch matrix **64/64**, installed-SRV import suite
+**39/39**, single-SRV mapping suite **15/15**. **One process note**: the first gate run failed
+because of a bug I introduced in `scripts/verify-all.sh` — an unmatched `0053_*.sql` glob ran the
+loop once on the literal pattern. That was my script, not the product; it now reports "nothing
+pending" via a `nullglob` guard, and the gate was re-run clean. Migrations 0044-0052 match the
+reviewed bytes.
+
+**PRODUCTION AFTER ALL PREVIEWS**: 52 migrations · 6 / 157 / 188 · installed SRVs **2,662** all
+`needs_station_mapping` with Station/Unit/equipment FKs **0/0/0** · ONE distinct `updated_at` and 0
+rows modified since creation · decisions 281 · `audit_logs` **284** · `asset_mapping_audit` **0** ·
+aliases 0 · staging 7,163 · the 268 quarantine intact · 0 tables without RLS.
+**`cng_irv_station_batch_commit` was NOT invoked in any execution context.**

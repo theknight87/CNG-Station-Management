@@ -87,21 +87,29 @@ done
 UDB="${VERIFY_UPGRADE_DB:-cng_upgrade}"
 sudo -n -u postgres psql -q -c "DROP DATABASE IF EXISTS $UDB" -c "CREATE DATABASE $UDB" >/dev/null 2>&1
 up_fail=0
-for f in $(ls supabase/migrations/*.sql | head -51); do
+for f in $(ls supabase/migrations/*.sql | head -52); do
   sudo -n -u postgres psql -d "$UDB" -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null 2>&1 \
     || { echo "BASE MIGRATION FAILED: $f"; up_fail=1; break; }
 done
 if [ $up_fail -eq 0 ]; then
-  line "production-equivalent base" "PASS (51 applied)"
-  # The upgrade path from the CURRENT production migration count. 0051 is
-  # deployed; 0052 is what this prompt adds and it is NOT yet deployed.
-  for f in supabase/migrations/0052_*.sql; do
-    if sudo -n -u postgres psql -d "$UDB" -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null 2>&1; then
-      line "upgrade $(basename "$f" .sql)" "PASS (exit 0)"
-    else
-      echo "UPGRADE FAILED: $f"; up_fail=1; fail=1; break
-    fi
-  done
+  line "production-equivalent base" "PASS (52 applied)"
+  # The upgrade path from the CURRENT production migration count. Everything in
+  # the repository is deployed, so there is nothing newer to replay. An unmatched
+  # glob must report "nothing pending", never run psql on the literal pattern.
+  shopt -s nullglob
+  pending=(supabase/migrations/0053_*.sql)
+  shopt -u nullglob
+  if [ ${#pending[@]} -eq 0 ]; then
+    line "upgrade replay" "PASS (nothing pending beyond the deployed count)"
+  else
+    for f in "${pending[@]}"; do
+      if sudo -n -u postgres psql -d "$UDB" -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null 2>&1; then
+        line "upgrade $(basename "$f" .sql)" "PASS (exit 0)"
+      else
+        echo "UPGRADE FAILED: $f"; up_fail=1; fail=1; break
+      fi
+    done
+  fi
 fi
 [ $up_fail -ne 0 ] && fail=1
 
