@@ -1454,4 +1454,90 @@ SELECT pg_temp.assert(
   'STG-6: abandoning requires an explicit run id');
 
 
+
+-- ===========================================================================
+-- SEPARATOR NORMALIZATION (Prompt 21B, migration 0045)
+--
+-- The owner approved ONE rule: whitespace around the literal "/" separator is
+-- collapsed for COMPARISON. These assert that it does exactly that and nothing
+-- adjacent — a later edit that broadened it into generic punctuation folding
+-- would start merging Stations the source distinguishes, and would fail here.
+-- ===========================================================================
+
+-- SEP-1: the four approved spellings share one comparison form.
+SELECT pg_temp.assert(
+  cng_normalize_name('A / B') = cng_normalize_name('A/B')
+  AND cng_normalize_name('A/ B') = cng_normalize_name('A/B')
+  AND cng_normalize_name('A /B') = cng_normalize_name('A/B'),
+  'SEP-1: "A / B", "A/ B", "A /B" and "A/B" all compare equal');
+
+-- SEP-2: and that form is the slash-tight one, not some third spelling.
+SELECT pg_temp.assert(
+  cng_normalize_name('A / B') = 'a/b',
+  'SEP-2: the comparison form is "a/b"');
+
+-- SEP-3: the REAL pair from the production sources now compares equal. This is
+-- the entire point of the change; if it ever stops holding, 281 asset rows
+-- silently lose their Station candidate again.
+SELECT pg_temp.assert(
+  cng_normalize_name('أتــريب / بنــها 1') = cng_normalize_name('أتريب/بنها 1'),
+  'SEP-3: the structural and asset spellings of a real compound Station name compare equal');
+
+-- SEP-4..7: every pre-existing behaviour is preserved, exactly as 0028 left it.
+SELECT pg_temp.assert(cng_normalize_name('الماظة') = 'الماظه',
+  'SEP-4: taa marbuta still folds to haa');
+SELECT pg_temp.assert(cng_normalize_name('آمال') = 'امال',
+  'SEP-5: alef madda still folds to alef');
+SELECT pg_temp.assert(cng_normalize_name('إبراهيم') = 'ابراهيم',
+  'SEP-6: hamza-under-alef still folds to alef');
+SELECT pg_temp.assert(cng_normalize_name('طاليــا') = 'طاليا',
+  'SEP-7: tatweel is still removed, not replaced');
+
+-- SEP-8: NOT generic punctuation normalization. A hyphen keeps its spacing, so
+-- names the source distinguishes stay distinguished.
+SELECT pg_temp.assert(
+  cng_normalize_name('ابو تيج - اسيوط') <> cng_normalize_name('ابو تيج-اسيوط'),
+  'SEP-8: whitespace around a HYPHEN is NOT collapsed - only "/" was approved');
+
+-- SEP-9: the owner-confirmed alias is not extended by normalization. These two
+-- remain different names; their equivalence is an explicit owner ruling stored
+-- as a row, never something the normalizer decides.
+SELECT pg_temp.assert(
+  cng_normalize_name('ابنوب') <> cng_normalize_name('ابنوب اسيوط'),
+  'SEP-9: the owner alias is NOT reproduced by normalization');
+
+-- SEP-10: general whitespace collapsing still works, and leading/trailing space
+-- is still trimmed.
+SELECT pg_temp.assert(
+  cng_normalize_name('  الف    باء  ') = 'الف باء',
+  'SEP-10: runs of whitespace still collapse and the result is trimmed');
+
+-- SEP-11: NULL and empty still yield NULL rather than an empty-string identity.
+SELECT pg_temp.assert(
+  cng_normalize_name(NULL) IS NULL AND cng_normalize_name('   ') IS NULL,
+  'SEP-11: NULL and blank normalize to NULL, never to an empty identity');
+
+-- SEP-12: STILL IMMUTABLE. A stored generated column requires it, and losing
+-- immutability would break `stations.normalized_name` rather than any test.
+SELECT pg_temp.assert(
+  (SELECT provolatile FROM pg_proc WHERE proname = 'cng_normalize_name') = 'i',
+  'SEP-12: cng_normalize_name is still IMMUTABLE, as the generated column requires');
+
+-- SEP-13: REGION REMAINS PART OF IDENTITY. Two Stations whose names now share a
+-- comparison form are still distinct records in different Regions - the unique
+-- constraint is Region-scoped, so normalization can never merge across Regions.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM pg_constraint
+    WHERE conname = 'stations_region_norm_uq'
+      AND pg_get_constraintdef(oid) ILIKE '%region_id%normalized_name%') = 1,
+  'SEP-13: Station identity is UNIQUE (region_id, normalized_name) - Region is still part of it');
+
+-- SEP-14: the same holds for Units, scoped to their Station.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM pg_constraint
+    WHERE conname = 'units_station_norm_uq'
+      AND pg_get_constraintdef(oid) ILIKE '%station_id%normalized_name%') = 1,
+  'SEP-14: Unit identity is UNIQUE (station_id, normalized_name)');
+
+
 ROLLBACK;

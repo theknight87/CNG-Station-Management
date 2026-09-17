@@ -831,6 +831,7 @@ These rules are permanent and apply to every future prompt.
 | 20A | 557 | 146 | 591 |
 | 20B | 565 | 146 | 591 |
 | 20F | 580 | 152 | 601 |
+| 21B | 584 | 166 | 601 |
 
 Update this table when a prompt is accepted, so the next one has a baseline to compare
 against.
