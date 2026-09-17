@@ -757,3 +757,113 @@ single import instant, which also equals the audit and lineage timestamps — 0 
 creation, 0 deleted, 0 mapping-audit rows. (`n_tup_upd` on the table reads 3: pre-import
 rolled-back probe tuples, the same counter caveat 23B recorded; the row-version equality above is
 the real evidence.)
+
+## Prompt 25H — the Station-only installed-SRV batch (built, locally verified, NOT deployed)
+
+**One additive migration, `0052_irv_station_batch.sql`** (SHA-256
+`828dd03a852d40b21a7ec2796c2464458e9737adfa1cfbf74e4eb6f39dcef1ae`), adding three functions and
+**NO table, column, enum, constraint or index**. It is NOT deployed and no production SRV was
+mapped.
+
+**IT REUSES THE EXISTING ARCHITECTURE RATHER THAN BUILDING A SECOND ONE.** Stage B is untouched and
+`import_mapping_decisions` is not used: Stage B decides a Station on a STAGING row for the four
+NOT-NULL-`station_id` families; this decides a Station on a CANONICAL installed SRV after import —
+the division Prompt 25B established. The status derivation, the audit shape and the attribution
+rule are those of the deployed `cng_admin_map_srv`, which is NOT modified and still works (T40).
+What is new is ONE atomic server-side transaction instead of 1,054 client calls, each individually
+abortable and collectively unverifiable.
+
+**THE EVIDENCE RULE IS THE APPROVED ONE, AND THE MECHANISM IS RECORDED PER ROW**: same Region, raw
+Station evidence present, exactly one canonical Station, by `byte_exact` (raw equals
+`stations.station_name` byte for byte) or `normalized` (the deployed `cng_normalize_name` folds both
+to one value). No alias (the table is empty), no similarity, no edit distance, no suffix or digit
+stripping, no cross-Region substitution. The candidates function takes NO candidate list and trusts
+no prior analysis — it recomputes from canonical rows, import lineage and staged source evidence.
+
+**UNIT IS STRUCTURALLY UNWRITABLE.** The UPDATE names `station_id` and `mapping_status` only;
+`unit_id`, `compressor_id`, `storage_vessel_id` and `dispenser_id` are not in it (T8, with T8b
+proving the detector fires on a violating column list). **993 of the 1,054 sit under a Station with
+exactly ONE Unit and NONE receives it** (T11/T11b). `resolved_by`/`resolved_at` stay NULL because
+`needs_unit_mapping` is not a resolution.
+
+**AUTHORIZATION — THIS IS A HUMAN DECISION, NOT AN OPERATOR ACTION.** Unlike the 0051 import
+(`service_role`, records with no `created_by` contract), the actor is derived server-side from the
+verified Clerk subject via `cng_require_admin()`; EXECUTE is `authenticated` only, with the ADMIN
+CHECK as the gate; **`service_role` and `anon` hold NO execute** (T37b/T37c) so this can never be
+attributed to a machine identity; no function takes an actor parameter (T37). Viewer, Engineer,
+Manager, a deactivated Admin and a session with no verified subject are each refused BY ATTACK
+(T33b/T33c/T34/T35/T36). Commit is SECURITY DEFINER with pinned `search_path`; both read paths are
+STABLE and NOT definer; no dynamic SQL (T37d/T37e/T37f).
+
+**THE FINGERPRINT BINDS EVERYTHING THAT COULD DRIFT** — per SRV: id, source key and hash, Region,
+raw and normalized evidence, the evidence mechanism, the complete current state (status plus the
+three NULL FK markers), the target Station and its Region, the row version, and the expected
+resulting status; plus the identity-level grouping. It is re-derived inside the commit's own
+transaction.
+
+**LOCAL DESTRUCTIVE MATRIX: 64 / 64 PASS, exit 0** (`supabase/tests/irv_station_batch_matrix.sql`),
+at full scale over a 2,662-row fixture. Preview exact: **1,054 eligible / 127 identities · 839
+byte-exact (100 identities) · 215 normalization-only (27) · 127 distinct target Stations · 1,596
+no-candidate · 12 cross-Region-only · 0 multi-candidate**, and 1,054 + 1,596 + 12 = 2,662. The
+authorized run mapped 1,054 with `unit_id` and all equipment NULL on every one; a mid-transaction
+rollback left ZERO mapped and ZERO audit rows; replay was refused with both the old and the current
+fingerprint. **Nine independent drift scenarios each invalidate the approved fingerprint**: changed
+source hash, changed lineage key, lineage removed, changed raw Station, changed Region, the target
+Station renamed, one row already Station-mapped, one row version changed, and a qualifying row
+leaving the set.
+
+**ONE TEST PREMISE WAS WRONG IN A USEFUL WAY.** "A new competing same-Region candidate" cannot be
+constructed: `stations_region_norm_uq` forbids two Stations sharing a normalized name in one Region.
+The case was reframed as proof by attempted insert — same-Region ambiguity is UNREACHABLE, not
+merely unhandled (the Prompt 22A finding, restated) — plus a check that a same-name Station in
+ANOTHER Region never changes the set.
+
+**AUDIT**: one `audit_logs` batch row attributed to the active Admin (never `service_role`), plus
+**1,054 `asset_mapping_audit` rows in the shape `cng_admin_map_srv` writes**, all carrying one
+`bulk_batch_id` with `is_bulk` true, one actor, the true before/after and NO unit or parent. Every
+mapped SRV has exactly one audit row. `asset_mapping_audit` has carried `is_bulk`/`bulk_batch_id`
+since 0001, so no table was invented for this.
+
+**FIXTURE LIMITS STATED PLAINLY**: it carries 157 Stations and **189** Units (production has 188) and
+its Region split is synthetic (Delta 583 / East 284 / West 187 against production's 558/283/213),
+because it is generated from the structural skeleton with synthetic ASCII names — **no Arabic
+identity string was hand-transcribed**. Its normalization-only class folds on CASE and `/` spacing
+while production's folds on Arabic diacritics and letter variants; the MECHANISM under test (deployed
+normalizer equality versus byte equality) is identical, and the Arabic behaviour is proved separately
+by the production recomputation below.
+
+**PRODUCTION RECOMPUTATION (READ-ONLY, by inlining the identical derivation) RECONCILES EXACTLY**:
+**1,054 / 127 · 839 byte-exact (100 identities) · 215 normalization-only (27) · 127 targets · 1,596
+no-candidate · 12 cross-Region-only · 0 multi-candidate · 993 under one-Unit Stations · Delta 558 /
+East 283 / West 213**.
+
+**TWO FINGERPRINTS, KEPT STRICTLY APART, AND NEITHER IS AN EXECUTABLE TOKEN**:
+(A) LOCAL FIXTURE `cce64d1d4a813440490a05c2d9fd4ee691ff6d9880705e251ba8abbb9ee5c609` — fixture-
+specific and not stable across rebuilds, because it binds SRV UUIDs, which is correct behaviour;
+(B) PRODUCTION ANALYTICAL `d5a60e87ea600e7e15f29b9cad95d2668f1c500c12b0bc118322616f964f9f8d`.
+**A true production content-bound preview REQUIRES 0052 TO BE DEPLOYED FIRST**, because the 22B rule
+is that an executable fingerprint must come from the DEPLOYED function.
+
+**THE REMAINING 1,608, CLASSIFIED (read-only, none resolved)**: **1,596** carry a name no Station in
+their Region holds; **12** match only in another Region — and they are a SINGLE identity, Alex rows
+whose name matches a West Station. Region is identity, so they stay unmapped; **cross-Region mapping
+is NOT approved and NOT proposed.**
+
+**POST-MAPPING VISIBILITY, DERIVED FROM THE DEPLOYED POLICY (nothing changed)**: `irv_select` reads
+`CASE WHEN station_id IS NOT NULL THEN cng_can_read_region(region_id) ELSE cng_can_access_unmapped_srv() END`.
+Today, with `station_id` NULL, the second branch is `cng_is_manager_or_admin()` — **Admin and Manager
+only; Engineer and Viewer see nothing**. After Station confirmation those 1,054 rows move to the
+first branch: Admin true, Manager true, **Engineer and Viewer become Region-scoped via
+`cng_has_region_grant`**. So **Station mapping ALONE is sufficient for Region-scoped access — no Unit
+is required and no RLS change is needed.** The practical effect today is nil: production holds 1
+active Admin and **0 Region grants**.
+
+**Gate exit 0**: frontend 627, schema 274, authorization 624, 52 migrations from zero, upgrade replay
+51 -> 52, report contract PASS; installed-SRV import suite 39/39, SRV mapping suite 15/15, new batch
+matrix 64/64. Schema and authorization counts are unchanged because the batch tests ship as their own
+suite rather than inside `schema_scenarios.sql`. Migrations 0044-0051 byte-identical.
+
+**PRODUCTION UNCHANGED**: 51 migrations, 0 batch functions deployed, 2,662 SRVs all
+`needs_station_mapping` with 0/0/0 FKs, **one distinct `updated_at` and 0 rows modified since
+creation**, decisions 281, audit 284, `asset_mapping_audit` 0, aliases 0, staging 7,163,
+stations 157, units 188, the 268 quarantine intact, 0 tables without RLS.
