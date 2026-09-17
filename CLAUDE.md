@@ -1502,6 +1502,59 @@ verification ran on a branch while deployment ran from `main`. Any future prompt
 frontend change as DEPLOYED must confirm the commit is an ANCESTOR OF THE BRANCH CLOUDFLARE PAGES
 BUILDS, not merely that it was pushed somewhere.***
 
+***PROMPT 25A — FORENSIC ANALYSIS OF THE 823 STATION-UNCONFIRMED ROWS (READ-ONLY)** — see
+`docs/station-mapping-forensics.md`. Nothing was created, updated or deployed; production was
+re-verified identical before and after, with `import_mapping_decisions` all-time `n_tup_ins` still
+**281** so no tuple was even attempted.
+
+**THE DECISIVE RESULT: NO AUTONOMOUS STATION MAPPING EXISTS IN THE 823.** Against same-Region
+canonical Stations: **0** exact raw matches, **0** rows with exactly one approved normalized
+candidate, 0 multi-candidate, **823 with no same-Region candidate at all**. The approved Stage B
+evidence rule yields ZERO candidates here — the 281-row batch genuinely exhausted that class, and
+Bucket A is empty.
+
+**A SCOPE CORRECTION**: the 823 is only the four NOT-NULL-`station_id` blocker families.
+**1,599 installed-SRV rows are ALSO `needs_station_mapping` and undecided**, excluded from the 823
+because `installed_relief_valves.station_id` is nullable so they were never blockers. 0 installed
+SRV and 0 warehouse rows sit inside the 823.
+
+**ONE DRIFT FOUND AND CORRECTED**: prior prompts reported 631 rows in zero-Station Regions. The
+true figure is **636** (266+199+171), verified twice — 636/195 identities versus 187/52 elsewhere,
+summing to 823. The 5-row gap is explained: the 5 cross-Region-only rows are IN ALEX, itself a
+zero-Station Region, so they are a SUBSET of the 636 and an earlier pass wrongly subtracted them.
+Everything else reconciles exactly (823 rows, 247 identities, Region split, 5 cross-Region, 9
+Unit-name).
+
+**THE STRONGEST CLASS IS 9 ROWS**: 9 identities (East 4, West 5) each match exactly one Unit under
+exactly one Station and **all end in a digit**; for **9 of 9** the digit-stripped base equals that
+Unit's parent Station name, 0 mismatches, 0 bases naming two Stations. Clean — but still
+**owner-confirmation (E2/Bucket B), not autonomous**, because §8 says D2 may only PROPOSE an alias
+and digit-stripping is a normalization rule the system does not have.
+
+**A REAL, PREVIOUSLY UNEXAMINED SOURCE FOR THE ZERO-STATION REGIONS**: 0 Stage A structural rows
+exist for Upper/Alex/Canal, but **123 `unit_attributes` rows do** (Alex 45, Canal 38, Upper 40),
+and **79 of the 195 unresolved zero-Region identities — 233 rows — appear in it by name in the same
+Region**. **Its file is `Station data base.xlsx`** — the exact workbook §8 names as mixing Station
+and Unit levels, PROVED against the known Regions: of its 194 East/West/Delta rows, 131 match a
+canonical Station name and 107 match a canonical Unit name (238 over 194, so many match BOTH).
+**Therefore Z2, never Z1** — it evidences a SITE exists, not its level or parentage, and **no Z1
+identity exists anywhere in the 823**.
+
+**BUCKETS (rows / identities, each row and each identity in exactly one)**: A 0/0 · **B 9/9** ·
+C 0/0 · **D 258/86** · **E 551/151** · F 0/0 · **G 5/1** — totals **823 / 247** exactly.
+**FAMILY IMPACT WITH A 77-ROW CORRECTION**: sv 333, rt 312, gd 155, hoses 23 (all 23 hoses share
+ONE identity); but **77 gas-detector rows carry `creates_detector_record = false`** — recorded
+ABSENCE — so full resolution unlocks at most **746** assets, not 823.
+
+**THE SAFEST NEXT WRITE SCOPE IS NOT IN THE 823**: **215 installed-SRV rows / 27 identities
+(Delta 118, West 62, East 35) have exactly ONE same-Region canonical Station candidate, 0
+multi-candidate, 0 decided** — the identical evidence class that justified the approved 281 batch,
+never worked because installed SRVs were not blockers. **EVIDENCE INVENTORY**: identity evidence is
+`region` + `source_station_name_raw` ONLY; a full key census found **no job number, no Station code,
+no Unit field, no address and no cross-reference** on any of the 823 rows. Gate exit 0 (frontend
+627, schema 274, authorization 624, 50 migrations); no application code, schema or behaviour
+changed.*
+
 ### Prompt-21 import blockers (must be resolved before the production import)
 
 | Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |
