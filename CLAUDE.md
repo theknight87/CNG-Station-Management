@@ -971,6 +971,38 @@ in their Region, 9 matching a Unit name, 5 matching only in another Region.
 assets 0, all 1,104 four-family rows still `needs_station_mapping`, 7,163 staging rows, 0 tables
 without RLS. Migrations 0044, 0045 and 0046 are byte-identical.*
 
+***PROMPT 22C — STOPPED AT THE ADMIN GATE; NO MAPPING DECISION WAS COMMITTED** — see
+`docs/stage-b-station-mapping.md` §14-15. The final pre-commit guard PASSED on every approved value
+(preview fingerprint `a014745d...e0cbe769`, manifest `764d3c0f...`, 69 groups / 281 rows, families
+100/91/64/26, all 281 still `needs_station_mapping`, 0 already decided, baseline 47 migrations /
+157 Stations / 188 Units / 0 decisions / 0 aliases / 0 assets / 1,104 blockers).
+
+**PHASE 2 FAILED, AND THE DESIGN INTENDS IT TO.** `cng_stage_b_station_commit` derives its actor
+from `cng_require_admin()`, which reads the verified Clerk subject. This session's context is
+`current_user = postgres` (an operator connection, not superuser) with **no `request.jwt.claims`, no
+verified subject, and `cng_current_app_user_id()` not resolving** — so the gate raises 42501 and the
+commit refuses. **The only way to force it through would be to set the claims GUC to the owner's
+subject myself, which is FORGING THE ACTOR** — forbidden by Prompt 22C, by the Prompt 22B
+authorization decision, and by §10's rule that an audit actor column cannot be forged. Written
+approval in a prompt is not an authenticated Admin session, and the approved design exists precisely
+so the decision names the human who made it in one. **NOTHING WAS WRITTEN**: `import_mapping_decisions`
+is 0 with an all-time `n_tup_ins` of **0**, audit_logs still 1, staging `n_tup_upd` still 402,
+stations 157, units 188, aliases 0, canonical assets 0, 1,104 rows still `needs_station_mapping`.
+The owner runs the commit from an authenticated active-Admin session with the three approved
+arguments; the exact call is recorded in §14.
+
+**FUTURE UNIT WORKLOAD RECOMPUTED (read-only) — 240 / 38 / 3 exactly**, and every Category-B Station
+has exactly TWO Units. **A BLOCKING FINDING**: the 281 rows carry **NO Unit-bearing field of any
+kind** — 0 rows with a unit name, number or raw unit column, 0 with a non-NULL `unit_id`. The only
+context present is `location_raw` and `compressor_context_raw` (191 rows) and `area_type_raw` (64
+detectors), and §4 states in terms that `Location` is an equipment-KIND hint and "is not evidence of
+Unit membership". **So Category A is NOT resolvable by its own shape** — "the Station has exactly one
+Unit" is a fact about the HIERARCHY, not about the ASSET, and treating it as proof is the
+distribution rule §4 permanently forbids; 240 rows is exactly the size at which that shortcut
+tempts. Category C cannot proceed at all (the Station has no Units, and D7 forbids inventing one).
+**A Stage B UNIT batch therefore has no source to run on**: Unit mapping needs NEW evidence naming
+the Unit per asset, not a cleverer rule over what is already staged.*
+
 ### Prompt-21 import blockers (must be resolved before the production import)
 
 | Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |

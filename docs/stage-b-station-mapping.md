@@ -323,3 +323,117 @@ Candidates and remainder are **disjoint — 0 rows appear in both**.
 
 No fuzzy match is proposed, no Station is created from an asset name, and no
 alias is extended.
+
+---
+
+## 14. Prompt 22C — STOPPED AT THE ADMIN GATE (no commit performed)
+
+The batch was approved and the final pre-commit guard passed on **every** value.
+The commit was **not executed**, because this session cannot legitimately
+satisfy the authorization model the owner approved in 22B.
+
+### The pre-commit guard passed
+
+| | |
+| --- | --- |
+| preview fingerprint | `a014745d…e0cbe769` — **match** |
+| manifest fingerprint | `764d3c0f…f091b8f` — **match** |
+| groups / rows | **69 / 281** |
+| families | 100 / 91 / 64 / 26 |
+| all 281 still `needs_station_mapping` | yes |
+| rows already decided | 0 |
+| baseline | 47 migrations · 157 Stations · 188 Units · 0 decisions · 0 aliases · 0 assets · 1,104 blockers |
+
+### Why it stopped
+
+`cng_stage_b_station_commit` derives its actor from `cng_require_admin()`, which
+reads the verified Clerk subject. This session's execution context is:
+
+| | |
+| --- | --- |
+| `current_user` / `session_user` | `postgres` (operator connection) |
+| superuser | false |
+| `request.jwt.claims` present | **no** |
+| verified subject | **none** |
+| `cng_current_app_user_id()` resolves | **no** |
+
+So `cng_require_admin()` raises `42501` and the commit refuses — correctly.
+
+**The only way to make it succeed from here would be to set
+`request.jwt.claims` to the owner's subject myself.** That is forging the actor.
+It is what Prompt 22C forbids ("the server must derive the actor", "do not bypass
+the gate"), what Prompt 22B's authorization decision exists to prevent, and what
+CLAUDE.md §10 forbids outright — an audit actor column that cannot be forged.
+Written approval in a prompt is not the same as an authenticated Admin session,
+and the whole point of the approved design is that the decision record names the
+human who made it in one.
+
+**This is the gate working, not a defect.** Nothing was written: production holds
+0 mapping decisions with an all-time `n_tup_ins` of **0**.
+
+### How the owner runs it
+
+From an authenticated **active Admin** session (the deployed app, or any client
+carrying their Clerk token — `authenticated` holds EXECUTE):
+
+```sql
+select * from cng_stage_b_station_commit(
+  'cdad1e5e-7faa-4f3b-9432-12a720f3dd64',
+  '764d3c0fbe09f3ac95b27ce235f0fb08cfd92711e2a4ec56defb227b5f091b8f',
+  'a014745dd823917027a082a2d61a57fc831ccd59d22c67dcd7145982e0cbe769',
+  'Prompt 22C approved Stage B Station batch'
+);
+```
+
+It returns `decisions_written`, `rows_confirmed`, `groups_confirmed` and the
+fingerprint it committed against, and refuses if anything has moved since the
+preview. Run it **once**; on any ambiguous transport error, check
+`import_mapping_decisions` read-only before considering anything further.
+
+## 15. Future Unit-mapping workload — and a blocking finding
+
+Recomputed read-only against the real committed hierarchy. The categories are
+unaffected by whether the Station decisions exist, since the commit creates no
+Station or Unit.
+
+| Category | Rows | |
+| --- | --- | --- |
+| **A** — candidate Station has exactly one Unit | **240** | |
+| **B** — candidate Station has several Units | **38** | every one has exactly **2** Units |
+| **C** — candidate Station has zero Units | **3** | all Delta |
+
+### The finding: no Unit evidence exists on any of the 281 rows
+
+The normalized payload of these rows carries **no Unit-bearing field at all**:
+
+| Evidence | Rows |
+| --- | --- |
+| any unit name / number / raw unit column | **0** |
+| non-NULL `unit_id` | **0** |
+| `location_raw` | 191 |
+| `compressor_context_raw` | 191 |
+| `area_type_raw` (gas detectors) | 64 |
+| `serial_number` | 199 |
+
+The full key set is region, station name, serial, dates, manufacturer, pressures,
+presence and the `location`/`compressor context`/`area type` text. **Not one
+names a Unit.**
+
+**Category A cannot be resolved by its own shape.** "The Station has exactly one
+Unit" is a fact about the *hierarchy*, not evidence about the *asset*, and
+treating it as proof is the distribution rule CLAUDE.md §4 permanently forbids.
+240 rows is precisely the size at which that shortcut is tempting.
+
+**Category B** would need evidence naming the Unit — a source column, a
+per-asset work record, or a human on site confirming each asset. `location_raw`
+(present on 37 of the 38) is an equipment-KIND hint by §4's own words and
+"is not evidence of Unit membership", so it narrows *which kind of parent*, never
+*which Unit*.
+
+**Category C** cannot proceed at all: the Station has no Units, and D7 forbids
+inventing one to have somewhere to attach an asset.
+
+**Conclusion for the next stage: a Stage B Unit batch has no source to run on.**
+Unit mapping needs new evidence — a source that states Unit membership per asset
+— not a cleverer rule over the evidence already staged. That is a finding to act
+on, not a gap to close by inference.
