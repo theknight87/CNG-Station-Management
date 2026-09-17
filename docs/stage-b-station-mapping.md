@@ -609,3 +609,76 @@ in place to bite a larger dataset later. No timeout was changed.
 against the local fixture before *and* after 0048, because local RLS is cheap.
 So the performance evidence is **production-measured** (read-only) and the
 correctness evidence is **local**. Neither is presented as the other.
+
+## 18. Prompt 22C.3 — 0048 deployed, live Admin preview verified
+
+Migration 0048 is **deployed to production**: 47 -> **48**, recorded exactly once
+(`20260917110814 stage_b_preview_performance`), from the file approved at commit
+`52d38ec` with SHA-256 `9e3d2c3e...f303620b` recomputed immediately before transmission.
+
+**DEPLOYMENT IS PROVED BYTE-EXACT, NOT MERELY APPLIED.** The two function bodies were
+extracted from the approved file and hashed *before* deployment, then compared against
+`pg_proc.prosrc` afterwards:
+
+| Function | Expected `prosrc` MD5 | Deployed | Length |
+| --- | --- | --- | --- |
+| `cng_stage_b_station_candidates` | `ddf963f66bcc46903db4480601ba34ef` | identical | 1828 |
+| `cng_stage_b_station_preview` | `5780e33f99aef996d8ca8c0f60fc25fd` | identical | 1856 |
+
+**EXACTLY TWO FUNCTIONS CHANGED.** Verified from the catalog by comparing before/after
+`prosrc` MD5: `cng_stage_b_station_commit` (`b040117a...`), `cng_require_admin`
+(`ff29bdea...`), `cng_normalize_name` (`3c4d8a93...`) and `cng_stage_b_station_groups`
+(`4cd1e91e...`) are **bit-for-bit unchanged**. The migration's statement inventory was
+machine-scanned, not eyeballed: two `CREATE OR REPLACE FUNCTION`, two `COMMENT`, and
+**zero** ALTER/DROP/GRANT/REVOKE/INSERT/UPDATE/DELETE/TRUNCATE/CREATE POLICY/CREATE INDEX.
+The words `grant`, `statement_timeout`, `cng_require_admin` and `cng_stage_b_station_commit`
+appear in the file **only on `--` comment lines**. No migration-time DML.
+
+**SECURITY UNCHANGED.** Both replaced functions remain `prosecdef = false`
+(SECURITY INVOKER) and `provolatile = 's'` (STABLE), so they cannot write and RLS still
+bounds every row they return; `search_path` stays pinned; EXECUTE remains `authenticated`
+with **anon 0**; `import_mapping_decisions` still has **0** browser write grants and **0**
+write policies; **0** public tables without RLS.
+
+**NO TIMEOUT WAS RAISED.** `authenticated` still carries Supabase's stock
+`statement_timeout = 8s` and `anon` 3s — untouched. That 8s is the real browser budget,
+and the verification was run *under it* rather than against a relaxed one.
+
+**LIVE AUTHENTICATED PREVIEW — 664 ms, and the approved fingerprint.** Executed READ-ONLY
+as the owner's Admin identity (`is_admin = t`) with the genuine 8s timeout in force, in a
+deliberately aborted transaction. Six samples: **664.0 / 676.7 / 677.2 / 668.3 / 687.0 /
+712.1 ms** — a single distinct fingerprint across all runs,
+`a014745dd823917027a082a2d61a57fc831ccd59d22c67dcd7145982e0cbe769`, **exactly the approved
+value**, so the owner's approval does not lapse. Against the pre-fix 39,371 ms this is a
+**~59x improvement, landing at ~8% of the 8s budget**.
+
+**ONE NUMBER IS HIGHER THAN 22C.2 PREDICTED, AND IS REPORTED AS MEASURED.** Prompt 22C.2
+measured the candidate body at 307.6 ms; the deployed end-to-end preview measures ~670 ms.
+The 22C.2 figure timed the new body inline, while this times the full deployed preview
+including its `groups` call, on a shared instance under its own load. The honest figure is
+**~670 ms**, not 307.6 ms. It is well inside budget either way, and no claim is restated
+at the more flattering number.
+
+**SEMANTICS EXACT**: 69 groups / 281 rows, 69 DETERMINISTIC STATION CANDIDATE, **0** OWNER
+REVIEW, **0** already decided; families **100 / 91 / 64 / 26**; **78 raw spellings = 69
+normalized identities**; stations 157, units 188; manifest `764d3c0f...` as approved.
+
+**THE PREVIEW WROTE NOTHING**, proved by counters either side: `import_mapping_decisions`
+`n_tup_ins` 0 -> **0** (and `n_tup_ins` counts even rolled-back tuples, so no decision was
+ever so much as attempted), `audit_logs` 1 -> 1, `import_staging_rows` `n_tup_upd`
+402 -> 402, stations/units/aliases all unmoved.
+
+**READING AS THE OWNER IS NOT FORGING AN ACTOR.** Prompt 22C refused to set the claims GUC
+because doing so would have attributed a *written* mapping decision to a human who had not
+made it in a session. The preview takes no actor parameter, writes no row and attributes
+nothing, so the same technique carries no forgery — the distinction is what is written, not
+what is read. **`cng_stage_b_station_commit` was not invoked in any execution context.**
+
+**GATE**: exit 0 — frontend **617**, schema **247**, authorization **624**, 48 migrations
+from zero, upgrade replay 47 -> 48 with both suites re-run. No baseline decreased.
+Migrations 0044-0047 re-hashed after the work and byte-identical.
+
+**PRODUCTION AFTER**: 48 migrations, regions 6, stations 157, units 188,
+`import_mapping_decisions` **0** (all-time `n_tup_ins` **0**), 1,104 rows still
+`needs_station_mapping`, canonical assets 0, aliases 0/0, 7,163 staging rows, 0 tables
+without RLS. **The batch still awaits the owner's click.**
