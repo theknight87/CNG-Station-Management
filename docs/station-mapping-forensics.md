@@ -212,3 +212,110 @@ Ranked by evidence strength:
 - **G (5 / 1):** a source placing that name in Alex, or an owner ruling that the Alex rows
   belong to the West Station — which would still be a human decision, not an inference.
 - **B (9 / 9):** an explicit owner confirmation of the D2 reading for those exact 9 names.
+
+---
+
+## Prompt 25B — the installed-SRV 215-row batch: STOPPED at a design finding
+
+**Read-only.** No decision, alias, Station, Unit, asset, presence row, staging change or
+migration was created. Production was re-verified identical.
+
+### The candidate set reproduces exactly
+
+Recomputed from scratch, not from previously reported ids: **215 rows / 27 identities**,
+Delta 118 · West 62 · East 35, **0 multi-candidate**, 215 distinct source keys, 27 distinct
+Station targets, 27 raw spellings (1:1 with identities). Re-run under the *exact deployed
+semantics* (run-scoped, `outcome NOT IN (rejected, excluded, replayed)`, `stations.normalized_name`)
+it is still **215** — and `stations.normalized_name` is confirmed identical to
+`cng_normalize_name(station_name)` on all 157 Stations, so the two derivations cannot diverge.
+
+Every firewall is clean: **0** overlap with the 281 decisions by key *or* by hash, **0** overlap
+with the four-family 823, **0** Region mismatches, **0** identities spanning two Regions, **0**
+identities pointing at two Stations, **0** canonical names in two Regions, **0** contradictions.
+All 215 qualify on all twelve per-row checks.
+
+**One difference from the 281 batch, reported rather than glossed:** the 215 carry **201 distinct
+source hashes**, not 215. Seven groups (21 rows, largest 3) share a hash because their
+`source_raw` is byte-identical — 7 distinct payloads across 21 genuinely different spreadsheet
+rows, i.e. repeated valves (principle 16), and **no hash group straddles two identities**. The
+0041 content binding is per `(source_row_key, hash)` and `source_row_key` is unique, so binding
+still holds — but any fingerprint must key on the **key**, never assume hash uniqueness.
+
+### Why it STOPPED: the schema forbids it, deliberately
+
+`cng_stage_b_station_candidates` filters `target_table IN ('storage_vessels','recovery_tanks',
+'gas_detectors','hoses')`, and the commit's `CASE target_table` has no installed-SRV branch. But
+that is only the surface. **`import_mapping_decisions` itself carries two CHECK constraints:**
+
+- `imd_target_ck` — `target_table = ANY (ARRAY['storage_vessels','recovery_tanks','gas_detectors','hoses'])`
+- `imd_asset_type_ck` — pairs each of those four with its `asset_type`
+
+plus `asset_type NOT NULL`. An installed-SRV decision row is therefore **inexpressible**, three
+times over. This is not an oversight: **migration 0039 created that table to resolve rows that
+cannot exist canonically without a Station**, i.e. the four families whose `station_id` is NOT NULL.
+
+**`installed_relief_valves.station_id` is NULLABLE**, and `irv_status_shape_ck` explicitly permits
+`needs_station_mapping` with Station and Unit NULL, with `irv_unmatched_station_evidence_ck`
+requiring only the raw source name — which all 1,599 carry. **A Station-unconfirmed installed SRV
+is a first-class canonical record.** Nothing about these 215 is blocked.
+
+**PHASE 3 ANSWER: DOES NOT GENERALISE** — and extending it would relax a constraint that encodes a
+real architectural boundary, on a table holding 281 live decisions.
+
+### The designed path already exists
+
+`cng_admin_map_srv(p_srv_id, p_station_id, p_unit_id, p_parent_kind, p_parent_id,
+p_expected_updated_at, p_reason)` is **deployed**, admin-gated, SECURITY DEFINER, row-version
+guarded and audited, and derives `needs_unit_mapping` exactly when `p_unit_id IS NULL` — the
+precise outcome this batch wants. It operates on **canonical** SRVs, which is where §4 and §9 put
+this workflow ("appears in Global SRV Management labelled *Needs Station Mapping*").
+
+So the architecture is a division, not a gap:
+
+| Family | `station_id` | Where Station is decided |
+| --- | --- | --- |
+| The four blocker families | NOT NULL | **at staging**, via `import_mapping_decisions` (Stage B) |
+| Installed SRVs | **nullable** | **after import**, via `cng_admin_map_srv` (Admin → Data Quality) |
+
+Extending Stage B to installed SRVs would build a *second* Station-mapping path for a family that
+already has one — the duplication this prompt's own Phase 13 forbids.
+
+### Migration decision
+
+**MIGRATION REQUIRED = YES for the route this prompt assumes** (widen `imd_target_ck`,
+`imd_asset_type_ck`, the candidates filter and the commit `CASE`). **It was deliberately not
+built**, because the finding is that the route is the wrong shape and the change relaxes a
+guard rather than adding one. That is an owner decision, not mine to pre-empt.
+
+**MIGRATION REQUIRED = NO for the recommended route**, which needs no mapping migration at all —
+only a canonical installed-SRV import path, which does not exist yet (**0 functions insert into
+`installed_relief_valves`**; 0049 covers the four families only).
+
+### Analytical preview fingerprint — NOT an approval token
+
+Computed read-only over the exact proposed set, sorted by `source_row_key`, binding import run,
+source key, source hash, source Region, target Station id, target Region and expected status:
+
+```
+71fd788940ab5d4322c0b78fa9853eb68536eb5a754c45236849dc65dda6dcf8
+```
+
+Per the Prompt 22B rule, an approval token must come from a **deployed** function. No deployed
+function covers installed SRVs, so this is an **analytical** value and **cannot serve as an
+approval token** until whatever computes it is deployed.
+
+### Field firewall
+
+**IDENTITY EVIDENCE:** `region`/`region_raw`/`Area`, `source_station_name_raw`/`Station`.
+**CONTEXT ONLY:** `location_raw`/`Location` (**Stage 122 / Storage 93**), `expected_parent_kind`
+(**compressor 122 / storage_vessel 93**, derived from it), manufacturer, part number, serial,
+set pressure, size type, `IN`/`OUT` ports, dates, notes, and `Number Of Days Left` (principle 12).
+**0 of 215** carry a station, unit, compressor, storage-vessel or dispenser id, and **no
+unit-bearing field of any kind exists.** `expected_parent_kind` must never populate a foreign key.
+
+### After Station confirmation
+
+215 rows would read `needs_unit_mapping` — **and nothing would become importable that is not
+importable now**, because the canonical table accepts `needs_station_mapping` today. Canonical
+installed-SRV import remains blocked only by the absence of an import path, and full resolution
+still requires Unit evidence (none exists) and then equipment evidence (D3, permanently manual).

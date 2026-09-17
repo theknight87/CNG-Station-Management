@@ -1555,6 +1555,49 @@ no Unit field, no address and no cross-reference** on any of the 823 rows. Gate 
 627, schema 274, authorization 624, 50 migrations); no application code, schema or behaviour
 changed.*
 
+***PROMPT 25B — STOPPED: THE INSTALLED-SRV STATION BATCH IS THE WRONG SHAPE, AND THE SCHEMA SAYS
+SO** — see `docs/station-mapping-forensics.md` §"Prompt 25B". Read-only; nothing was created or
+deployed and production is identical (decisions all-time `n_tup_ins` still **281**).
+
+**THE CANDIDATE SET REPRODUCES EXACTLY**: 215 rows / 27 identities, Delta 118 / West 62 / East 35,
+0 multi-candidate, 27 distinct Station targets, and still 215 under the EXACT deployed semantics
+(run-scoped, outcome-filtered, `stations.normalized_name` — which is confirmed identical to
+`cng_normalize_name(station_name)` on all 157). Firewalls perfect: **0** overlap with the 281 by key
+OR hash, **0** with the 823, 0 Region mismatches, 0 contradictions, 215/215 qualified.
+**ONE DIFFERENCE REPORTED**: only **201 distinct hashes** — 7 groups (21 rows) share one because
+`source_raw` is byte-identical (repeated valves, principle 16); no group straddles two identities,
+and `source_row_key` is unique, so the 0041 binding holds — but a fingerprint must key on the KEY.
+
+**PHASE 3 ANSWER: DOES NOT GENERALISE.** Beyond the function's four-family filter,
+**`import_mapping_decisions` itself carries `imd_target_ck` (a four-table allowlist) and
+`imd_asset_type_ck`, plus `asset_type NOT NULL`** — an installed-SRV decision row is
+**INEXPRESSIBLE, three times over**. That is DELIBERATE: 0039 built that table for rows that
+CANNOT exist canonically without a Station. **`installed_relief_valves.station_id` is NULLABLE**
+and `irv_status_shape_ck` explicitly permits `needs_station_mapping` with Station and Unit NULL,
+so **a Station-unconfirmed installed SRV is a first-class canonical record and NOTHING about these
+215 is blocked.**
+
+**THE DESIGNED PATH ALREADY EXISTS**: `cng_admin_map_srv` is DEPLOYED, admin-gated, SECURITY
+DEFINER, row-version guarded and audited, and derives `needs_unit_mapping` exactly when
+`p_unit_id IS NULL` — the precise outcome wanted — operating on CANONICAL SRVs, where §4 and §9 put
+this workflow. The architecture is a DIVISION, not a gap: the four NOT-NULL families decide Station
+AT STAGING; installed SRVs decide it AFTER IMPORT. Extending Stage B would build a SECOND
+Station-mapping path for a family that already has one — the duplication Phase 13 forbids — and
+would relax a guard on a table holding 281 live decisions.
+
+**MIGRATION REQUIRED = YES for the assumed route** (widen two CHECK constraints, the candidates
+filter and the commit CASE) — **deliberately NOT built**, because relaxing a guard that encodes an
+architectural boundary is an owner decision. **= NO for the recommended route**, which needs no
+mapping migration, only a canonical installed-SRV import path that does not yet exist (**0
+functions insert into `installed_relief_valves`**). **ANALYTICAL preview fingerprint
+`71fd7889...dda6dcf8`** — NOT an approval token, because 22B requires one from a DEPLOYED function
+and none covers installed SRVs. **FIELD FIREWALL**: identity evidence is Region + raw Station name
+only; `location_raw` (Stage 122 / Storage 93) and `expected_parent_kind` (compressor 122 /
+storage_vessel 93) are CONTEXT ONLY and must never populate a foreign key; 0 of 215 carry any
+station/unit/equipment id and no unit-bearing field exists. **AFTER STATION CONFIRMATION NOTHING
+NEW BECOMES IMPORTABLE**, because the canonical table accepts `needs_station_mapping` today. Gate
+exit 0 (627 / 274 / 624 / 50).*
+
 ### Prompt-21 import blockers (must be resolved before the production import)
 
 | Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |
