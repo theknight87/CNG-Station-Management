@@ -437,3 +437,83 @@ inventing one to have somewhere to attach an asset.
 Unit mapping needs new evidence — a source that states Unit membership per asset
 — not a cleverer rule over the evidence already staged. That is a finding to act
 on, not a gap to close by inference.
+
+---
+
+## 16. Prompt 22C.1 — the Admin execution surface
+
+Prompt 22C stopped because the commit can only be run by a session carrying a
+verified Clerk subject, and an operator connection has none. This is that
+session's path to the one approved batch. **No migration was required.**
+
+### The authenticated path, verified before any code was written
+
+`src/lib/supabase/client.ts` holds a single Supabase client created with the
+project URL and the **publishable** key, and an `accessToken` callback that
+reads the current Clerk session token per request. Supabase verifies that token
+against the trusted Clerk issuer and exposes its claims to PostgreSQL, where
+`cng_jwt_sub()` → `cng_current_app_user_id()` → `cng_require_admin()` read them.
+No JWT template, no service-role key, no hand-built claims.
+
+Proved against production, read-only, by assuming the owner's real subject under
+role `authenticated` inside a deliberately aborted transaction:
+`cng_current_app_user_id()` resolved, `cng_is_admin()` was true, and the
+deployed preview returned **69 groups / 281 rows** with the approved
+fingerprints. The commit was **not** invoked.
+
+### What was added
+
+| File | Purpose |
+| --- | --- |
+| `src/features/admin/useStationBatch.ts` | the guard, the RPC call, the verification path |
+| `src/features/admin/sections/AdminStationBatchSection.tsx` | the surface |
+| `src/features/admin/__tests__/stationBatch.test.tsx` | 33 tests |
+| `src/features/admin/{index.ts,AdminView.tsx}`, `src/routes.tsx` | route `/admin/station-batch` and its nav entry |
+
+### The guard is the live server, not the constants
+
+The approved run, both fingerprints and the expected 69/281 are constants, but
+they are only what the **live preview is compared against**. The control unlocks
+only when the server currently reports all of them; any drift renders
+`APPROVED BATCH HAS CHANGED — EXECUTION BLOCKED` and lists **every** mismatch,
+not just the first. A failed preview read shows an error rather than a button.
+
+### Accidental execution is not possible
+
+Opening the dialog sends nothing. The final action stays disabled until the
+Admin types `CONFIRM 281 STATION MAPPINGS` exactly — case and all. Nothing
+executes on page load or on preview.
+
+### Running it twice is not possible
+
+The control locks the instant it is submitted. **An uncertain result is never a
+retry**: a thrown request, or an error carrying no PostgreSQL SQLSTATE, is
+classified `uncertain`, and the screen says *"Execution result is uncertain. Do
+not submit again."* and offers only a **read-only** check, which reads the
+outcome as committed (281 decided), not executed (0 decided, fingerprint
+unchanged) or — deliberately — **unexpected** for anything between, which stops
+rather than guessing.
+
+Replay protection after a refresh is **server-derived, not remembered**: once
+the batch runs, every candidate row carries an active decision, the preview
+reports it, and the screen shows the completed state. Nothing in `localStorage`
+can bring the button back, and another Admin in another browser sees the same.
+
+### One wording precision
+
+The batch writes a **decision**; it does not rewrite
+`import_staging_rows.mapping_status`. `v_admin_staged_mapping_queue` keeps the
+two apart as `staged_mapping_status` (raw, untouched evidence) and
+`confirmed_mapping_status` (from the decision). The screen therefore says
+**Confirmed mapping status: Needs Unit Mapping** rather than implying the staged
+column moved.
+
+### Authorization is unchanged
+
+The section is hidden from non-Admins for UX only; `AdminView` already refuses
+the whole area to anyone else. **The database remains the authority** —
+`cng_require_admin()` was not touched, no RLS or grant was changed, the browser
+receives no service-role key or password, and the RPC carries exactly four
+parameters: the run and the three approved strings. Tests assert the payload
+contains no `actor`, `decided_by`, `clerk`, `sub`, `app_user`, `service_role`,
+`password` or `secret` under any key, and that no table is written directly.

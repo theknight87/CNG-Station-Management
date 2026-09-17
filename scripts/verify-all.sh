@@ -80,22 +80,24 @@ done
 
 # ---------------------------------------------------------------------------
 # UPGRADE REPLAY. Replaying from zero proves the migrations are internally
-# consistent; it does NOT prove that the hosted database, which is at 46, can
+# consistent; it does NOT prove that the hosted database, which is at 47, can
 # take the new one. So the upgrade path is replayed separately: stop at the
 # deployed count, then apply what this branch adds, exactly as production would.
 # ---------------------------------------------------------------------------
 UDB="${VERIFY_UPGRADE_DB:-cng_upgrade}"
 sudo -n -u postgres psql -q -c "DROP DATABASE IF EXISTS $UDB" -c "CREATE DATABASE $UDB" >/dev/null 2>&1
 up_fail=0
-for f in $(ls supabase/migrations/*.sql | head -46); do
+for f in $(ls supabase/migrations/*.sql | head -47); do
   sudo -n -u postgres psql -d "$UDB" -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null 2>&1 \
     || { echo "BASE MIGRATION FAILED: $f"; up_fail=1; break; }
 done
 if [ $up_fail -eq 0 ]; then
-  line "production-equivalent base" "PASS (46 applied)"
-  # The upgrade path from the CURRENT production migration count. 0046 is
-  # deployed; 0047 is what this prompt adds.
-  for f in supabase/migrations/0047_*.sql; do
+  line "production-equivalent base" "PASS (47 applied)"
+  # Production is at 47 and this prompt adds NO migration, so there is nothing
+  # to replay on top of the production-equivalent base. Stated, not skipped
+  # silently, so a future prompt that DOES add one restores the loop here.
+  line "upgrade replay" "none required (no migration beyond 47)"
+  for f in ; do
     if sudo -n -u postgres psql -d "$UDB" -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null 2>&1; then
       line "upgrade $(basename "$f" .sql)" "PASS (exit 0)"
     else

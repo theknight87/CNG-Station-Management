@@ -13,7 +13,8 @@ import { InstalledSrvSection } from '@/features/relief-valves/sections/Installed
 import { WarehouseSrvSection } from '@/features/relief-valves/sections/WarehouseSrvSection'
 import { VesselRegistrySection } from '@/features/vessels/sections/VesselRegistrySection'
 import {
-  AdminAlertSettingsSection, AdminAuditLogSection, AdminDataQualitySection, AdminUsersSection,
+  AdminAlertSettingsSection, AdminAuditLogSection, AdminDataQualitySection,
+  AdminStationBatchSection, AdminUsersSection,
 } from '@/features/admin'
 import { AdminPage } from '@/pages/AdminPage'
 import { AlertsPage } from '@/pages/AlertsPage'
@@ -156,6 +157,7 @@ export const router = createBrowserRouter([
           { path: 'users', element: <AdminUsersSection /> },
           { path: 'alert-settings', element: <AdminAlertSettingsSection /> },
           { path: 'data-quality', element: <AdminDataQualitySection /> },
+          { path: 'station-batch', element: <AdminStationBatchSection /> },
           { path: 'audit-log', element: <AdminAuditLogSection /> },
         ],
       },
