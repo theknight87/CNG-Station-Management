@@ -749,6 +749,66 @@ conflicts. The `SS-4R3A` owner rule applied to 48 rows in its one authorized con
 else; the `Repair Kit` sheet was excluded and staged no row. **ZERO unexplained difference.**
 ***
 
+***PROMPT 21C — THE STAGE A CANONICAL HIERARCHY PIPELINE IS BUILT AND VERIFIED, AND DELIBERATELY
+NOT COMMITTED** — see `docs/stage-a-hierarchy.md`. **One additive migration, 0046**, adding three
+functions and exactly ONE column (`import_staging_rows.committed_entity_kind`, nullable, with an
+explicit CHECK allowlist). Phase 1 re-confirmed the Stage A source from production READ-ONLY and
+every required value matched: 402 `stations_units` rows, 157 Stations, 188 Units, East 42/56,
+West 40/58, Delta 75/74, Canal/Alex/Upper 0/0, 0 Region conflicts, 0 job conflicts within a Unit,
+0 compressor-model conflicts, 156 Stations with deterministic Unit structure, 1 Station with no
+Unit, 4 job numbers reused across Units.
+
+**IDENTITY IS THE DATABASE, NOT THE PIPELINE.** Station = `(region_id, normalized_name)` and Unit =
+`(station_id, normalized_name)` were ALREADY `stations_region_norm_uq` and `units_station_norm_uq`,
+and `units_station_region_fk` already made a Unit in a different Region from its Station
+inexpressible — so uniqueness is relied on, never re-implemented. Job number is NOT identity (4 are
+reused in this very run) and a missing one never blocks a Unit. No fuzzy matching, no cross-Region
+matching, no Station created from asset data: **Canal, Alex and Upper contribute zero rows and
+therefore receive zero Stations**, which is a finding and not a gap to fill.
+
+**THE APPROVAL IS CONTENT-BOUND AND FAILS CLOSED.** `cng_stage_a_commit` REQUIRES both the manifest
+fingerprint (source content) and the preview fingerprint (the exact proposal) and re-derives both
+inside its own transaction — a NULL, a blank or a stale value REFUSES, so there is no "approve
+whatever is current" path that could drift between preview and commit. The preview fingerprint
+covers every proposed entity AND the `source_row_hash` of the evidence behind it, so changing the
+evidence without changing the conclusion still lapses the approval (the 0041 rule, applied to the
+hierarchy). Preview, fingerprint and commit all read ONE function, `cng_stage_a_proposal`, so what
+is approved and what is written cannot be two code paths.
+
+**A GUARD FIRED ON MY OWN TEST FIXTURE AND WAS RIGHT TO.** Two `/` spacings of one name are ONE
+identity after 0045 but TWO display spellings, and Prompt 21B approved the equivalence for
+COMPARISON ONLY, explicitly not the canonical name — so the commit REFUSES rather than tie-breaking
+a spelling no human has chosen. Measured on the real run this never arises: **ZERO** Station
+identities and **ZERO** Unit identities carry more than one spelling. The fold earns its keep at
+Stage B instead.
+
+**VERIFIED AT FULL SCALE LOCALLY** through the real operator runner (`scripts/stage-a.mjs`):
+402 rows -> **157 Stations, 188 Units, 1 Station with zero Units, 402 rows linked (340 to a Unit,
+62 to a Station), 0 aliases, 0 mapping decisions, 0 assets**, with a drifted approval refused, the
+authorized commit succeeding and a replay refused, in that order. The fixture was generated from the
+production run's STRUCTURAL SKELETON — per-Station row and Unit counts — with synthetic names: **no
+Arabic identity string was hand-transcribed**, that being the corruption risk this project exists to
+prevent, and Arabic fidelity is proved separately. Lineage does NOT force a false one-row-one-entity
+model: a row points at its FINEST entity and several rows may share one.
+
+**AUTHORIZATION**: all three functions are `service_role` ONLY — an `authenticated` call is refused
+with `insufficient_privilege`, proved by attempting it, not by reading a grant table. No function
+takes an actor. The commit is SECURITY DEFINER with a pinned `search_path`; the two read functions
+are deliberately NOT definer. No dynamic SQL, three literal targets, re-derived from `pg_proc.prosrc`.
+
+**PHASE 8 SIMULATION (read-only, nothing deployed)**: of the 1,104 `needs_station_mapping` rows,
+**281 rows** gain exactly one same-Region Station candidate and **0** identities gain more than one.
+The count is **78 RAW SPELLINGS = 69 NORMALIZED IDENTITIES** — Prompt 21B's 78 counted raw spellings;
+both are right and count different things, and the STOP-listed 281/0 hold under either unit. Kept
+strictly distinct: 15 identities match a UNIT name (not a Station match), 1 matches only in ANOTHER
+Region (not a match at all — Region is identity), and 801 `needs_equipment_mapping` rows are a third
+state Stage A does not touch. Every one stays an explicit human decision.
+
+**NOT DEPLOYED AND NOT COMMITTED.** Production re-verified after the work: **45 migrations**, 0 Stage
+A functions, 0 `committed_entity_kind` column, stations 0, units 0, aliases 0, mapping decisions 0,
+assets 0, 7,163 staging rows with 0 committed, 0 tables without RLS. Migrations 0044 and 0045 are
+byte-identical (0045 SHA-256 `e8b92cc8...` unchanged).*
+
 ### Prompt-21 import blockers (must be resolved before the production import)
 
 | Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |
@@ -832,6 +892,7 @@ These rules are permanent and apply to every future prompt.
 | 20B | 565 | 146 | 591 |
 | 20F | 580 | 152 | 601 |
 | 21B | 584 | 166 | 601 |
+| 21C | 584 | 203 | 611 |
 
 Update this table when a prompt is accepted, so the next one has a baseline to compare
 against.

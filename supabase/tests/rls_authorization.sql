@@ -4176,6 +4176,98 @@ SELECT pg_temp.ok(
     NOT ILIKE '%import_mapping_decisions%',
   'STGSEC-10: staging never touches import_mapping_decisions');
 
+-- ===========================================================================
+-- STAGE A AUTHORIZATION (Prompt 21C, migration 0046)
+-- ===========================================================================
+-- The hierarchy commit is an OPERATOR action, not a browser action. Creating
+-- 157 Stations and 188 Units is the single most consequential write this system
+-- will ever perform, and it is deliberately unreachable from any session a user
+-- can hold - including an administrator's.
+
+SELECT pg_temp.ok(
+  (SELECT count(*) FROM pg_proc p
+    WHERE p.proname IN ('cng_stage_a_proposal','cng_stage_a_preview','cng_stage_a_commit')
+      AND (has_function_privilege('authenticated', p.oid, 'EXECUTE')
+        OR has_function_privilege('anon', p.oid, 'EXECUTE'))) = 0,
+  'STAGEASEC-1: no browser role may preview or commit the canonical hierarchy');
+
+SELECT pg_temp.ok(
+  (SELECT count(*) FROM pg_proc p
+    WHERE p.proname IN ('cng_stage_a_proposal','cng_stage_a_preview','cng_stage_a_commit')
+      AND has_function_privilege('service_role', p.oid, 'EXECUTE')) = 3,
+  'STAGEASEC-2: all three Stage A functions are executable by service_role only');
+
+SELECT pg_temp.ok(
+  (SELECT prosecdef FROM pg_proc WHERE proname='cng_stage_a_commit') IS TRUE
+  AND (SELECT proconfig FROM pg_proc WHERE proname='cng_stage_a_commit')
+        @> ARRAY['search_path=pg_catalog, public'],
+  'STAGEASEC-3: the commit is SECURITY DEFINER with a pinned search_path');
+
+-- The read paths are deliberately NOT definer: they carry no elevated rights,
+-- so nothing is granted that the commit does not need.
+SELECT pg_temp.ok(
+  (SELECT count(*) FROM pg_proc
+    WHERE proname IN ('cng_stage_a_proposal','cng_stage_a_preview') AND prosecdef) = 0,
+  'STAGEASEC-4: the proposal and preview run with the caller''s own rights');
+
+-- STAGEASEC-5: an admin in a browser is REFUSED at the privilege layer, proved
+-- by trying it rather than by reading the grant table.
+SET LOCAL ROLE authenticated;
+DO $stageasec$
+BEGIN
+  PERFORM cng_stage_a_commit(gen_random_uuid(), 'x', 'y');
+  RAISE EXCEPTION 'FAILED: STAGEASEC-5 - authenticated was allowed to commit the hierarchy';
+EXCEPTION
+  WHEN insufficient_privilege THEN
+    RAISE NOTICE 'PASS  STAGEASEC-5: authenticated is refused EXECUTE on cng_stage_a_commit';
+END
+$stageasec$;
+RESET ROLE;
+
+-- STAGEASEC-6: lineage cannot be forged from a browser. `committed_entity_id`
+-- and `committed_entity_kind` are the record of what a commit actually did, and
+-- authenticated holds no UPDATE on the table that carries them.
+SELECT pg_temp.ok(
+  (SELECT count(*) FROM information_schema.role_table_grants
+    WHERE table_schema='public' AND grantee IN ('authenticated','anon')
+      AND table_name='import_staging_rows'
+      AND privilege_type IN ('INSERT','UPDATE','DELETE')) = 0,
+  'STAGEASEC-6: no browser role may write import_staging_rows, so lineage cannot be forged');
+
+-- STAGEASEC-7: the new column is readable, so Admin - Data Quality can show
+-- what has been committed without any new privilege.
+SELECT pg_temp.ok(
+  (SELECT count(*) FROM information_schema.column_privileges
+    WHERE table_schema='public' AND table_name='import_staging_rows'
+      AND column_name='committed_entity_kind' AND grantee='authenticated'
+      AND privilege_type IN ('INSERT','UPDATE')) = 0,
+  'STAGEASEC-7: committed_entity_kind carries no column-level write grant either');
+
+-- STAGEASEC-8: Stage A grants nothing new on the canonical hierarchy itself.
+-- The station and unit grants are the ones Prompt 4 established, RLS-gated.
+SELECT pg_temp.ok(
+  (SELECT count(*) FROM information_schema.role_table_grants
+    WHERE table_schema='public' AND grantee='anon'
+      AND table_name IN ('stations','units')) = 0,
+  'STAGEASEC-8: anon still holds nothing on stations or units');
+
+-- STAGEASEC-9: no Stage A function accepts an actor, so the act can never be
+-- attributed to a person who did not perform it.
+SELECT pg_temp.ok(
+  (SELECT count(*) FROM pg_proc
+    WHERE proname LIKE 'cng_stage_a%'
+      AND pg_get_function_arguments(oid) ~* '(actor|app_user|user_id|clerk|by)') = 0,
+  'STAGEASEC-9: no Stage A function takes a caller-supplied identity');
+
+-- STAGEASEC-10: the commit is structurally confined to the hierarchy. Derived
+-- from the catalog, not from the migration''s comment.
+SELECT pg_temp.ok(
+  (SELECT prosrc FROM pg_proc WHERE proname='cng_stage_a_commit') !~* '\mexecute\M'
+  AND (SELECT prosrc FROM pg_proc WHERE proname='cng_stage_a_commit') NOT ILIKE '%quote_ident%'
+  AND (SELECT prosrc FROM pg_proc WHERE proname='cng_stage_a_commit') NOT ILIKE '%station_aliases%'
+  AND (SELECT prosrc FROM pg_proc WHERE proname='cng_stage_a_commit') NOT ILIKE '%import_mapping_decisions%',
+  'STAGEASEC-10: the commit contains no dynamic SQL and names no alias or decision table');
+
 DO $$ BEGIN RAISE EXCEPTION 'RLS_SUITE_ROLLBACK'; END $$;
 
 ROLLBACK;

@@ -1540,4 +1540,315 @@ SELECT pg_temp.assert(
   'SEP-14: Unit identity is UNIQUE (station_id, normalized_name)');
 
 
+
+-- ===========================================================================
+-- STAGE A: the canonical hierarchy pipeline (Prompt 21C, migration 0046)
+-- ===========================================================================
+-- These are destructive tests. Each one tries to make the pipeline do something
+-- it must never do, and requires the database to refuse. The whole block runs
+-- inside this script's transaction and rolls back.
+
+CREATE TEMP TABLE sa AS SELECT
+  '99999999-0000-0000-0000-00000000000a'::uuid AS run,
+  '99999999-0000-0000-0000-00000000000b'::uuid AS batch,
+  repeat('a', 64) AS manifest;
+
+INSERT INTO import_runs (id, mode, label, started_at, completed_at, summary)
+SELECT run, 'commit', 'stage-a-test', now(), now(),
+       jsonb_build_object('manifest_fingerprint', manifest) FROM sa;
+INSERT INTO import_batches (id, import_run_id, source_file, source_sheet, file_checksum,
+                            header_row, rows_read, rows_flagged, rows_failed, rows_imported)
+SELECT batch, run, 'SA.xlsx', 'Sheet1', repeat('b', 64), 1, 0, 0, 0, 0 FROM sa;
+
+-- The fixture deliberately encodes every shape the real source contains.
+CREATE OR REPLACE FUNCTION pg_temp.sa_row(
+  p_row integer, p_region text, p_station text, p_unit text, p_job text,
+  p_hash text DEFAULT NULL)
+RETURNS void LANGUAGE sql AS $$
+  INSERT INTO import_staging_rows (import_run_id, import_batch_id, source_file, source_sheet,
+    source_row, source_raw, source_row_key, source_row_hash, target_table, outcome, normalized)
+  SELECT run, batch, 'SA.xlsx', 'Sheet1', p_row, '{}'::jsonb,
+         'SA.xlsx::Sheet1::' || p_row,
+         coalesce(p_hash, md5(p_row::text) || md5(p_row::text)),
+         'stations_units', 'ready',
+         jsonb_build_object('region', p_region, 'station_name', p_station,
+                            'unit_name', p_unit, 'unit_job_number', p_job)
+    FROM sa;
+$$;
+
+SELECT pg_temp.sa_row(1, 'East',  'SA ALPHA', 'SA ALPHA 1', 'J1');
+SELECT pg_temp.sa_row(2, 'East',  'SA ALPHA', 'SA ALPHA 2', 'J1');  -- job reused
+SELECT pg_temp.sa_row(3, 'East',  'SA ALPHA', 'SA ALPHA 1', NULL);  -- repeat identity
+SELECT pg_temp.sa_row(4, 'West',  'SA ALPHA', 'SA ALPHA 1', NULL);  -- same name, other Region
+SELECT pg_temp.sa_row(5, 'Delta', 'SA LONELY', NULL,        NULL);  -- Station with NO Unit
+SELECT pg_temp.sa_row(8, 'Canal', 'محطة الاختبار', 'محطة الاختبار 1', NULL); -- Arabic
+SELECT pg_temp.sa_row(9, 'East',  'SA NOJOB', 'SA NOJOB 1', NULL); -- Unit with no job number
+
+CREATE TEMP TABLE sa_fp AS
+SELECT pv.preview_fingerprint AS fp, pv.proposed_stations AS st, pv.proposed_units AS un,
+       pv.stations_without_unit AS nounit
+  FROM sa, cng_stage_a_preview(sa.run) pv;
+
+-- STAGEA-1: the preview is READ-ONLY. Computing a proposal creates nothing.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM stations WHERE station_name LIKE 'SA %') = 0
+  AND (SELECT count(*) FROM units WHERE unit_name LIKE 'SA %') = 0,
+  'STAGEA-1: previewing the hierarchy creates no Station and no Unit');
+
+-- STAGEA-2: the proposal is DETERMINISTIC in identity, not in row count.
+-- 7 rows describing 5 Stations (East/SA ALPHA, West/SA ALPHA, Delta/SA LONELY,
+-- Canal Arabic, East/SA NOJOB) and 5 Units.
+SELECT pg_temp.assert((SELECT st FROM sa_fp) = 5 AND (SELECT un FROM sa_fp) = 5,
+  'STAGEA-2: 7 source rows propose 5 Stations and 5 Units - rows are not entities');
+
+-- STAGEA-3: a Station whose rows name no Unit proposes NO Unit (decision D7).
+SELECT pg_temp.assert((SELECT nounit FROM sa_fp) = 1,
+  'STAGEA-3: the Unit-less Station proposes zero Units - no default Unit is invented');
+
+-- STAGEA-4: a MISSING approval is refused. There is no "approve whatever is current".
+SELECT pg_temp.assert_rejected(
+  format('SELECT * FROM cng_stage_a_commit(%L, %L, NULL)', (SELECT run FROM sa), repeat('a',64)),
+  'STAGEA-4: commit with no preview fingerprint is refused');
+
+-- STAGEA-5: an EMPTY approval is refused, not treated as "anything".
+SELECT pg_temp.assert_rejected(
+  format('SELECT * FROM cng_stage_a_commit(%L, %L, %L)', (SELECT run FROM sa), repeat('a',64), '   '),
+  'STAGEA-5: commit with a blank preview fingerprint is refused');
+
+-- STAGEA-6: a WRONG proposal fingerprint is refused - this is the drift guard.
+SELECT pg_temp.assert_rejected(
+  format('SELECT * FROM cng_stage_a_commit(%L, %L, %L)', (SELECT run FROM sa), repeat('a',64), repeat('f',64)),
+  'STAGEA-6: commit whose approved proposal does not match the current one is refused');
+
+-- STAGEA-7: a wrong MANIFEST fingerprint is refused - the approval is bound to
+-- the source content as well as to the proposal.
+SELECT pg_temp.assert_rejected(
+  format('SELECT * FROM cng_stage_a_commit(%L, %L, %L)', (SELECT run FROM sa), repeat('9',64), (SELECT fp FROM sa_fp)),
+  'STAGEA-7: commit whose approved source content does not match is refused');
+
+-- STAGEA-8: a run that does not exist is refused.
+SELECT pg_temp.assert_rejected(
+  format('SELECT * FROM cng_stage_a_commit(%L, %L, %L)', gen_random_uuid(), repeat('a',64), (SELECT fp FROM sa_fp)),
+  'STAGEA-8: commit against a nonexistent import run is refused');
+
+-- STAGEA-9: an INCOMPLETE run is refused - a half-written staging batch can
+-- never be mistaken for an approved one.
+INSERT INTO import_runs (id, mode, label, started_at, summary)
+VALUES ('99999999-0000-0000-0000-0000000000cc', 'commit', 'sa-incomplete', now(),
+        jsonb_build_object('manifest_fingerprint', repeat('c',64)));
+SELECT pg_temp.assert_rejected(
+  format('SELECT * FROM cng_stage_a_commit(%L, %L, %L)', '99999999-0000-0000-0000-0000000000cc', repeat('c',64), repeat('0',64)),
+  'STAGEA-9: commit against an uncompleted staging run is refused');
+
+-- STAGEA-10: NOTHING was written by any of those six refusals.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM stations WHERE station_name LIKE 'SA %') = 0
+  AND (SELECT count(*) FROM import_staging_rows WHERE import_run_id = (SELECT run FROM sa) AND committed_entity_id IS NOT NULL) = 0,
+  'STAGEA-10: every refused commit left zero Stations and zero lineage behind');
+
+-- STAGEA-11: the fingerprint tracks CONTENT. Change a proposed name and the
+-- previously approved fingerprint no longer matches.
+CREATE TEMP TABLE sa_drift AS
+SELECT (SELECT fp FROM sa_fp) AS before,
+       (SELECT pv.preview_fingerprint FROM sa, cng_stage_a_preview(sa.run) pv) AS same;
+SELECT pg_temp.assert((SELECT before = same FROM sa_drift),
+  'STAGEA-11: the same proposal fingerprints identically on every evaluation');
+
+UPDATE import_staging_rows
+   SET normalized = jsonb_set(normalized, '{unit_job_number}', '"CHANGED"')
+ WHERE import_run_id = (SELECT run FROM sa) AND source_row = 1;
+SELECT pg_temp.assert(
+  (SELECT pv.preview_fingerprint FROM sa, cng_stage_a_preview(sa.run) pv) <> (SELECT fp FROM sa_fp),
+  'STAGEA-12: changing a proposed attribute changes the fingerprint, so the approval lapses');
+UPDATE import_staging_rows
+   SET normalized = jsonb_set(normalized, '{unit_job_number}', '"J1"')
+ WHERE import_run_id = (SELECT run FROM sa) AND source_row = 1;
+
+-- STAGEA-13: the approval is bound to the EVIDENCE, not only to the conclusion.
+-- The proposed names are byte-identical here; only the source row hash moved.
+UPDATE import_staging_rows SET source_row_hash = repeat('e', 64)
+ WHERE import_run_id = (SELECT run FROM sa) AND source_row = 1;
+SELECT pg_temp.assert(
+  (SELECT pv.preview_fingerprint FROM sa, cng_stage_a_preview(sa.run) pv) <> (SELECT fp FROM sa_fp),
+  'STAGEA-13: a changed source_row_hash lapses the approval even when the proposal reads the same');
+UPDATE import_staging_rows SET source_row_hash = md5('1') || md5('1')
+ WHERE import_run_id = (SELECT run FROM sa) AND source_row = 1;
+
+-- STAGEA-14: an unrecognised Region is REFUSED, never created and never folded
+-- into the nearest canonical name.
+SELECT pg_temp.sa_row(20, 'Souf', 'SA BADREGION', NULL, NULL);
+SELECT pg_temp.assert_rejected(
+  format('SELECT * FROM cng_stage_a_commit(%L, %L, %L)', (SELECT run FROM sa), repeat('a',64),
+         (SELECT pv.preview_fingerprint FROM sa, cng_stage_a_preview(sa.run) pv)),
+  'STAGEA-14: a Region the canonical list does not contain is refused, not guessed');
+SELECT pg_temp.assert((SELECT count(*) FROM regions WHERE name = 'Souf') = 0,
+  'STAGEA-15: the refused Region was not created as a side effect');
+DELETE FROM import_staging_rows WHERE import_run_id = (SELECT run FROM sa) AND source_row = 20;
+
+-- STAGEA-16: two SPELLINGS of one identity are refused, never silently picked.
+SELECT pg_temp.sa_row(21, 'East', 'SA  ALPHA', 'SA ALPHA 1', NULL);
+SELECT pg_temp.assert_rejected(
+  format('SELECT * FROM cng_stage_a_commit(%L, %L, %L)', (SELECT run FROM sa), repeat('a',64),
+         (SELECT pv.preview_fingerprint FROM sa, cng_stage_a_preview(sa.run) pv)),
+  'STAGEA-16: one identity carrying two source spellings is refused for human reconciliation');
+DELETE FROM import_staging_rows WHERE import_run_id = (SELECT run FROM sa) AND source_row = 21;
+
+-- STAGEA-16a: THE "/" RULE IS COMPARISON, NOT A DISPLAY DECISION. Migration
+-- 0045 makes "A / B" and "A/B" the same identity, which is exactly why two rows
+-- spelling one Station both ways are REFUSED here: the owner approved the
+-- equivalence (Prompt 21B) and explicitly did NOT approve changing the canonical
+-- name, so choosing which spelling to display is a human decision, not a
+-- tie-break. Measured on the real run this never arises - zero identities carry
+-- two spellings - and the fold earns its keep at Stage B, where an asset name
+-- written "A/B" must match a structural Station written "A / B".
+SELECT pg_temp.sa_row(30, 'Delta', 'SA SLASH / B', NULL, NULL);
+SELECT pg_temp.sa_row(31, 'Delta', 'SA SLASH/B',   NULL, NULL);
+SELECT pg_temp.assert(
+  (SELECT count(DISTINCT cng_normalize_name(normalized ->> 'station_name'))
+     FROM import_staging_rows WHERE source_row IN (30, 31)) = 1,
+  'STAGEA-16a: the two "/" spacings really are ONE identity after 0045');
+SELECT pg_temp.assert_rejected(
+  format('SELECT * FROM cng_stage_a_commit(%L, %L, %L)', (SELECT run FROM sa), repeat('a',64),
+         (SELECT pv.preview_fingerprint FROM sa, cng_stage_a_preview(sa.run) pv)),
+  'STAGEA-16b: one identity spelled two ways is refused - the fold never picks a display name');
+DELETE FROM import_staging_rows WHERE import_run_id = (SELECT run FROM sa) AND source_row IN (30, 31);
+
+-- ------------------------- the authorized commit ---------------------------
+-- This script's earlier scenarios already populated aliases, decisions and
+-- assets, so Stage A's effect on them is measured as a DELTA rather than as an
+-- absolute count - an absolute assertion here would be tracking the fixture,
+-- not the pipeline (the MGR-6 mistake corrected in Prompt 20A).
+CREATE TEMP TABLE sa_before AS SELECT
+  (SELECT count(*) FROM station_aliases)           AS aliases,
+  (SELECT count(*) FROM import_mapping_decisions)  AS decisions,
+  (SELECT count(*) FROM installed_relief_valves)   AS isrv,
+  (SELECT count(*) FROM warehouse_relief_valves)   AS wsrv,
+  (SELECT count(*) FROM hoses)                     AS hoses,
+  (SELECT count(*) FROM storage_vessels)           AS vessels,
+  (SELECT count(*) FROM recovery_tanks)            AS tanks,
+  (SELECT count(*) FROM gas_detectors)             AS detectors,
+  (SELECT count(*) FROM compressors)               AS compressors,
+  (SELECT count(*) FROM dispensers)                AS dispensers;
+
+SELECT * FROM cng_stage_a_commit((SELECT run FROM sa), repeat('a',64), (SELECT fp FROM sa_fp));
+
+-- STAGEA-17: Region is part of Station identity. The same name in two Regions
+-- stays two Stations; it is NEVER matched across Regions.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM stations WHERE station_name = 'SA ALPHA') = 2
+  AND (SELECT count(DISTINCT region_id) FROM stations WHERE station_name = 'SA ALPHA') = 2,
+  'STAGEA-17: one name in two Regions creates two Stations - no cross-Region matching');
+
+-- STAGEA-18: the Unit-less Station exists and has NO Unit.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM stations WHERE station_name = 'SA LONELY') = 1
+  AND (SELECT count(*) FROM units u JOIN stations s ON s.id = u.station_id WHERE s.station_name = 'SA LONELY') = 0,
+  'STAGEA-18: a Station whose source names no Unit is created with zero Units');
+
+-- STAGEA-19: the display name stored is the SOURCE text, never the comparison
+-- form. Normalization decides identity; it never decides how a name is written.
+SELECT pg_temp.assert(
+  (SELECT station_name FROM stations WHERE normalized_name = 'sa alpha' LIMIT 1) = 'SA ALPHA',
+  'STAGEA-19: the canonical display name is the source spelling, not the normalized key');
+
+-- STAGEA-20: a job number reused across two Units does NOT merge them.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM units WHERE job_number = 'J1') = 2,
+  'STAGEA-20: a job number shared by two Units leaves them two Units - it is not identity');
+
+-- STAGEA-21: a Unit with no job number is still created, with job_number NULL.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM units WHERE unit_name = 'SA NOJOB 1' AND job_number IS NULL) = 1,
+  'STAGEA-21: a missing job number does not block Unit creation and is stored as NULL');
+
+-- STAGEA-22: Arabic survives byte-for-byte into the canonical name.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM stations WHERE station_name = 'محطة الاختبار') = 1,
+  'STAGEA-22: an Arabic Station name is stored exactly as the source holds it');
+
+-- STAGEA-23: every Unit's Region equals its Station's Region.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM units u JOIN stations s ON s.id = u.station_id WHERE u.region_id <> s.region_id) = 0,
+  'STAGEA-23: no Unit was created in a Region other than its Station''s');
+
+-- STAGEA-24: LINEAGE in both directions, without a false one-row-one-entity model.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM import_staging_rows WHERE import_run_id = (SELECT run FROM sa) AND committed_entity_id IS NULL) = 0
+  AND (SELECT count(*) FROM import_staging_rows WHERE import_run_id = (SELECT run FROM sa) AND committed_entity_kind = 'station') = 1
+  AND (SELECT count(*) FROM import_staging_rows WHERE import_run_id = (SELECT run FROM sa) AND committed_entity_kind = 'unit') = 6,
+  'STAGEA-24: every row is linked to its finest entity - 6 to a Unit, the Unit-less row to its Station');
+
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM stations WHERE station_name LIKE 'SA %' AND (source_file IS NULL OR source_row IS NULL)) = 0,
+  'STAGEA-25: every created Station carries the file/sheet/row it was created from');
+
+-- STAGEA-26: two rows may name one entity. The pipeline does not deduplicate
+-- the source, and does not pretend 9 rows are 9 records.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM import_staging_rows
+    WHERE import_run_id = (SELECT run FROM sa)
+      AND committed_entity_id = (SELECT u.id FROM units u JOIN stations s ON s.id = u.station_id
+                                  JOIN regions g ON g.id = s.region_id
+                                 WHERE u.unit_name = 'SA ALPHA 1' AND g.name = 'East')) = 2,
+  'STAGEA-26: two source rows describing one Unit both point at that one Unit');
+
+-- STAGEA-27: REPLAY. A second commit of the same run is refused.
+SELECT pg_temp.assert_rejected(
+  format('SELECT * FROM cng_stage_a_commit(%L, %L, %L)', (SELECT run FROM sa), repeat('a',64), (SELECT fp FROM sa_fp)),
+  'STAGEA-27: committing an already-committed run is refused');
+
+-- STAGEA-28: Stage A DECIDES nothing. No alias, no mapping decision.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM station_aliases) = (SELECT aliases FROM sa_before)
+  AND (SELECT count(*) FROM import_mapping_decisions) = (SELECT decisions FROM sa_before),
+  'STAGEA-28: the hierarchy commit creates no station alias and no mapping decision');
+
+-- STAGEA-29: Stage A IMPORTS no asset. Stage B has not begun.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM installed_relief_valves)  = (SELECT isrv        FROM sa_before)
+  AND (SELECT count(*) FROM warehouse_relief_valves) = (SELECT wsrv     FROM sa_before)
+  AND (SELECT count(*) FROM hoses)                = (SELECT hoses       FROM sa_before)
+  AND (SELECT count(*) FROM storage_vessels)      = (SELECT vessels     FROM sa_before)
+  AND (SELECT count(*) FROM recovery_tanks)       = (SELECT tanks       FROM sa_before)
+  AND (SELECT count(*) FROM gas_detectors)        = (SELECT detectors   FROM sa_before)
+  AND (SELECT count(*) FROM compressors)          = (SELECT compressors FROM sa_before)
+  AND (SELECT count(*) FROM dispensers)           = (SELECT dispensers  FROM sa_before),
+  'STAGEA-29: the hierarchy commit creates no canonical asset of any kind');
+
+-- STAGEA-30: THE CANONICAL SCOPE, re-derived from the catalog rather than from
+-- the migration comment. No dynamic SQL, and no asset, alias or decision table.
+SELECT pg_temp.assert(
+  (SELECT prosrc FROM pg_proc WHERE proname = 'cng_stage_a_commit') !~* '\mexecute\M'
+  AND (SELECT prosrc FROM pg_proc WHERE proname = 'cng_stage_a_commit') !~* 'quote_ident|format\s*\(',
+  'STAGEA-30: cng_stage_a_commit contains no dynamic SQL, so a caller cannot name a destination');
+
+SELECT pg_temp.assert(
+  (SELECT prosrc FROM pg_proc WHERE proname = 'cng_stage_a_commit')
+    !~* '(insert\s+into|update|delete\s+from)\s+(station_aliases|unit_aliases|import_mapping_decisions|installed_relief_valves|warehouse_relief_valves|storage_vessels|recovery_tanks|gas_detectors|hoses|compressors|dispensers|regions)\M',
+  'STAGEA-31: cng_stage_a_commit writes no alias, decision, asset or Region table');
+
+-- STAGEA-32: no caller-supplied actor. The act cannot be attributed to someone
+-- who did not perform it.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM pg_proc WHERE proname IN ('cng_stage_a_commit','cng_stage_a_preview','cng_stage_a_proposal')
+     AND pg_get_function_arguments(oid) ~* '(actor|app_user|user_id|clerk)') = 0,
+  'STAGEA-32: no Stage A function accepts an actor identity from its caller');
+
+-- STAGEA-33: pinned search_path on the definer function.
+SELECT pg_temp.assert(
+  (SELECT proconfig FROM pg_proc WHERE proname = 'cng_stage_a_commit') @> ARRAY['search_path=pg_catalog, public'],
+  'STAGEA-33: cng_stage_a_commit pins its search_path');
+
+-- STAGEA-34: the additive lineage column is an explicit allowlist, not free text.
+SELECT pg_temp.assert_rejected(
+  'UPDATE import_staging_rows SET committed_entity_kind = ''anything'' WHERE source_row = 5',
+  'STAGEA-34: committed_entity_kind rejects a value outside the canonical allowlist');
+
+-- STAGEA-35: a committed run can no longer be abandoned - Stage A lineage makes
+-- the 0044 abandonment guard bite, so history is never quietly erased.
+SELECT pg_temp.assert_rejected(
+  format('SELECT * FROM cng_abandon_import_run(%L, %L)', (SELECT run FROM sa), 'test'),
+  'STAGEA-35: a run whose rows are committed cannot be abandoned');
+
+
 ROLLBACK;
