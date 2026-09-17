@@ -1,0 +1,1 @@
+staging_row_id,source_file,source_sheet,source_row,source_row_key,source_row_hash,target_table,asset_family,raw_station,normalized_station,mapping_status,batch_preparation_id,preparation_category,existing_decision,decision_stale
