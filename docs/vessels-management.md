@@ -301,5 +301,56 @@ unchanged (no policy, grant or RLS boundary was touched). Both the SQL assertion
 and five of the frontend tests were **proved to fail against the pre-change code**
 before being accepted.
 
-**Migration 0050 is NOT DEPLOYED** (SHA-256 `7883b978...`). It requires separate
-owner approval.
+### Prompt 24C — deployed
+
+**Migration 0050 IS DEPLOYED.** Production went **49 -> 50**, recorded once as
+`20260917152650 vessel_serial_duplicate`; the file SHA-256 was recomputed immediately
+before transmission and matched the approved `7883b978...` (commit `b7b6da7`).
+
+**Deployment proved BYTE-EXACT, not merely applied.** PostgreSQL's own normalized
+`pg_get_viewdef()` of the deployed view hashes **`58bb1949...`**, identical to a local
+database built from the approved migration file. The migration was machine-inventoried
+first, with `--` comment lines stripped so prose could not be read as SQL: **exactly two
+statements** (one `CREATE OR REPLACE VIEW`, one `COMMENT`) and **zero**
+INSERT/UPDATE/DELETE/TRUNCATE/MERGE/ALTER/DROP/GRANT/REVOKE/POLICY/INDEX/CONSTRAINT/TYPE.
+
+**Deployed security**: `v_vessel_management` carries `security_invoker=true` in
+`pg_class.reloptions`; `authenticated` holds **SELECT only** with **anon 0** and no write
+grant; **0 views in the schema run with owner rights**; 70 policies and **0 tables without
+RLS**, both unchanged. `v_report_due_compliance` still returns its 279 rows, so the
+dependent view survived the replacement.
+
+**Production result, exact**: **16 rows flagged, all storage vessels, 8 distinct groups,
+`serial_duplicate_count = 2` on all 16 and on none otherwise.** NULL, blank and unique
+serials are all unflagged (0 each), `serial_missing` 17, and `serial_missing AND
+serial_duplicate` is **0** — the two conditions never coincide. 16 + 17 + 158 = 191.
+
+**ONE HONEST LIMIT ON THE `asset_type` PARTITION.** Production holds **0 serials shared
+between the two families**, so ignoring `asset_type` would return the same 8 groups / 16
+rows today: the partition is the correct rule but is **not currently exercised by
+production data**. It is proved instead by VDUP-8 against a constructed recovery tank
+carrying a storage vessel's serial, which stays unflagged.
+
+**Nothing changed.** A fingerprint over all 191 vessel rows (id, serial, station, unit,
+mapping status, region) is **`2fca1cfb...` before and after** — identical, so no id, serial,
+Station, Unit, mapping status or Region moved, and nothing was deduplicated. Canonical
+assets 279, lineage 279, decisions 281 with 0 Unit mappings, aliases 0/0, presence 0,
+audit_logs 283, and the **823** Station-unconfirmed staged rows untouched.
+
+**Query contract**: all **30** columns the frontend selects exist in the production view
+(**0 missing**), `serial_duplicate` boolean and `serial_duplicate_count` integer. The live
+filter query returns **16 rows, 16 distinct ids, 8 complete pairs, 0 incomplete** — neither
+member of a pair is hidden or duplicated.
+
+**Data Quality is unchanged**: all 16 sit in `v_data_quality_queue` under exactly one
+reason, `needs_unit_mapping`, with `needs_review` false on every one, and **0
+`duplicate_candidate` import issues were created**.
+
+**Hoses deferred, re-confirmed**: `v_hose_registry` is bit-identical (`b7d92673...`) and
+production holds **0 blank serials in any family** (1 NULL hose serial, which cannot pair
+with anything), so the equivalent gap is latent, not live.
+
+**NOT BROWSER VERIFIED.** `cng-station-management.pages.dev` was RE-TESTED this session and
+still answers **403 at CONNECT**, so the badge, the summary metric and the filter are
+verified at the deployed database and query-contract layer only. Owner browser acceptance
+remains the final step.

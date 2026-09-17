@@ -1438,6 +1438,45 @@ the pre-change code**. Authorization 624 unchanged — no policy, grant or RLS b
 **MIGRATION 0050 IS NOT DEPLOYED** (SHA-256 `7883b978...`) and awaits separate owner approval; no
 production data was created, modified or deleted.*
 
+***PROMPT 24C — MIGRATION 0050 IS DEPLOYED AND VESSEL DUPLICATE VISIBILITY IS VERIFIED IN
+PRODUCTION; NO DATA WAS CHANGED** — see `docs/vessels-management.md` §"Prompt 24C". Production went
+**49 -> 50**, recorded once (`20260917152650 vessel_serial_duplicate`), SHA-256 recomputed
+immediately before transmission and matching approved commit `b7b6da7` byte for byte.
+
+**DEPLOYMENT PROVED BYTE-EXACT**: PostgreSQL's own normalized `pg_get_viewdef()` of the deployed
+view hashes **`58bb1949...`**, IDENTICAL to a local database built from the approved file. The
+statement inventory was MACHINE-SCANNED with `--` lines stripped so prose could not read as SQL:
+**exactly two statements** (one `CREATE OR REPLACE VIEW`, one `COMMENT`) and **ZERO**
+INSERT/UPDATE/DELETE/TRUNCATE/MERGE/ALTER/DROP/GRANT/REVOKE/POLICY/INDEX/CONSTRAINT/TYPE. 0044-0049
+verified byte-identical before deployment.
+
+**DEPLOYED SECURITY**: `security_invoker=true` present in `pg_class.reloptions`; `authenticated`
+SELECT only with **anon 0** and no write grant; **0 views in the schema run with owner rights**; 70
+policies and 0 tables without RLS, both unchanged; `v_report_due_compliance` still returns 279 rows,
+so the dependent view survived the replacement.
+
+**PRODUCTION RESULT EXACT**: **16 flagged, all storage vessels, 8 distinct groups,
+`serial_duplicate_count = 2` on all 16**; NULL, blank and unique serials unflagged (0 each);
+`serial_missing` 17; `serial_missing AND serial_duplicate` **0**; 16 + 17 + 158 = 191.
+**ONE HONEST LIMIT**: production holds **0 serials shared between the two families**, so ignoring
+`asset_type` would give the same 8/16 today — the partition is the correct rule but is NOT currently
+exercised by production data, and is proved instead by VDUP-8 against a constructed fixture.
+
+**NOTHING CHANGED**: a fingerprint over all 191 vessel rows (id, serial, station, unit, mapping
+status, region) is **`2fca1cfb...` BEFORE AND AFTER** — identical, so nothing was merged,
+deduplicated, re-serialled or re-assigned. Canonical assets 279, lineage 279, decisions 281 with 0
+Unit mappings, aliases 0/0, presence 0, audit_logs 283, **823** Station-unconfirmed rows untouched,
+**0 `duplicate_candidate` import issues created**, and all 16 still sit in `v_data_quality_queue`
+under exactly one reason, `needs_unit_mapping`, with `needs_review` false on every one.
+
+**QUERY CONTRACT**: all **30** frontend columns exist in the production view (**0 missing**, so the
+20B failure mode is absent); the live filter returns **16 rows / 16 distinct ids / 8 complete pairs /
+0 incomplete**. **HOSES DEFERRED, RE-CONFIRMED**: `v_hose_registry` bit-identical (`b7d92673...`) and
+0 blank serials in any family. **NOT BROWSER VERIFIED** — `cng-station-management.pages.dev` was
+RE-TESTED and still answers 403 at CONNECT, so owner browser acceptance is the final step.
+Gate exit 0: frontend 627, schema 274, authorization 624, 50 migrations from zero, upgrade replay
+49 -> 50. Migrations 0044-0050 byte-identical.*
+
 ### Prompt-21 import blockers (must be resolved before the production import)
 
 | Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |
