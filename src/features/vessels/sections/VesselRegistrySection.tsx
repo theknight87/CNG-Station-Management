@@ -10,7 +10,9 @@ import { Fact } from '@/features/hierarchy/HierarchyPieces'
 import { useRegions } from '@/features/hierarchy/useHierarchy'
 import { Metric } from '@/features/relief-valves/SrvPieces'
 import { DueBadge, PrecisionDate, Serial, SourceStatus, Text } from '@/features/units/assetDisplay'
-import { VesselMappingBadge, VesselStationCell, VesselUnitCell } from '@/features/vessels/VesselPieces'
+import {
+  VesselDuplicateSerialBadge, VesselMappingBadge, VesselStationCell, VesselUnitCell,
+} from '@/features/vessels/VesselPieces'
 import { RelatedSrvs } from '@/features/vessels/RelatedSrvs'
 import {
   DEFAULT_VESSEL_QUERY, useVessels, useVesselSummary,
@@ -40,7 +42,14 @@ function columns(assetType: VesselAssetType): RegistryColumn<VesselRegistryRow>[
   return [
     {
       key: 'serial', header: 'Serial', rowHeader: true, sort: 'serial',
-      render: (r) => <Serial value={r.serial_number} status={r.serial_status} />,
+      // The badge sits BESIDE the serial, not in place of it: the value the
+      // source recorded is still shown exactly as recorded, unmodified.
+      render: (r) => (
+        <span className="flex flex-col items-start gap-0.5">
+          <Serial value={r.serial_number} status={r.serial_status} />
+          <VesselDuplicateSerialBadge row={r} />
+        </span>
+      ),
     },
     { key: 'manufacturer', header: 'Manufacturer', sort: 'manufacturer', render: (r) => <Text value={r.manufacturer} /> },
     { key: 'model', header: 'Model', render: (r) => <Text value={r.model} /> },
@@ -96,7 +105,11 @@ export function VesselRegistrySection({ assetType }: { assetType: VesselAssetTyp
 
   const clearFilters = useCallback(() => setQuery(DEFAULT_VESSEL_QUERY), [])
   const hasFilters =
-    Boolean(query.search.trim()) || query.regionId !== null || query.mapping !== 'all' || query.due !== 'all'
+    Boolean(query.search.trim()) ||
+    query.regionId !== null ||
+    query.mapping !== 'all' ||
+    query.due !== 'all' ||
+    query.duplicateSerial
   const total = state.status === 'ready' ? state.data.total : null
 
   return (
@@ -114,7 +127,7 @@ export function VesselRegistrySection({ assetType }: { assetType: VesselAssetTyp
           <h2 id="vessel-attention" className="sr-only">
             {label.plural} attention summary
           </h2>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3 lg:grid-cols-7">
             <Metric label={label.plural} value={summary.data.total.toLocaleString()} hint="visible to you" />
             <Metric label="Overdue" value={summary.data.overdue.toLocaleString()} tone="overdue" />
             <Metric
@@ -133,6 +146,13 @@ export function VesselRegistrySection({ assetType }: { assetType: VesselAssetTyp
             {/* A real data-quality signal: no exact date means no countdown is
               * possible, which is different from being within date. */}
             <Metric label="No exact date" value={summary.data.unknown_date.toLocaleString()} />
+            {/* Candidates for review, not confirmed duplicates. Nothing is
+              * merged or removed on the strength of a repeated string. */}
+            <Metric
+              label="Duplicate serial"
+              value={summary.data.serial_duplicate.toLocaleString()}
+              hint="candidates"
+            />
           </div>
           {total !== null && total !== summary.data.total ? (
             <p className="mt-1.5 text-xs text-muted-foreground">
@@ -205,6 +225,19 @@ export function VesselRegistrySection({ assetType }: { assetType: VesselAssetTyp
           </select>
         </label>
 
+        {/* A single checkbox rather than a new filtering system: it narrows the
+          * existing query by one server-side column and hides no member of a
+          * candidate group, because both halves carry the flag. */}
+        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={query.duplicateSerial}
+            onChange={(e) => update({ duplicateSerial: e.target.checked })}
+            className="h-3.5 w-3.5 rounded border"
+          />
+          <span>Duplicate serial candidates only</span>
+        </label>
+
         {hasFilters ? (
           <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7">
             <X className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
@@ -235,6 +268,9 @@ export function VesselRegistrySection({ assetType }: { assetType: VesselAssetTyp
             <Fact label="Serial (source)">
               {r.serial_number_raw ? <Identifier value={r.serial_number_raw} /> : <NullValue />}
             </Fact>
+            {r.serial_duplicate ? (
+              <Fact label="Serial review"><VesselDuplicateSerialBadge row={r} /></Fact>
+            ) : null}
             <Fact label="Manufacturer"><Text value={r.manufacturer} /></Fact>
             <Fact label="Model"><Text value={r.model} /></Fact>
             {/* Raw source text, preserved and never interpreted. */}

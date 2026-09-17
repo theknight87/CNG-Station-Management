@@ -1398,6 +1398,46 @@ West Station and 60 of 62 detectors are one-per-Station in Delta — worth an op
 mappings 0, presence 0, asset lineage 279; no row created, updated or deleted. **Gate exit 0**:
 frontend 617, schema 261, authorization 624.*
 
+***PROMPT 24B — STORAGE VESSEL DUPLICATE SERIAL VISIBILITY** — see
+`docs/vessels-management.md` §"Prompt 24B". Prompt 24A's E-class finding is closed: **16 storage
+vessels (8 serials) share a recorded serial and the product said nothing**, because
+`serial_duplicate` existed only on `v_hose_registry`. **One additive migration, 0050, replacing
+exactly one view and executing NO DML** — no table, column, constraint, index, grant, policy or
+enum, and the three new values are stored nowhere (VDUP-13). **It REUSES the Prompt 14 hose
+pattern**, so no second duplicate-detection architecture exists.
+
+**IT REPORTS, IT NEVER RULES.** Principle 16: repeated values are not duplicates without supporting
+evidence. All 16 remain INDEPENDENT canonical records — nothing merged, deduplicated, deleted,
+invalidated or corrected, no serial altered, no source evidence touched, no Unit mapping, alias or
+staged row affected, and no destructive control offered. The wording is **"Duplicate serial
+candidate"**, never "duplicate asset", "invalid", "error" or "delete duplicate".
+
+**PRODUCTION FINDING (read-only)**: 8 groups / 16 rows, every group a PAIR; 5 Stations; 6
+same-Station groups (12 rows) and 2 cross-Station (4 rows); **8 same-Region / 0 cross-Region**; and
+**all 8 groups come from DISTINCT source rows with byte-identical raw serials** — eight pairs of
+separately recorded assets, not one row imported twice.
+
+**THREE DESIGN POINTS**: partitioned by `asset_type`, because the view UNIONs two distinct entities
+and a vessel sharing a tank's serial is not a pair (VDUP-8); **blank serials are not duplicates** —
+my first draft used `IS NOT NULL` alone and MY OWN regression test caught two blank-serial vessels
+reported as a pair, so all three expressions use `nullif(btrim(...), '')`, while the stored value is
+still displayed exactly as recorded (VDUP-5/6/10); and **`security_invoker = true` is RESTATED**
+because `CREATE OR REPLACE VIEW` does not preserve reloptions (the 19B defect), so a collision whose
+other half lies outside the caller's Regions is NOT reported to them. `v_report_due_compliance`
+depends on the view, so columns were APPENDED and nothing was dropped (VDUP-12).
+
+**UI**: a badge BESIDE the serial (never in place of it), a summary count, and ONE checkbox
+narrowing the existing query by one server-side column — not a new filtering system; both halves
+carry the flag so the filter can never hide half a group. **DATA QUALITY IS A FINDING, NOT A
+CHANGE**: all 16 already appear in `v_data_quality_queue` for the unit-mapping reason, and adding
+the duplicate reason needs either production DML or a further view change, both out of scope;
+`import_issue_type` already contains `duplicate_candidate`. **A LATENT GAP IS REPORTED, NOT SILENTLY
+FIXED**: `v_hose_registry` has the same blank-serial behaviour, but production holds 0 blank serials
+anywhere. Gate exit 0; both the SQL assertions and 5 frontend tests were **PROVED to fail against
+the pre-change code**. Authorization 624 unchanged — no policy, grant or RLS boundary was touched.
+**MIGRATION 0050 IS NOT DEPLOYED** (SHA-256 `7883b978...`) and awaits separate owner approval; no
+production data was created, modified or deleted.*
+
 ### Prompt-21 import blockers (must be resolved before the production import)
 
 | Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |
@@ -1491,6 +1531,7 @@ These rules are permanent and apply to every future prompt.
 | 23B | 617 | 261 | 624 |
 | 23C | 617 | 261 | 624 |
 | 24A | 617 | 261 | 624 |
+| 24B | 627 | 274 | 624 |
 
 Update this table when a prompt is accepted, so the next one has a baseline to compare
 against.

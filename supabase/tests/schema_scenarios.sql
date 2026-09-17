@@ -2352,5 +2352,137 @@ SELECT pg_temp.assert(
       AND column_name = 'station_id' AND is_nullable = 'NO') = 4,
   'ASSETIMP-14: station_id is still NOT NULL in every asset family');
 
+-- ===========================================================================
+-- VDUP — Storage Vessel duplicate SERIAL CANDIDATES (Prompt 24B, migration 0050)
+--
+-- Data principle 16: repeated values are not duplicates without supporting
+-- evidence. These assert that the condition is REPORTED and that nothing is
+-- merged, rejected or deduplicated on the strength of a repeated string.
+-- ===========================================================================
+
+-- VDUP-1: there is NO UNIQUE constraint on either vessel family's serial, and
+-- none was added. Duplicates remain storable.
+SELECT pg_temp.assert(
+  NOT EXISTS (
+    SELECT 1 FROM pg_indexes
+     WHERE tablename IN ('storage_vessels','recovery_tanks')
+       AND indexdef ILIKE '%UNIQUE%' AND indexdef ILIKE '%serial_number%'),
+  'VDUP-1: no UNIQUE constraint on vessel serial_number - duplicates are reported, never rejected');
+
+-- Two independent storage vessels recording the same serial, plus one unique,
+-- plus two with no serial at all and one blank string.
+INSERT INTO storage_vessels (id, station_id, region_id, mapping_status, serial_number)
+SELECT 'dddddddd-0000-0000-0000-0000000d0001', 'aaaaaaaa-0000-0000-0000-000000000002', region_canal,
+       'needs_unit_mapping', 'SV-DUP-24B' FROM ids;
+INSERT INTO storage_vessels (id, station_id, region_id, mapping_status, serial_number)
+SELECT 'dddddddd-0000-0000-0000-0000000d0002', 'aaaaaaaa-0000-0000-0000-000000000002', region_canal,
+       'needs_unit_mapping', 'SV-DUP-24B' FROM ids;
+INSERT INTO storage_vessels (id, station_id, region_id, mapping_status, serial_number)
+SELECT 'dddddddd-0000-0000-0000-0000000d0003', 'aaaaaaaa-0000-0000-0000-000000000002', region_canal,
+       'needs_unit_mapping', 'SV-UNIQUE-24B' FROM ids;
+INSERT INTO storage_vessels (id, station_id, region_id, mapping_status, serial_number)
+SELECT 'dddddddd-0000-0000-0000-0000000d0004', 'aaaaaaaa-0000-0000-0000-000000000002', region_canal,
+       'needs_unit_mapping', NULL FROM ids;
+INSERT INTO storage_vessels (id, station_id, region_id, mapping_status, serial_number)
+SELECT 'dddddddd-0000-0000-0000-0000000d0005', 'aaaaaaaa-0000-0000-0000-000000000002', region_canal,
+       'needs_unit_mapping', NULL FROM ids;
+INSERT INTO storage_vessels (id, station_id, region_id, mapping_status, serial_number)
+SELECT 'dddddddd-0000-0000-0000-0000000d0006', 'aaaaaaaa-0000-0000-0000-000000000002', region_canal,
+       'needs_unit_mapping', '   ' FROM ids;
+-- A RECOVERY TANK carrying the storage vessel's serial. It is a DIFFERENT
+-- entity in a different table; the two must not be compared with one another.
+INSERT INTO recovery_tanks (id, station_id, region_id, mapping_status, serial_number)
+SELECT 'dddddddd-0000-0000-0000-0000000d0007', 'aaaaaaaa-0000-0000-0000-000000000002', region_canal,
+       'needs_unit_mapping', 'SV-DUP-24B' FROM ids;
+
+-- VDUP-2: both copies are retained. NOTHING is deduplicated.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM storage_vessels WHERE serial_number = 'SV-DUP-24B') = 2,
+  'VDUP-2: two storage vessels may carry the same serial and both are retained');
+
+-- VDUP-3: the management view REPORTS the condition, on BOTH members of the
+-- pair, so a filtered view can never hide one half of a candidate group.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM v_vessel_management
+    WHERE asset_type = 'storage_vessel' AND serial_number = 'SV-DUP-24B' AND serial_duplicate) = 2,
+  'VDUP-3: both members of a duplicate serial group are flagged');
+
+-- VDUP-4: a unique serial stays unflagged.
+SELECT pg_temp.assert(
+  (SELECT serial_duplicate FROM v_vessel_management
+    WHERE asset_type = 'storage_vessel' AND serial_number = 'SV-UNIQUE-24B') = false,
+  'VDUP-4: a unique serial is not reported as a candidate');
+
+-- VDUP-5: several NULL serials are several UNKNOWNS, not one repeated value.
+SELECT pg_temp.assert(
+  NOT EXISTS (SELECT 1 FROM v_vessel_management WHERE serial_number IS NULL AND serial_duplicate),
+  'VDUP-5: NULL serials are never duplicates of one another');
+
+-- VDUP-6: neither is a BLANK serial. A blank source cell and a NULL are the
+-- same fact, and two blanks are not evidence of a shared identity.
+SELECT pg_temp.assert(
+  NOT EXISTS (
+    SELECT 1 FROM v_vessel_management
+     WHERE nullif(btrim(serial_number), '') IS NULL AND serial_duplicate),
+  'VDUP-6: blank serials are never duplicates of one another');
+
+-- VDUP-7: missing and duplicate are separate reported conditions.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM v_vessel_management WHERE serial_missing AND serial_duplicate) = 0
+  AND (SELECT count(*) FROM v_vessel_management
+        WHERE asset_type = 'storage_vessel' AND serial_missing) >= 3,
+  'VDUP-7: serial_missing and serial_duplicate are distinct and never both true');
+
+-- VDUP-8: a Storage Vessel and a Recovery Tank sharing a serial are NOT a
+-- candidate pair. They are different entities in different tables, and the
+-- comparison is partitioned by asset_type.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM v_vessel_management
+    WHERE serial_number = 'SV-DUP-24B' AND serial_duplicate) = 2
+  AND (SELECT serial_duplicate FROM v_vessel_management
+        WHERE asset_type = 'recovery_tank' AND serial_number = 'SV-DUP-24B') = false,
+  'VDUP-8: the two vessel families are never compared with one another');
+
+-- VDUP-9: the reported count equals the size of the group, and is NULL where
+-- the serial is blank - never 0, which would read as a counted absence.
+SELECT pg_temp.assert(
+  (SELECT DISTINCT serial_duplicate_count FROM v_vessel_management
+    WHERE asset_type = 'storage_vessel' AND serial_number = 'SV-DUP-24B') = 2
+  AND (SELECT serial_duplicate_count FROM v_vessel_management
+        WHERE id = 'dddddddd-0000-0000-0000-0000000d0003') = 1
+  AND (SELECT serial_duplicate_count IS NULL FROM v_vessel_management
+        WHERE id = 'dddddddd-0000-0000-0000-0000000d0004'),
+  'VDUP-9: serial_duplicate_count states the group size and is NULL for a blank serial');
+
+-- VDUP-10: the serial VALUE itself is untouched. The view reports, it never
+-- normalizes, trims or rewrites what the source recorded.
+SELECT pg_temp.assert(
+  (SELECT serial_number FROM v_vessel_management
+    WHERE id = 'dddddddd-0000-0000-0000-0000000d0006') = '   ',
+  'VDUP-10: a blank-looking serial is reported exactly as stored, never trimmed away');
+
+-- VDUP-11: the view still runs with the CALLER's rights after being replaced.
+-- CREATE OR REPLACE VIEW does not preserve reloptions (the Prompt 19B defect),
+-- so the duplicate comparison could silently have become owner-rights - which
+-- would report a collision whose other half the caller may not read.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM pg_class
+    WHERE relname = 'v_vessel_management' AND relkind = 'v'
+      AND reloptions @> ARRAY['security_invoker=true']) = 1,
+  'VDUP-11: v_vessel_management still runs with the caller''s rights');
+
+-- VDUP-12: the dependent report view survived the replacement intact.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM pg_class WHERE relname = 'v_report_due_compliance' AND relkind = 'v') = 1,
+  'VDUP-12: v_report_due_compliance still exists after v_vessel_management was replaced');
+
+-- VDUP-13: migration 0050 adds READ-ONLY metadata. It writes nothing, and adds
+-- no table, column, constraint or index of its own.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name IN ('storage_vessels','recovery_tanks')
+      AND column_name IN ('serial_duplicate','serial_missing','serial_duplicate_count')) = 0,
+  'VDUP-13: duplicate metadata is derived in the view and stored on no table');
+
 
 ROLLBACK;

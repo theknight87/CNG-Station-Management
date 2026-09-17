@@ -63,3 +63,35 @@ export function VesselUnitCell({ row }: { row: VesselRegistryRow }) {
   if (row.unit_name) return <span className="whitespace-nowrap">{row.unit_name}</span>
   return <span className="whitespace-nowrap text-muted-foreground">Not confirmed</span>
 }
+
+/**
+ * DUPLICATE SERIAL CANDIDATE — a review signal, never a verdict.
+ *
+ * Data principle 16: repeated values are not duplicates without supporting
+ * evidence. Six identical relief valves on one station may be six real
+ * devices, and two vessels recording the same serial may be two real vessels
+ * whose serials were transcribed from the same source cell. This badge
+ * therefore says CANDIDATE and nothing stronger. It never says "duplicate
+ * asset", "invalid", "error" or "delete" — none of those is proven, and the
+ * product offers no merge or delete for it.
+ *
+ * It borrows the `conflict` kind for its colour and icon because that is the
+ * existing vocabulary for "held for human resolution", and overrides the
+ * description, which is the documented contract for a badge that borrows a
+ * kind but means something else.
+ */
+export function VesselDuplicateSerialBadge({ row }: { row: VesselRegistryRow }) {
+  if (!row.serial_duplicate) return null
+  const n = row.serial_duplicate_count
+  return (
+    <StatusBadge
+      kind="conflict"
+      label="Duplicate serial candidate"
+      description={
+        n && n > 1
+          ? `${n} independent records visible to you record this same serial; each is kept as its own record and a human must review whether they are the same device`
+          : 'another independent record visible to you records this same serial; each is kept as its own record and a human must review whether they are the same device'
+      }
+    />
+  )
+}

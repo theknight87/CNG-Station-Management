@@ -75,6 +75,25 @@ export interface VesselRegistryRow {
   source_status_raw: string | null
   needs_review: boolean
   notes: string | null
+  /** True when the recorded serial is NULL or blank. Blank is not a duplicate. */
+  serial_missing: boolean
+  /**
+   * DUPLICATE SERIAL CANDIDATE — not a duplicate asset.
+   *
+   * True when another vessel of the SAME asset type, visible to this caller,
+   * records the same non-blank serial. It is EVIDENCE FOR REVIEW under data
+   * principle 16: repeated values are not duplicates without supporting
+   * evidence. Six identical relief valves on one station may be six real
+   * devices. Nothing is merged, deduplicated or invalidated by this flag.
+   *
+   * Computed in `v_vessel_management`, which is `security_invoker`, so the
+   * comparison runs over rows the caller may already read. A collision whose
+   * other half is outside the caller's Regions is therefore NOT reported to
+   * them, which is correct: it would otherwise disclose a row they may not see.
+   */
+  serial_duplicate: boolean
+  /** How many records share that serial, or NULL where the serial is blank. */
+  serial_duplicate_count: number | null
 }
 
 const COLUMNS =
@@ -82,7 +101,8 @@ const COLUMNS =
   'mapping_status, needs_mapping, manufacturer, model, serial_number, serial_number_raw, ' +
   'serial_status, compressor_type_raw, last_inspection_date, last_inspection_precision, ' +
   'last_inspection_display, next_inspection_date, next_inspection_precision, ' +
-  'next_inspection_display, days_left, due_status, source_status_raw, needs_review, notes'
+  'next_inspection_display, days_left, due_status, source_status_raw, needs_review, notes, ' +
+  'serial_missing, serial_duplicate, serial_duplicate_count'
 
 export type VesselSort = 'next_due' | 'last_inspection' | 'station' | 'unit' | 'serial' | 'manufacturer' | 'mapping'
 export type VesselDueFilter = 'all' | 'overdue' | 'attention' | 'unknown'
@@ -93,6 +113,8 @@ export interface VesselQuery {
   regionId: string | null
   mapping: VesselMappingFilter
   due: VesselDueFilter
+  /** Narrow to duplicate serial candidates. Never hides a member of a pair. */
+  duplicateSerial: boolean
   sort: VesselSort
   direction: 'asc' | 'desc'
   page: number
@@ -100,7 +122,7 @@ export interface VesselQuery {
 }
 
 export const DEFAULT_VESSEL_QUERY: VesselQuery = {
-  search: '', regionId: null, mapping: 'all', due: 'all',
+  search: '', regionId: null, mapping: 'all', due: 'all', duplicateSerial: false,
   sort: 'next_due', direction: 'asc', page: 0, pageSize: 50,
 }
 
@@ -155,6 +177,7 @@ export function useVessels(
       if (q.due === 'overdue') b = b.eq('due_status', 'overdue')
       if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
       if (q.due === 'attention') b = b.in('due_status', ATTENTION_BUCKETS)
+      if (q.duplicateSerial) b = b.eq('serial_duplicate', true)
       if (term) {
         // Retrieval only. Matching a station name here resolves nothing; the
         // folded form is offered so an Arabic query typed one way finds the
@@ -185,7 +208,9 @@ export function useVessels(
       const rows = (data ?? []) as unknown as VesselRegistryRow[]
       const total = count ?? 0
       let filtered = false
-      const hasFilters = Boolean(term || q.regionId || q.mapping !== 'all' || q.due !== 'all')
+      const hasFilters = Boolean(
+        term || q.regionId || q.mapping !== 'all' || q.due !== 'all' || q.duplicateSerial,
+      )
       if (total === 0 && hasFilters) {
         const { count: unfiltered } = await supabase!
           .from('v_vessel_management')
@@ -215,15 +240,17 @@ export interface VesselSummary {
   conflict: number
   /** No exact next-inspection date, so no countdown is possible. */
   unknown_date: number
+  /** Records sharing a non-blank serial with another record. Candidates only. */
+  serial_duplicate: number
 }
 
 /**
  * The attention summary, counted over the WHOLE authorized dataset for this
  * asset type — not the current page, and not the current filters.
  *
- * Six `head: true` counts: the server returns numbers and no rows. Each runs
+ * Seven `head: true` counts: the server returns numbers and no rows. Each runs
  * under the caller's RLS, so the totals are the caller's own. Any failure fails
- * the whole strip, because five correct metrics beside one that silently reads
+ * the whole strip, because six correct metrics beside one that silently reads
  * zero is the same lie in a smaller box.
  */
 export function useVesselSummary(assetType: VesselAssetType): {
@@ -251,17 +278,21 @@ export function useVesselSummary(assetType: VesselAssetType): {
           .select('id', { count: 'exact', head: true })
           .eq('asset_type', assetType)
 
-      const [total, overdue, attention, needsUnit, conflict, unknownDate] = await Promise.all([
-        view(),
-        view().eq('due_status', 'overdue'),
-        view().in('due_status', ATTENTION_BUCKETS),
-        view().eq('mapping_status', 'needs_unit_mapping'),
-        view().eq('mapping_status', 'conflict'),
-        view().eq('due_status', 'unknown'),
-      ])
+      const [total, overdue, attention, needsUnit, conflict, unknownDate, duplicateSerial] =
+        await Promise.all([
+          view(),
+          view().eq('due_status', 'overdue'),
+          view().in('due_status', ATTENTION_BUCKETS),
+          view().eq('mapping_status', 'needs_unit_mapping'),
+          view().eq('mapping_status', 'conflict'),
+          view().eq('due_status', 'unknown'),
+          view().eq('serial_duplicate', true),
+        ])
       if (cancelled) return
 
-      const failure = [total, overdue, attention, needsUnit, conflict, unknownDate].find((r) => r.error)
+      const failure = [
+        total, overdue, attention, needsUnit, conflict, unknownDate, duplicateSerial,
+      ].find((r) => r.error)
       if (failure?.error) {
         setState({ status: 'error', message: failure.error.message })
         return
@@ -276,6 +307,7 @@ export function useVesselSummary(assetType: VesselAssetType): {
           needs_unit_mapping: needsUnit.count ?? 0,
           conflict: conflict.count ?? 0,
           unknown_date: unknownDate.count ?? 0,
+          serial_duplicate: duplicateSerial.count ?? 0,
         },
       })
     }

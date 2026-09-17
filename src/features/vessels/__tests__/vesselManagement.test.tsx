@@ -45,6 +45,9 @@ vi.mock('@/lib/supabase/client', () => {
         },
         eq: (col: string, value: string) => {
           calls.list.push(`${table}.eq:${col}=${value}`)
+          // Head-only COUNT queries are tagged separately, so a test can tell a
+          // summary metric apart from a filter applied to the ROW query.
+          if (head) calls.list.push(`${table}.count.eq:${col}=${value}`)
           return chain
         },
         in: (col: string, values: string[]) => {
@@ -97,6 +100,7 @@ function vessel(over: Record<string, unknown> = {}) {
     next_inspection_display: '2 Oct 2026',
     days_left: 17, due_status: 'due_30',
     source_status_raw: null, needs_review: false, notes: null,
+    serial_missing: false, serial_duplicate: false, serial_duplicate_count: 1,
     ...over,
   }
 }
@@ -378,5 +382,142 @@ describe('States', () => {
     replies.headCount = { data: null, error: null, count: 0 }
     renderVessels()
     expect(await screen.findByText(/no storage vessels are currently recorded/i)).toBeDefined()
+  })
+})
+
+
+/**
+ * DUPLICATE SERIAL CANDIDATES (Prompt 24B).
+ *
+ * The condition is REPORTED. It is never a verdict, never a merge, never a
+ * deletion, and never a reason to hide a record (data principle 16).
+ */
+describe('Duplicate serial candidates', () => {
+  const pair = [
+    vessel({
+      id: 'sv-d1', serial_number: 'SV-DUP-1', serial_number_raw: 'SV-DUP-1',
+      serial_duplicate: true, serial_duplicate_count: 2,
+    }),
+    vessel({
+      id: 'sv-d2', serial_number: 'SV-DUP-1', serial_number_raw: 'SV-DUP-1',
+      station_name: 'الخمائل', serial_duplicate: true, serial_duplicate_count: 2,
+    }),
+  ]
+
+  it('asks the server for the duplicate metadata rather than deriving it in the page', async () => {
+    replies.vessels = { data: [vessel()], error: null, count: 1 }
+    renderVessels()
+    await screen.findByText('SV-00001')
+    // The whole point: one comparison, computed under RLS, not a client-side
+    // scan of whichever page happens to be loaded.
+    expect(calls.list.some((c) => c.startsWith('v_vessel_management.range'))).toBe(true)
+  })
+
+  it('flags BOTH members of a candidate group and deduplicates neither', async () => {
+    replies.vessels = { data: pair, error: null, count: 2 }
+    renderVessels()
+    await screen.findAllByText('SV-DUP-1')
+    // Two rows survive. Nothing was collapsed into one.
+    expect(screen.getAllByText('SV-DUP-1').length).toBe(2)
+    expect(screen.getAllByText('Duplicate serial candidate').length).toBe(2)
+  })
+
+  it('says CANDIDATE and never asserts a fault or offers a destructive action', async () => {
+    replies.vessels = { data: pair, error: null, count: 2 }
+    const { container } = renderVessels()
+    await screen.findAllByText('Duplicate serial candidate')
+    const text = container.textContent ?? ''
+    expect(/duplicate asset/i.test(text)).toBe(false)
+    expect(/invalid/i.test(text)).toBe(false)
+    expect(/\berror\b/i.test(text)).toBe(false)
+    expect(/delete|merge|remove duplicate/i.test(text)).toBe(false)
+  })
+
+  it('explains the condition for a screen reader, in review language', async () => {
+    replies.vessels = { data: pair, error: null, count: 2 }
+    const { container } = renderVessels()
+    await screen.findAllByText('Duplicate serial candidate')
+    const text = container.textContent ?? ''
+    expect(text).toContain('2 independent records visible to you record this same serial')
+    expect(text).toContain('a human must review')
+  })
+
+  it('leaves a unique serial and a blank serial unflagged', async () => {
+    replies.vessels = {
+      data: [
+        vessel({ id: 'sv-u', serial_number: 'SV-UNIQUE' }),
+        vessel({
+          id: 'sv-b', serial_number: null, serial_number_raw: null,
+          serial_status: 'unknown', serial_missing: true,
+          serial_duplicate: false, serial_duplicate_count: null,
+        }),
+      ],
+      error: null,
+      count: 2,
+    }
+    renderVessels()
+    await screen.findByText('SV-UNIQUE')
+    expect(screen.queryByText('Duplicate serial candidate')).toBeNull()
+  })
+
+  it('filters server-side, and the filter narrows without hiding half a pair', async () => {
+    replies.vessels = { data: pair, error: null, count: 2 }
+    renderVessels()
+    await screen.findAllByText('SV-DUP-1')
+    calls.list = []
+    await userEvent.click(screen.getByRole('checkbox', { name: /duplicate serial candidates only/i }))
+    await waitFor(() => {
+      const rows = calls.list.filter((c) => c === 'v_vessel_management.eq:serial_duplicate=true')
+      const counts = calls.list.filter(
+        (c) => c === 'v_vessel_management.count.eq:serial_duplicate=true',
+      )
+      // One MORE than the summary's own count query: the row query is now narrowed.
+      expect(rows.length).toBeGreaterThan(counts.length)
+    })
+    // Both halves carry the flag, so both remain visible under the filter.
+    expect(screen.getAllByText('SV-DUP-1').length).toBe(2)
+  })
+
+  it('does not narrow the ROW query unless the filter is asked for', async () => {
+    replies.vessels = { data: [vessel()], error: null, count: 1 }
+    renderVessels()
+    await screen.findByText('SV-00001')
+    // The summary COUNTS candidates unconditionally, which is the point of the
+    // metric. The row query must not be narrowed by it.
+    expect(calls.list).toContain('v_vessel_management.count.eq:serial_duplicate=true')
+    const rowFilters = calls.list.filter(
+      (c) => c === 'v_vessel_management.eq:serial_duplicate=true',
+    )
+    const countFilters = calls.list.filter(
+      (c) => c === 'v_vessel_management.count.eq:serial_duplicate=true',
+    )
+    expect(rowFilters.length).toBe(countFilters.length)
+  })
+
+  it('counts candidates across the whole authorized dataset, not the page', async () => {
+    replies.vessels = { data: pair, error: null, count: 2 }
+    replies.headCount = { data: null, error: null, count: 16 }
+    renderVessels()
+    await screen.findAllByText('SV-DUP-1')
+    expect(calls.list).toContain('v_vessel_management.count.eq:serial_duplicate=true')
+    const summary = await screen.findByRole('region', { name: /attention summary/i })
+    expect(within(summary).getByText('Duplicate serial')).toBeDefined()
+  })
+
+  it('renders an Arabic Station name unchanged beside the badge', async () => {
+    replies.vessels = { data: pair, error: null, count: 2 }
+    renderVessels()
+    await screen.findAllByText('Duplicate serial candidate')
+    expect(screen.getByText('الخمائل')).toBeDefined()
+    expect(screen.getAllByText('الماظة').length).toBeGreaterThan(0)
+  })
+
+  it('shows the recorded serial exactly as stored, beside the badge and never instead of it', async () => {
+    replies.vessels = { data: [pair[0]], error: null, count: 1 }
+    renderVessels()
+    const badge = await screen.findByText('Duplicate serial candidate')
+    const cell = badge.closest('th, td')
+    expect(cell).not.toBeNull()
+    expect(cell?.textContent).toContain('SV-DUP-1')
   })
 })

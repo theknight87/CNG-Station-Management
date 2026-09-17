@@ -195,3 +195,111 @@ is the teal `ok` token, never Cargas green.
 - Mapping mutation, pending non-forgeable attribution and audit history.
 - The full Data Quality administration system.
 - The `needs_station_mapping` discrepancy above is an import/owner decision for Prompt 21.
+
+---
+
+## Prompt 24B — Storage Vessel duplicate serial visibility
+
+Prompt 24A found a real gap: **16 storage vessels (8 serials) share a recorded
+serial with another vessel, and nothing in the product said so.** `serial_duplicate`
+existed only on `v_hose_registry`, because Prompt 14 built it where a hose's
+individual traceability made it the organising fact. Data principle 16 requires
+duplicate candidates to be *reported*; for vessels they were not.
+
+### What this is, and what it is not
+
+It is **evidence for review**. Principle 16 is explicit that repeated values are
+not duplicates without supporting evidence — six identical relief valves on one
+station may be six real devices, and two vessels recording the same serial may be
+two real vessels whose serials came from the same source cell.
+
+So: **nothing is merged, deduplicated, deleted, invalidated or corrected.** All 16
+remain independent canonical records. No serial value is altered. No source
+evidence is touched. No Unit mapping, alias or staged row is affected. The UI
+offers no destructive action, and the wording is **"Duplicate serial candidate"** —
+never "duplicate asset", "invalid", "error" or "delete duplicate".
+
+### Production finding (Phase 1, read-only)
+
+| Measure | Value |
+| --- | --- |
+| Groups / rows | **8 groups, 16 rows**, every group a pair |
+| Affected Stations | 5 |
+| Same-Station groups | 6 groups (12 rows) |
+| Cross-Station groups | 2 groups (4 rows) |
+| Same-Region / cross-Region | 8 / **0** |
+| Groups from distinct source rows | **8 of 8** |
+| Groups with differing raw spelling | 0 |
+
+All eight come from **distinct source rows with byte-identical raw serials** —
+eight pairs of separately recorded assets, not one row imported twice.
+
+### Migration 0050 (`v_vessel_management`) — NOT DEPLOYED
+
+One additive migration containing **exactly one view replacement and no DML**. It
+adds **no table, column, constraint, index, grant, policy or enum**; the three new
+values are derived in the view and stored nowhere (VDUP-13).
+
+It **reuses the Prompt 14 hose pattern** rather than inventing a second
+duplicate-detection architecture: the same `count(*) FILTER (...) OVER (PARTITION BY ...)`
+shape, appending `serial_missing`, `serial_duplicate` and `serial_duplicate_count`.
+
+Three design points:
+
+- **Partitioned by `asset_type`.** The view UNIONs two genuinely distinct
+  entities; a Storage Vessel and a Recovery Tank sharing a serial are not a
+  candidate pair (VDUP-8).
+- **Blank serials are not duplicates.** The first draft used `IS NOT NULL` alone
+  and my own regression test caught two blank-serial vessels being reported as a
+  pair. All three expressions now use `nullif(btrim(serial_number), '')`. A blank
+  source cell and a NULL are the same fact; two of them are not evidence of a
+  shared identity (VDUP-5/6). The stored value is still displayed exactly as
+  recorded — the guard filters the comparison, it never trims the data (VDUP-10).
+- **`security_invoker = true` is RESTATED.** `CREATE OR REPLACE VIEW` does not
+  preserve reloptions — the Prompt 19B defect. The comparison therefore runs over
+  rows the caller may already read, so a collision whose other half lies outside
+  the caller's Regions is **not** reported to them; a wider signal would disclose
+  a row they may not see. VDUP-11 asserts it from `pg_class.reloptions`.
+
+`v_report_due_compliance` depends on this view, so columns were **appended** and
+the view was never dropped (VDUP-12).
+
+### Query and UI
+
+`useVesselManagement` selects the three columns, adds a `serial_duplicate` count
+to the attention summary, and a single **"Duplicate serial candidates only"**
+checkbox that narrows the existing query by one server-side column — not a new
+filtering system. Both halves of a pair carry the flag, so the filter can never
+hide one half of a candidate group.
+
+The badge borrows the `conflict` kind for colour and icon (the existing vocabulary
+for "held for human resolution") and **overrides the description**, which is the
+documented contract for a badge that borrows a kind but means something else. It
+sits **beside** the serial, never in place of it.
+
+### Data Quality (Phase 6) — a finding, no change
+
+`v_data_quality_queue` is keyed on `mapping_status <> 'resolved' OR needs_review`.
+All 279 canonical assets are `needs_unit_mapping`, so **all 16 vessels already
+appear in the Data Quality queue** — but for the unit-mapping reason, not the
+duplicate one. Surfacing the duplicate reason there would require either setting
+`needs_review`/`review_reason` on production rows (DML, which this prompt forbids)
+or a further view change beyond the single approved migration. `import_issue_type`
+already contains `duplicate_candidate`, so the enum exists for it whenever an
+owner authorizes that work. **Recorded, not done.**
+
+### Latent gap reported, not silently changed
+
+`v_hose_registry` has the same blank-serial behaviour 0050 fixes for vessels.
+Production holds **0 blank serials anywhere**, so the gap is latent rather than
+live, and changing another module was outside this prompt's scope.
+
+### Verification
+
+Gate exit 0. Frontend **617 → 627**, schema **261 → 274**, authorization 624
+unchanged (no policy, grant or RLS boundary was touched). Both the SQL assertions
+and five of the frontend tests were **proved to fail against the pre-change code**
+before being accepted.
+
+**Migration 0050 is NOT DEPLOYED** (SHA-256 `7883b978...`). It requires separate
+owner approval.

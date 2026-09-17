@@ -62,7 +62,7 @@ run "report contract" npx tsx scripts/verify-report-contract.mjs "$DB"
 # runs but asserts nothing (a failed connection, a renamed file, a truncated
 # run) must FAIL rather than report a cheerful zero - that is precisely the
 # silent coverage loss this gate exists to stop.
-declare -A MIN=( [schema_scenarios]=261 [rls_authorization]=624 )
+declare -A MIN=( [schema_scenarios]=274 [rls_authorization]=624 )
 
 for suite in schema_scenarios rls_authorization; do
   out="$(sudo -n -u postgres psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "supabase/tests/$suite.sql" 2>&1)"
@@ -80,22 +80,22 @@ done
 
 # ---------------------------------------------------------------------------
 # UPGRADE REPLAY. Replaying from zero proves the migrations are internally
-# consistent; it does NOT prove that the hosted database, which is at 47, can
+# consistent; it does NOT prove that the hosted database, which is at 49, can
 # take the new one. So the upgrade path is replayed separately: stop at the
 # deployed count, then apply what this branch adds, exactly as production would.
 # ---------------------------------------------------------------------------
 UDB="${VERIFY_UPGRADE_DB:-cng_upgrade}"
 sudo -n -u postgres psql -q -c "DROP DATABASE IF EXISTS $UDB" -c "CREATE DATABASE $UDB" >/dev/null 2>&1
 up_fail=0
-for f in $(ls supabase/migrations/*.sql | head -48); do
+for f in $(ls supabase/migrations/*.sql | head -49); do
   sudo -n -u postgres psql -d "$UDB" -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null 2>&1 \
     || { echo "BASE MIGRATION FAILED: $f"; up_fail=1; break; }
 done
 if [ $up_fail -eq 0 ]; then
-  line "production-equivalent base" "PASS (48 applied)"
-  # The upgrade path from the CURRENT production migration count. 0048 is
-  # deployed; 0049 is what this prompt adds.
-  for f in supabase/migrations/0049_*.sql; do
+  line "production-equivalent base" "PASS (49 applied)"
+  # The upgrade path from the CURRENT production migration count. 0049 is
+  # deployed; 0050 is what this prompt adds and it is NOT yet deployed.
+  for f in supabase/migrations/0050_*.sql; do
     if sudo -n -u postgres psql -d "$UDB" -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null 2>&1; then
       line "upgrade $(basename "$f" .sql)" "PASS (exit 0)"
     else
