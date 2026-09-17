@@ -193,38 +193,133 @@ inventing Stations from asset names is exactly what CLAUDE.md §8 forbids. The
 open `unmatched_station` import issues (2,435 across all families) already record
 this.
 
-## 10. Status
+## 10. Status — DEPLOYED AND PREVIEWED (Prompt 22B)
 
-**NOT DEPLOYED. NO PRODUCTION MAPPING DECISION WRITTEN.** Production remains at
-46 migrations with `import_mapping_decisions` = 0, `station_aliases` = 0, all
-canonical asset tables 0, and the hierarchy at 157/188.
+Migration 0047 is **deployed**: 46 → **47**, recorded once as
+`20260917094822 stage_b_station_batch`. File SHA-256
+`a9a63f2413e6bc991d77fe7a244ea810d63337c230859f7a58b8cd687e7dd3fe`.
 
-Migration 0047 must be deployed before the preview or commit functions exist in
-production. The production preview in §11 was computed **read-only by inlining
-the identical derivation** (`docs/analysis/stage-b-station-preview.sql`), which
-was validated as byte-identical to the deployed functions — same counts, same
-fingerprint — against a local database that has 0047.
+Deployment was proved byte-exact rather than merely applied: the `pg_proc.prosrc`
+MD5 of all four deployed functions matches the locally built approved copy, and
+`cng_normalize_name` hashes identically, so 0045 remains untouched.
 
-## 11. Production read-only preview
+**The migration executes no DML.** Its only two `INSERT`s live inside the commit
+function's body; at migration time it creates four functions, four comments and
+twelve grant/revoke statements, and changes no table, column, enum, index or
+policy.
+
+### Owner authorization decision (22B)
+
+The commit **remains admin-gated with a server-derived actor**, explicitly
+approved. `decided_by` stays `NOT NULL`, no actor is accepted from the client,
+and attribution is not weakened. Stage A's `service_role`-only architecture is
+unchanged — verified after deployment: Stage A browser EXECUTE 0, service_role 3.
+
+### Deployed security verification
+
+| | |
+| --- | --- |
+| commit `prosecdef` | true; read paths false |
+| `search_path` | pinned on all four |
+| volatility | commit `v`; all three read paths `s` (STABLE — cannot write) |
+| EXECUTE: anon / authenticated | **0** / 4 |
+| actor parameters | **0** |
+| commit signature | `p_import_run_id uuid, p_expected_manifest_fingerprint text, p_expected_preview_fingerprint text, p_reason text DEFAULT NULL` |
+| calls `cng_require_admin()` | yes |
+| browser write grants on `import_mapping_decisions` | **0** |
+| INSERT/UPDATE/DELETE policies on that table | **0** |
+| tables without RLS | 0 |
+
+**No dynamic SQL.** The deployed body contains no `EXECUTE` and no
+`quote_ident`. It contains exactly one `format()`, at the audit-summary line,
+which builds a human-readable message string — never SQL, and never from a
+caller-supplied identifier.
+
+**Attacks run in production, read-only.** `cng_require_admin()` was called
+directly (not the commit, which this prompt did not authorize) with claims
+carrying **no subject** and with a **subject mapping to no `app_user`**: both
+refused with `42501`, and the probe aborted deliberately so it could leave
+nothing behind.
+
+**A minor behavioural finding, worth recording**: when `request.jwt.claims` is
+set to an *empty string* rather than absent or valid JSON, the gate fails with a
+JSON parse error (`22P02`) instead of `42501`. It still **fails closed** — nothing
+proceeds — but the error class differs. No code was changed for this; it is noted
+so a future reader is not surprised by the error text.
+
+**Role-specific live refusal (viewer, engineer, manager, deactivated) is
+DEFERRED with the reason recorded.** Proving it in production would require
+either invoking the Stage B commit — which 22B forbids — or creating test
+`app_users`, which would be fabricating authorization records. It is asserted
+instead against real RLS with real personas in `rls_authorization.sql`
+(STAGEBSEC-4..9), the same posture taken for the Prompt 20D role-specific item.
+
+## 11. Deployed production preview
+
+Executed through the **deployed** `cng_stage_b_station_preview`, not the inlined
+reproduction. The fingerprint matched the expected value **exactly**, which also
+confirms the 22A inline reproduction was faithful.
 
 | | |
 | --- | --- |
 | import run | `cdad1e5e-7faa-4f3b-9432-12a720f3dd64` |
 | manifest fingerprint | `764d3c0f…f091b8f` |
 | **preview fingerprint** | **`a014745dd823917027a082a2d61a57fc831ccd59d22c67dcd7145982e0cbe769`** |
-| candidate groups | **69**, all `DETERMINISTIC STATION CANDIDATE` |
+| candidate groups | **69** |
 | candidate rows | **281** |
-| owner-review groups | **0** |
-| rows already decided | 0 |
-| families | 100 / 91 / 64 / 26 |
-| distinct raw spellings | 78 |
-| group size | 1 to 32 rows |
+| `DETERMINISTIC STATION CANDIDATE` | **69** |
+| `OWNER REVIEW` | **0** |
+| groups carrying a warning | 0 |
+| rows with an existing decision | 0 |
+| canonical Stations / Units | 157 / 188 |
 
-By Region: **Delta 60 groups / 199 rows**, **West 9 groups / 82 rows**. East
-contributes no candidates — its staged asset names do not match its canonical
-Station names, and that is a finding, not something to resolve by loosening the
-comparison.
+**Region and family distribution, from the deployed grouping function:**
 
-The fingerprint must be **re-derived by the deployed function** at approval time.
-It is stable as long as no staging row, Station, Region or lifecycle status
-changes; it is not a value to carry across a schema change.
+| Region | Groups | Rows | Storage | Recovery | Detectors | Hoses |
+| --- | --- | --- | --- | --- | --- | --- |
+| Delta | 60 | 199 | 67 | 72 | 60 | 0 |
+| West | 9 | 82 | 33 | 19 | 4 | 26 |
+| **Total** | **69** | **281** | **100** | **91** | **64** | **26** |
+
+- **69 distinct Station targets**, one per group; all exist, all Region-correct.
+- **78 raw spellings** across the 69 identities — 9 groups carry more than one
+  written form of the same Station.
+- Group sizes: eleven groups of 1 row, up to one group of 32.
+- **Hash coverage is complete**: 281 of 281 rows carry a 64-character
+  `source_row_hash`, and all **281 are distinct**, so no two rows share evidence.
+  Every group's hash and row-id arrays match its row count exactly.
+- Every candidate row is still `needs_station_mapping`; **0** already decided.
+
+**The preview wrote nothing**, proved by counters either side of the call:
+`import_mapping_decisions.n_tup_ins` 0 → 0, `audit_logs.n_tup_ins` 1 → 1,
+`import_staging_rows.n_tup_upd` 402 → 402 (the 402 is Stage A's lineage update
+from Prompt 21D, unchanged).
+
+## 12. Expected effect of the batch, if later approved
+
+Read-only simulation. All **281** rows would transition
+`needs_station_mapping → needs_unit_mapping`, producing exactly **281**
+`import_mapping_decisions`, each carrying the staged row identity, the confirmed
+canonical Station, `confirmed_unit_id = NULL`, the server-derived Admin actor, a
+decision timestamp and an audit row.
+
+Verified from the deployed body: it writes `NULL` into the unit position, derives
+`needs_unit_mapping`, names only `import_mapping_decisions` and `audit_logs`, and
+matches no hierarchy, alias or canonical-asset write. The decision table carries
+**0** equipment columns, so no equipment parent is expressible.
+
+## 13. The remaining 823 stay out, provably
+
+Candidates and remainder are **disjoint — 0 rows appear in both**.
+
+| Region | Rows | | Reason no candidate exists | Rows |
+| --- | --- | --- | --- | --- |
+| Upper | 266 | | Region has zero canonical Stations | **631** |
+| Alex | 199 | | no Station of that name in the Region | 178 |
+| Canal | 171 | | matches a **Unit** name, not a Station | 9 |
+| Delta | 99 | | matches a Station only in **another Region** | 5 |
+| West | 82 | | | |
+| East | 6 | | | |
+
+No fuzzy match is proposed, no Station is created from an asset name, and no
+alias is extended.

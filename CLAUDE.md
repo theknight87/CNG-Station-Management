@@ -919,6 +919,58 @@ B functions, stations 157, units 188, `import_mapping_decisions` **0** with an a
 inlining the identical derivation, validated byte-identical to the deployed functions against a
 local database. Migrations 0044, 0045 and 0046 are byte-identical.*
 
+***PROMPT 22B — MIGRATION 0047 IS DEPLOYED AND THE STAGE B STATION PREVIEW IS VERIFIED IN
+PRODUCTION; NO MAPPING DECISION WAS WRITTEN** — see `docs/stage-b-station-mapping.md` §10-13.
+Production went **46 -> 47**, recorded once (`20260917094822 stage_b_station_batch`), file SHA-256
+`a9a63f24...` matching the approved commit 9548e87 byte for byte. Deployment was proved BYTE-EXACT:
+the `pg_proc.prosrc` MD5 of all FOUR deployed functions matches the locally built approved copy, and
+`cng_normalize_name` hashes identically so 0045 is demonstrably untouched. **The migration executes
+NO DML** — its only two INSERTs are inside the commit function's body; at migration time it creates
+four functions, four comments and twelve grant/revoke statements and changes no table, column, enum,
+index or policy.
+
+**THE OWNER APPROVED THE ADMIN-GATED, SERVER-DERIVED-ACTOR SHAPE.** `decided_by` stays NOT NULL, no
+actor is accepted from the client, attribution is not weakened, and Stage A's `service_role`-only
+architecture is unchanged (Stage A browser EXECUTE 0, service_role 3, re-verified after deployment).
+
+**DEPLOYED SECURITY VERIFIED**: commit `prosecdef` true and the three read paths false and STABLE
+(so they cannot write); `search_path` pinned on all four; EXECUTE anon **0**, authenticated 4;
+**0** actor parameters; the commit calls `cng_require_admin()`; **0** browser write grants and **0**
+write policies on `import_mapping_decisions`; 0 tables without RLS. **NO DYNAMIC SQL**: no `EXECUTE`
+and no `quote_ident` in the deployed body; the single `format()` builds the audit summary MESSAGE,
+never SQL. **ATTACKS RUN IN PRODUCTION, READ-ONLY**: `cng_require_admin()` (not the commit, which
+22B forbids invoking) refused both a claims set with NO subject and a subject mapping to no
+`app_user`, each with 42501, and the probe aborted deliberately. **A MINOR FINDING RECORDED**: an
+EMPTY-STRING `request.jwt.claims` fails with a JSON parse error (22P02) rather than 42501 — it still
+FAILS CLOSED, but the error class differs; no code was changed for it. **Role-specific live refusal
+(viewer/engineer/manager/deactivated) is DEFERRED with the reason**: proving it in production would
+need either invoking the commit or creating test `app_users`, so it stays asserted against real RLS
+with real personas (STAGEBSEC-4..9).
+
+**THE DEPLOYED PREVIEW FINGERPRINT IS `a014745dd823917027a082a2d61a57fc831ccd59d22c67dcd7145982e0cbe769`
+— EXACTLY the expected value**, which also confirms the 22A inline reproduction was faithful.
+**69 groups / 281 rows, all 69 DETERMINISTIC STATION CANDIDATE, 0 OWNER REVIEW, 0 warnings, 0 rows
+already decided.** Delta 60 groups/199 rows, West 9 groups/82 rows; families 100/91/64/26. **69
+distinct Station targets**, all existing and Region-correct; **78 raw spellings** across the 69
+identities (9 groups carry more than one written form); group sizes 1 to 32. **Hash coverage is
+complete and unambiguous: 281/281 rows carry a 64-character `source_row_hash` and all 281 are
+DISTINCT**, with every group's hash and row-id arrays matching its row count. **The preview wrote
+nothing**, proved by counters either side: decisions `n_tup_ins` 0 -> 0, audit 1 -> 1, staging
+`n_tup_upd` 402 -> 402.
+
+**EXPECTED EFFECT IF LATER APPROVED (read-only simulation)**: all 281 rows
+`needs_station_mapping -> needs_unit_mapping`, producing exactly **281** decisions, each with the
+staged row identity, the confirmed Station, `confirmed_unit_id = NULL`, the server-derived Admin
+actor and an audit row. The decision table carries **0** equipment columns, so equipment parentage
+is not expressible. **The remaining 823 are provably disjoint — 0 rows in both sets** — and their
+reasons are unchanged: 631 in Regions with zero canonical Stations, 178 with no Station of that name
+in their Region, 9 matching a Unit name, 5 matching only in another Region.
+
+**PRODUCTION FIREWALL AFTER DEPLOYMENT AND PREVIEW**: 47 migrations, regions 6, stations 157, units
+188, `import_mapping_decisions` **0** with an all-time `n_tup_ins` of **0**, aliases 0, canonical
+assets 0, all 1,104 four-family rows still `needs_station_mapping`, 7,163 staging rows, 0 tables
+without RLS. Migrations 0044, 0045 and 0046 are byte-identical.*
+
 ### Prompt-21 import blockers (must be resolved before the production import)
 
 | Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |
