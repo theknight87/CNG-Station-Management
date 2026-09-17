@@ -1300,6 +1300,49 @@ ROLLED-BACK probe tuples from Prompts 12-14; live counts are 0 and the preview d
 Production: 49 migrations, 6 / 157 / 188, 281 decisions, 0 Unit mappings, canonical assets 0,
 aliases 0, asset lineage 0.*
 
+***PROMPT 23C — THE 279 CANONICAL ASSETS ARE COMMITTED TO PRODUCTION** — see
+`docs/asset-import.md` §12. `cng_asset_import_commit` was invoked **EXACTLY ONCE** after a final
+pre-commit guard matched every approved value. **The canonical asset tables are no longer empty:
+storage_vessels 100, recovery_tanks 91, gas_detectors 62, hoses 26 = 279.**
+
+**COMMIT RETURN**: `assets_created 279`, 100/91/62/26, `rows_linked 279`, fingerprint
+`b0d59448...bd91104b`. Unambiguous; no retry needed and none made.
+
+**EVERY RECONCILIATION IS ZERO-DEFECT**: `station_id` NULL 0, **`unit_id` NOT NULL 0**, wrong
+status 0, wrong Station vs the active decision 0, wrong Region 0, asset without lineage 0, **279
+distinct source keys across 279 assets** and 0 source rows used twice. Compressors, dispensers and
+both SRV families remain **0** — no other family was touched.
+
+**LINEAGE**: 279 links with a SINGLE `committed_at` (one transaction), 0 orphans, 0 wrong entity
+kinds, 0 wrong pointers, 0 hash mismatches, 0 links without a decision. **Stage A's 402 structural
+rows are untouched** and keep their own timestamp.
+
+**THE TWO DETECTOR EXCLUSIONS HELD**: 0 rows with `creates_detector_record = false` were imported
+anywhere, their evidence is intact, and `gas_detector_presence` still holds **0** rows.
+
+**DATA PRESERVATION — 17 CHECKS, 0 VIOLATIONS**: no fabricated serial; **0 model values anywhere**
+and none from compressor type; no fabricated notes or status; a date exists ONLY at `exact_date`
+precision and equals its source value; raw date text retained; pressure unit/value unchanged with
+no range flattened; **no `location`, `area_type` or unit key in any stored asset**.
+**DUPLICATES WERE NOT MERGED**: 199 assets with a serial, 80 without (82 staged minus the 2
+excluded — exact), and the 8 repeated-serial groups produced **16 DISTINCT assets** (principle 16).
+
+**AUDIT**: exactly 1 row, `import_executed` on the import run, `actor_label =
+service_role:asset_import` with **`actor_id` NULL** — correct and deliberate, because these tables
+carry no `created_by` contract and no human attribution was invented; fingerprint recorded,
+0 orphans, timestamp equal to the lineage `committed_at`.
+
+**REPLAY IS BLOCKED BY THREE INDEPENDENT BARRIERS**, proved read-only: the fingerprint moved
+`b0d59448... -> e3b0c442...` (the empty-string hash, since no eligible row remains), so the
+approved constant fails closed; Gate 5 refuses with `eligible_rows = 0`; and all 279 rows are now
+`D_ALREADY_IMPORTED` with `committed_entity_id` set.
+
+**FIREWALLS**: the remaining **823** Station-unconfirmed rows untouched with 0 imported; decisions
+281 with **0 Unit mappings**; aliases 0; hierarchy unchanged (6 / 157 / 188 — East 42/56, West
+40/58, Delta 75/74, Canal/Alex/Upper 0/0); 0 tables without RLS. **Gate exit 0**: frontend 617,
+schema 261, authorization 624, 49 from zero, upgrade replay 48 -> 49. Migrations 0044-0049
+byte-identical.*
+
 ### Prompt-21 import blockers (must be resolved before the production import)
 
 | Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |
@@ -1391,6 +1434,7 @@ These rules are permanent and apply to every future prompt.
 | 22D | 617 | 247 | 624 |
 | 23A | 617 | 261 | 624 |
 | 23B | 617 | 261 | 624 |
+| 23C | 617 | 261 | 624 |
 
 Update this table when a prompt is accepted, so the next one has a baseline to compare
 against.

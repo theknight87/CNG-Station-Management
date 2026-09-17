@@ -320,3 +320,79 @@ replay 48 -> 49. 0044-0048 byte-identical.
 **NO CANONICAL ASSET WAS IMPORTED.** `cng_asset_import_commit` was not invoked in any execution
 context. Production: 49 migrations, 6 / 157 / 188, 281 decisions, 0 Unit mappings, canonical
 assets 0, aliases 0, asset lineage 0, 0 tables without RLS.
+
+## 12. Prompt 23C — the 279 canonical assets are committed to production
+
+`cng_asset_import_commit` was invoked **exactly once**, after a final pre-commit guard matched
+every approved value. **This is the first time this system has held canonical assets.**
+
+**PRE-COMMIT GUARD, ALL EXACT**: 49 migrations, 6 / 157 / 188, 281 decisions, all four asset
+tables 0, asset lineage 0, aliases 0/0. The deployed preview returned fingerprint
+`b0d59448...bd91104b` and manifest `764d3c0f...`, both matching the approved values; 279 eligible
+(100 / 91 / 62 / 26), 2 blocked, 0 needs-review, 0 already imported, 0 rows with a Unit;
+**279/279 fully qualified** (active decision, Station match, `confirmed_unit_id IS NULL`, hash
+match, Region agreeing with the Station's own); 0 candidates from the 823. The commit body still
+hashed `e759bebb...`, SECURITY DEFINER, `search_path` pinned, EXECUTE **authenticated 0 / anon 0 /
+service_role 3**, no dynamic SQL; normalizer, Stage A and all four Stage B functions unchanged.
+
+**COMMIT RETURN** — `assets_created 279`, `storage_vessels 100`, `recovery_tanks 91`,
+`gas_detectors 62`, `hoses 26`, `rows_linked 279`, fingerprint `b0d59448...`. Unambiguous
+success; no retry was needed and none was made.
+
+**RECONCILIATION — every check zero-defect:**
+
+| Check | Result |
+| --- | --- |
+| Families | 100 / 91 / 62 / 26 = **279** |
+| Other families untouched | compressors, dispensers, installed SRV, warehouse SRV all **0** |
+| `station_id` NULL | 0 |
+| **`unit_id` NOT NULL** | **0** |
+| `mapping_status` <> needs_unit_mapping | 0 |
+| Wrong Station vs active decision | 0 |
+| Wrong Region vs the Station's own | 0 |
+| Asset without lineage | 0 |
+| Distinct source keys across 279 assets | **279** |
+| One source row used twice | 0 |
+
+**LINEAGE**: 279 links, **one** `committed_at` across all of them (one transaction), 0 orphans,
+0 wrong entity kinds, 0 wrong asset pointers, 0 hash-evidence mismatches, 0 links without a
+decision. **Stage A's 402 structural rows are untouched** and keep their own single timestamp.
+
+**THE TWO DETECTOR EXCLUSIONS HELD**: **0** rows with `creates_detector_record = false` were
+imported anywhere in staging, their evidence is intact (presence, raw Station name and
+`source_raw` all retained), and `gas_detector_presence` still holds **0** rows — nothing was
+written there.
+
+**DATA PRESERVATION — 17 checks, 0 violations**: no fabricated serial; **0 model values anywhere**
+and none derived from compressor type; compressor context copied verbatim; no fabricated notes or
+status; serial_status faithful; a date exists **only** where precision is `exact_date` (next, last
+inspection/calibration and last test each 0 violations) and every stored date equals its source
+value; raw date text retained; pressure unit and value unchanged with no range flattened; and
+**no `location`, `area_type` or unit key appears in any stored asset**.
+
+**DUPLICATE SERIALS WERE NOT DEDUPLICATED**: 199 assets carry a serial and 80 do not (82 staged
+no-serial rows minus the 2 excluded detectors — exact). The **8 repeated-serial groups covering 16
+rows produced 16 DISTINCT assets**, as data principle 16 requires.
+
+**AUDIT**: exactly **1** row — `import_executed` on `import_runs`
+`cdad1e5e-...`, `actor_label = service_role:asset_import`, **`actor_id` NULL**, carrying
+`assets_created 279` and the approved fingerprint, 0 orphans, and an `occurred_at` equal to the
+lineage `committed_at`. The NULL human actor is correct and deliberate: these tables carry no
+`created_by` contract, so no human attribution was invented.
+
+**REPLAY IS BLOCKED BY THREE INDEPENDENT SERVER-SIDE BARRIERS**, proved read-only without
+re-invoking the commit:
+1. **The fingerprint moved** — `b0d59448...` -> `e3b0c442...` (the SHA-256 of the empty string,
+   because no eligible row remains). Presenting the approved constant now fails the Gate 3/4
+   comparison.
+2. **Gate 5** — `eligible_rows = 0`, so the commit raises *"has no eligible rows"* rather than
+   silently succeeding.
+3. **Lineage** — all 279 rows are classified `D_ALREADY_IMPORTED`; `committed_entity_id` is set on
+   every one and `staging_commit_shape_ck` keeps id and timestamp in step.
+
+**FIREWALLS**: the remaining **823** Station-unconfirmed rows are untouched with **0** imported;
+decisions still 281 with **0 Unit mappings**; aliases 0; hierarchy unchanged at 6 / 157 / 188 —
+East 42/56, West 40/58, Delta 75/74, Canal/Alex/Upper 0/0; 0 tables without RLS.
+
+**Gate exit 0**: frontend 617, schema 261, authorization 624, 49 migrations from zero, upgrade
+replay 48 -> 49. Migrations 0044-0049 byte-identical.
