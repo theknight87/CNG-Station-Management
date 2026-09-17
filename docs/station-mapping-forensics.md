@@ -576,3 +576,89 @@ replay 50 -> 51. Installed-SRV import suite 39/39, SRV mapping suite 15/15, both
 
 **`cng_irv_import_commit` was NOT invoked in any execution context.** The fingerprint above is a
 CANDIDATE approval token; it is not approved here.
+
+## Prompt 25F — the 2,662 canonical installed SRVs are committed to production
+
+`cng_irv_import_commit` was invoked **EXACTLY ONCE** after a final pre-commit guard matched every
+approved value, including the fingerprint
+`f4757c75a7513aa2ed8779ae5b4df29b1db686b3aaa05c995873be87168acb44`.
+**COMMIT RETURN: `srvs_created` 2,662, `rows_linked` 2,662, fingerprint echoed.** Unambiguous; no
+retry was needed and none was made. **`installed_relief_valves` is no longer empty.**
+
+**CANONICAL STATE IS ZERO-DEFECT**: 2,662 rows, **`needs_station_mapping` on 2,662 and nothing
+else**; `station_id` 0, `unit_id` 0, `compressor_id` 0, `storage_vessel_id` 0, `dispenser_id` 0;
+0 rows carry `resolved_by`/`resolved_at`; 0 rows missing a Region.
+
+**LINEAGE IS EXACTLY ONE-TO-ONE**: 2,662 staged rows linked / **0 unlinked**, 2,662 distinct
+`committed_entity_id`, 2,662 distinct source keys, 0 orphan links, 0 SRVs without lineage, 0 key
+mismatches, 0 hash mismatches, 0 cross-run links, and a **SINGLE `committed_at`** across all 2,662
+(one transaction). **NOTHING WAS COLLAPSED BY A REPEATED HASH**: 2,489 distinct hashes across 2,662
+distinct keys produced 2,662 DISTINCT canonical records (principle 16). Stage A's 402 structural
+rows are untouched; total committed staging rows 3,343 = 402 + 279 + 2,662.
+
+**TECHNICAL INTEGRITY — 30+ MACHINE COMPARISONS AGAINST THE SOURCE, 0 MISMATCHES** on serial, raw
+serial, part number, manufacturer, size/type, IN port, OUT port, set-pressure raw/min/max/unit,
+last and next dates, both raw date texts, notes, raw Station name, raw Region, `location_raw`,
+`expected_parent_kind` and `source_status_raw`. **NOTHING FABRICATED**: 0 fabricated serials,
+pressures, dates or notes; **0 model values anywhere**; **0 non-exact-precision rows carry a date**,
+so Days-Left evidence can only come from an `exact_date`; 0 blank raw Station names; 0 rows missing
+file/sheet/row provenance. **The `SS-4R3A` rule held EXACTLY in its one authorized context**: 48
+rows carry it as `part_number`, **0 of them carry a serial**, and all 48 read
+`serial_status = not_yet_assigned`.
+
+**ONE E-CLASS OBSERVATION, MEASURED AND NOT CORRECTED**: the nested copy of the raw source cells
+inside `source_raw->'source_raw'` is byte-identical for 165 rows and differs for the rest — and the
+difference was characterised exactly rather than assumed: **2,662 of 2,662 differ ONLY by keys whose
+original value was JSON null, with 0 values changed and 0 keys added.** `jsonb_strip_nulls` in the
+proposal recurses, so 3,029 explicitly-empty source cells lost their KEY (not a value) in that
+nested copy. No value was lost, every raw cell text survives in the typed `*_raw` columns (0
+mismatches), and the staging row keeps the complete untouched original. Reported, not repaired: no
+DML was authorized here and the evidence is intact.
+
+**PROVENANCE IS COMPLETE**: historical staged statuses **1,599 / 262 / 801** exactly, all seven
+pipeline reasons preserved on 2,662 rows, and `source_row_key` + `source_row_hash` on 2,662.
+**THE SYNTHETIC IDENTIFIERS ARE PROVENANCE ONLY, PROVED**: 1,063 synthetic Station ids and 801
+synthetic Unit ids, **1,063/1,063 matching `^[0-9a-f]{32}$`**, with **0 existing in `stations` and
+0 in `units`** — and 0 canonical FKs populated anywhere, so none became one.
+
+**WRITE FIREWALL — ONLY THE APPROVED SURFACE CHANGED**: regions 6, stations 157, units 188,
+warehouse 0, decisions 281 (all-time `n_tup_ins` 281), aliases 0/0, storage vessels 100, recovery
+tanks 91, gas detectors 62, hoses 26, compressors 0, dispensers 0, presence 0, staging 7,163, the
+268 quarantine 268, 0 tables without RLS. No Station, Unit, equipment, alias or mapping decision
+was created.
+
+**AUDIT — EXACTLY ONE ROW**, 283 -> **284**: `import_executed` on
+`installed_relief_valves`/`cdad1e5e…`, `actor_label = service_role:installed_srv_import` with
+**`actor_id` NULL** (correct — these tables carry no `created_by` contract and no human attribution
+was invented), `before_data` NULL, and `after_data` recording 2,662 created, 2,662 linked, the
+canonical status and BOTH fingerprints.
+
+**REPLAY IS CLOSED, PROVED READ-ONLY WITHOUT A SECOND COMMIT CALL**: the post-import preview reports
+**eligible 0, already imported 2,662**, and the fingerprint has moved
+`f4757c75… -> e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (the empty-string
+hash), so the approved constant now fails closed.
+
+**A REAL AND EXPECTED CONSEQUENCE OF THE OWNER'S OPTION 1 — THE STATION-MAPPING WORKLOAD GREW.**
+Against the canonical rows the exactly-one-same-Region-Station candidate set is now **1,054 rows /
+127 identities** (Delta 558, East 283, West 213), not 215 / 27. This is NOT a drift and NOT a defect:
+the 215 was always measured over the 1,599 historically-`needs_station_mapping` rows, and scoped that
+way it reproduces **EXACTLY — 215 rows / 27 identities / Delta 118 / West 62 / East 35**. The extra
+839 (801 historically `needs_equipment_mapping` + 38 historically `needs_unit_mapping`) are
+candidates precisely because the conservative import correctly reset them, so they now qualify under
+the same evidence rule instead of carrying a forbidden inference. 0 multi-candidate, 0 cross-Region,
+0 already mapped, and 1,608 rows still have no same-Region candidate at all. **None was mapped.**
+
+**THE 268 QUARANTINE IS UNCHANGED** — storage vessels 116, recovery tanks 76, gas detectors 54,
+hoses 22 — with **0 overlap** with the 281 decisions, which remain 281 active with **0 asserting a
+Unit**.
+
+**Gate exit 0**: frontend 627, schema 274, authorization 624, 51 migrations from zero, upgrade replay
+50 -> 51, report contract PASS; installed-SRV import suite 39/39, SRV mapping suite 15/15.
+**One process note**: the first gate run aborted because the LOCAL PostgreSQL server was killed
+mid-run (connection refused; disk had 28 GB free, so not exhaustion). That was infrastructure, not a
+test result — it was never reported as a failure; the server was restarted and the gate re-run
+clean.
+
+**PRODUCTION**: 51 migrations · 6 / 157 / 188 · installed SRVs **2,662** (all
+`needs_station_mapping`, all FKs NULL) · warehouse 0 · decisions 281 · aliases 0 · staging 7,163 ·
+audit 284 · assets 100/91/62/26.
