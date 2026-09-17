@@ -405,3 +405,82 @@ changes what the record asserts:
 
 No migration was written, because writing the import function would mean choosing between these on
 the owner's behalf, and the choice is a data-principle ruling rather than an implementation detail.
+
+## Prompt 25D — Conservative canonical installed-SRV import (built and locally verified; NOT deployed)
+
+**Owner decision implemented (Option 1).** All 2,662 staged installed SRVs are eligible for
+canonical import, and every one is created conservatively: `station_id = NULL`, `unit_id = NULL`,
+`compressor_id` / `storage_vessel_id` / `dispenser_id` all NULL, `mapping_status =
+'needs_station_mapping'`. The historical staged statuses (1,599 / 262 / 801) are **preserved as
+provenance and never applied as canonical truth**, because the 801 `needs_equipment_mapping` and
+262 `needs_unit_mapping` labels descend from the one-Unit inference §4 permanently forbids.
+
+**One additive migration, `0051_installed_srv_import.sql`** (SHA-256
+`f63f8bffc0aa4d498052cdbbf632d83eed810e0b9c8f2e63291c7a8446973fee`), adding three functions and
+NO table, column, constraint, enum, index, grant-widening or policy. It follows the 0049 shape
+exactly, so no second import architecture exists:
+
+- `cng_irv_import_proposal(uuid)` — SQL, STABLE, pinned `search_path`. Eligibility classes
+  `D_ALREADY_IMPORTED`, `C_INVALID_EVIDENCE`, `A_READY_UNRESOLVED`.
+- `cng_irv_import_preview(uuid)` — SQL, STABLE. 26 columns plus a content-bound fingerprint.
+- `cng_irv_import_commit(uuid, text, text, integer, text)` — plpgsql, SECURITY DEFINER, pinned
+  `search_path`, `service_role` ONLY (`REVOKE ALL FROM PUBLIC, anon, authenticated`).
+
+**THE CONSERVATIVE STATUS IS STRUCTURAL, NOT DEFAULTED.** The single literal INSERT into
+`installed_relief_valves` does not name `station_id`, `unit_id`, `compressor_id`,
+`storage_vessel_id` or `dispenser_id` at all — there is no column for a fabricated parent to be
+written into — and a sixth gate additionally refuses the whole transaction if any eligible row's
+payload proposes a Station, Unit, equipment parent or a non-conservative status.
+
+**HISTORY IS KEPT, NEVER PROMOTED.** Each payload carries a `historical` object recording
+`staged_mapping_status`, the pipeline's own resolution reason, and the synthetic station/unit
+identifiers **as TEXT**, alongside `source_row_key`, `source_row_hash`, `import_run_id`, the
+file/sheet/row provenance and the untouched `source_raw`. T8b/T8c assert those synthetic
+identifiers are stored as provenance and that **no synthetic id ever became a canonical FK**;
+T9c asserts the one-Unit inference is recorded as evidence and never applied.
+
+**LOCAL VERIFICATION AT FULL SCALE.** A disposable fixture reproducing production's structure
+(157 Stations / 188 Units; 2,662 staged installed-SRV rows; regions Alex 390 / East 563 / West 454
+/ Canal 323 / Delta 634 / Upper 298; historical statuses 1,599 / 262 / 801; 2,489 distinct hashes
+across 2,662 distinct keys, i.e. 173 legitimately repeated hashes).
+
+Preview before import: **eligible 2,662 · excluded 0 · already imported 0 · invalid evidence 0 ·
+proposed needs_station 2,662 · needs_unit 0 · needs_equipment 0 · resolved 0 · rows with a
+station/unit/equipment FK 0 / 0 / 0 · distinct source keys 2,662 · distinct hashes 2,489 ·
+repeated-hash groups 173 · duplicate keys 0 · serial present 2,494 · exact-date next test 2,333 ·
+regions 6 · canonical now 0**, local fingerprint `a06db530…65948774`.
+
+**The 39-case destructive matrix passes 39 / 39, exit 0** — including wrong run, wrong manifest,
+stale preview fingerprint and wrong expected row count all refused with SQLSTATE 23514; a
+mid-transaction rollback leaving ZERO rows and ZERO lineage; **no Station, Unit, alias, mapping
+decision, equipment record, warehouse SRV or Repair Kit row created**; exactly one audit row; and
+replay refused because the fingerprint has moved to the empty-set hash
+`e3b0c442…7852b855` with all 2,662 rows now `D_ALREADY_IMPORTED`. Lineage reconciles exactly:
+2,662 SRVs across 2,662 distinct source keys, a single `committed_at` (one transaction).
+
+**POST-IMPORT MAPPING SIMULATION — 15 / 15 PASS.** Against the 2,662 canonical rows, the
+Station-only candidate set reproduces **215 rows / 27 identities, Delta 118 / West 62 / East 35,
+0 multi-candidate, 0 cross-Region** — identical to the Prompt 25A/25B figures, now measured on
+canonical records rather than staging. The already-deployed `cng_admin_map_srv` then drives the
+full lifecycle with manually supplied canonical ids: Station only → `needs_unit_mapping`
+(Unit NULL, equipment NULL, Region taken from the Station); explicit Unit →
+`needs_equipment_mapping`; explicit compressor → `resolved` with exactly one parent and
+server-derived attribution. Its guards hold: a Station-less mapping (23514), equipment before a
+Unit (23514) and a stale row-version precondition (40001) are each refused, and the source
+evidence is untouched by all three mappings.
+
+**THE 281 EXISTING PRODUCTION DECISIONS WERE AUDITED AND ARE CLEAN** (Phase 8 / 14, read-only):
+all 281 sit on `needs_station_mapping` staged rows, 0 carry a payload Station or Unit, 0 assert a
+Unit, and 0 overlap the 268 inference-tainted `resolved` four-family staged rows. **Nothing was
+altered.** A latent trap IS reported, not fixed: those 268 `resolved` staged rows (SV 116, RT 76,
+GD 54, hoses 22) carry 0 source unit fields and are 268/268 under one-Unit Stations — a future
+four-family import must not take their `resolved` label as truth.
+
+**PRODUCTION IS UNCHANGED AND 0051 IS NOT DEPLOYED**: 50 migrations, 6 / 157 / 188,
+`installed_relief_valves` 0, warehouse 0, decisions 281 (all-time `n_tup_ins` 281), aliases 0,
+staging 7,163, audit 283, canonical assets 100 / 91 / 62 / 26, `cng_irv_import*` functions
+deployed **0**, 0 tables without RLS.
+
+**Gate exit 0**: frontend 627, schema 274, authorization 624, 51 migrations from zero, upgrade
+replay 50 → 51 (the replay base was advanced from 49 to 50 to match the deployed production
+count). Migrations 0044–0050 verified byte-identical to their recorded hashes.

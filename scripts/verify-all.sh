@@ -87,15 +87,15 @@ done
 UDB="${VERIFY_UPGRADE_DB:-cng_upgrade}"
 sudo -n -u postgres psql -q -c "DROP DATABASE IF EXISTS $UDB" -c "CREATE DATABASE $UDB" >/dev/null 2>&1
 up_fail=0
-for f in $(ls supabase/migrations/*.sql | head -49); do
+for f in $(ls supabase/migrations/*.sql | head -50); do
   sudo -n -u postgres psql -d "$UDB" -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null 2>&1 \
     || { echo "BASE MIGRATION FAILED: $f"; up_fail=1; break; }
 done
 if [ $up_fail -eq 0 ]; then
-  line "production-equivalent base" "PASS (49 applied)"
-  # The upgrade path from the CURRENT production migration count. 0049 is
-  # deployed; 0050 is what this prompt adds and it is NOT yet deployed.
-  for f in supabase/migrations/0050_*.sql; do
+  line "production-equivalent base" "PASS (50 applied)"
+  # The upgrade path from the CURRENT production migration count. 0050 is
+  # deployed; 0051 is what this prompt adds and it is NOT yet deployed.
+  for f in supabase/migrations/0051_*.sql; do
     if sudo -n -u postgres psql -d "$UDB" -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null 2>&1; then
       line "upgrade $(basename "$f" .sql)" "PASS (exit 0)"
     else
