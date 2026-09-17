@@ -662,3 +662,98 @@ clean.
 **PRODUCTION**: 51 migrations · 6 / 157 / 188 · installed SRVs **2,662** (all
 `needs_station_mapping`, all FKs NULL) · warehouse 0 · decisions 281 · aliases 0 · staging 7,163 ·
 audit 284 · assets 100/91/62/26.
+
+## Prompt 25G — full installed-SRV Station-mapping reconciliation (READ-ONLY preview)
+
+Nothing was created, updated or deleted; no migration, no mapping decision, no alias. Production
+was verified identical before and after.
+
+**THE FULL SET REPRODUCES EXACTLY**: **1,054 rows / 127 identities** — Delta 558/66, East 283/32,
+West 213/29 — derived from canonical `installed_relief_valves` using ONLY the approved rule (same
+Region + raw Station evidence + deployed normalization + exactly one canonical Station). 0
+multi-candidate, 0 already mapped, 0 active-decision conflicts.
+
+**THE PARTITION IS EXACT AND DISJOINT AT BOTH LEVELS**: A = 215 rows / 27 identities (previously
+reviewed), B = 839 rows / 100 identities (newly exposed). **0 identities appear in both**,
+27 + 100 = 127 and 215 + 839 = 1,054. B's history is exactly as 25F reported: **801 historically
+`needs_equipment_mapping` + 38 `needs_unit_mapping`**, with reasons led by *"station has exactly one
+unit, so the unit is proven"* (801).
+
+**THE DECISIVE FINDING INVERTS THE INTUITION: THE NEWLY EXPOSED 839 ARE THE STRONGER EVIDENCE.**
+All **839 rows / 100 identities match by BYTE-EXACT raw equality** with the canonical
+`station_name`. The previously approved **215 rows / 27 identities match by NORMALIZATION ONLY** —
+and not merely whitespace (only 8 become equal on space removal; lengths differ in both directions),
+so the deployed Arabic/NFKC fold does real work there. That is within its approval, because it is
+used for COMPARISON only and never to choose a canonical spelling (the 21C rule). **No mechanism
+beyond deployed normalized-name equality is involved anywhere**: `station_aliases` holds 0 rows, 0
+`normalized_name` drift on the target Stations, 0 Region mismatches, and no similarity, edit
+distance, suffix rule or digit stripping exists in the derivation.
+
+**THE DIGIT TRAP IS CLOSED BY MEASUREMENT**: the fold loses **0** digits (375 raw-with-digit rows
+give 375 ident-with-digit), and the digit sequence of the raw name and the canonical Station name is
+**IDENTICAL on all 1,054** — so the digits are Station identity, never a D2 Unit index. The fold is
+idempotent on the whole set (0 exceptions).
+
+**THE SYNTHETIC IDS CORROBORATE AND CONTRADICT NOTHING** (used as a detector, never as evidence):
+215 rows carry no synthetic Station id (category 3); 839 carry one and **0 of them exist in
+`stations`** (category 4, by construction). Crucially **0 synthetic-identity groups disagree**
+— every synthetic Station identity resolves to exactly ONE newly derived canonical Station (100
+consistent groups, 0 disagreeing rows), and **0 canonical Stations are reached from two different
+synthetic identities**. Category 2 (disagreement) is **EMPTY**, so nothing needs quarantining on
+this ground. Synthetic Unit ids were read as context only; `unit_id` stays NULL.
+
+**RAW-SPELLING CONSISTENCY IS PERFECT**: 127 identities carry **127 distinct raw spellings — exactly
+one each** (max 1 per identity), hitting **127 distinct Station targets**. 0 identities map to two
+Stations, 0 Stations are reached from two identities, 0 identities span two Regions, 0 raw spellings
+appear in two Regions, 0 identities carry mixed history. Group sizes run 3-13.
+
+**SOURCE-ROW INTEGRITY IS CLEAN**: 1,054 rows / **1,054 distinct `source_row_key`**, 0 malformed
+hashes, 965 distinct hashes (repeats legitimate where keys differ), 0 rows without lineage, 0 key
+mismatches, 0 hash mismatches, 0 raw-Station drift, 0 raw-Region drift, 0 duplicate canonical rows
+for a key.
+
+**EXCLUSION MATRIX OVER ALL 2,662** (nothing hidden): qualified **1,054** · no same-Region candidate
+**1,596** · cross-Region-only candidate **12** · multiple candidates **0** · historical-Station
+disagreement **0** · Region contradiction **0** · raw-spelling ambiguity **0** · lineage mismatch
+**0** · hash mismatch **0** · already mapped **0** · active decision conflict **0** · missing raw
+Station **0** · missing Region **0**. Total 1,054 + 1,596 + 12 = 2,662.
+
+**CLASSIFICATION: 127 of 127 identities and 1,054 of 1,054 rows are SAFE_CANDIDATE for
+STATION-ONLY confirmation; 0 MANUAL_REVIEW_REQUIRED.** Two caveats are recorded rather than buried:
+the 215 rest on the normalization fold while the 839 are byte-exact, so they are not the same
+evidential strength; and all 2,662 rows share ONE `updated_at` (the single import instant), so a
+row-version precondition cannot distinguish rows today although it still detects later staleness.
+
+**THE FORBIDDEN SHORTCUT IS AT ITS MOST TEMPTING HERE AND IS STILL FORBIDDEN**: **993 of the 1,054
+sit under a Station with exactly ONE Unit** (9 under a Station with none). Every proposed transition
+is therefore `station_id = confirmed Station`, **`unit_id = NULL`**, all equipment FKs NULL,
+`mapping_status = needs_unit_mapping` — no Unit is populated even where only one exists.
+
+**ANALYTICAL FINGERPRINTS (NOT approval tokens** — no deployed content-bound mapping mechanism
+covers installed SRVs, so the 22B rule is not satisfied):
+row-level `8e360445cd323557c73637f94cdfee89b21df1d63242abfdbf9bd286425b741d`,
+identity-level `655b51768b44e10eebcf02fcf8e6cab3dee2de673056b4443be949c6bca2dc82`.
+
+**FIREWALL**: 281 decisions untouched (all-time `n_tup_ins` 281, **0 asserting a Unit**, 0
+conflicting with this set); the 268 quarantine unchanged (SV 116, RT 76, GD 54, hoses 22) with **0
+overlap**.
+
+**BROWSER DATA CONTRACT IS READY; BROWSER VERIFICATION IS OWNER-PENDING.** All **45** columns
+`/manage/srvs/installed` selects exist in `v_installed_srv_management` (**0 missing**, so the 20B
+failure mode is absent); the view returns **2,662** rows, all `needs_station_mapping`, with
+`station_display` correctly falling back to the raw source name on all 2,662 and `parent_kind`/
+`parent_id` NULL on all. Due buckets: valid 1,735 · **overdue 302** · unknown 329 · due_60 154 ·
+due_7 95 · due_today 39 · due_15 6 · due_30 2, with **0** rows carrying a days-left figure at a
+non-exact precision. The view is `security_invoker=true` and RLS is on. **AN AUTHORIZATION
+CONSEQUENCE WORTH STATING**: `irv_select` routes a Station-unconfirmed row through
+`cng_can_access_unmapped_srv()`, so all 2,662 are **admin/manager only** today (§10) — a regional
+engineer or viewer sees zero until Stations are confirmed. `cng-station-management.pages.dev` is
+still 403 at CONNECT from here, so this is DATABASE/API CONTRACT verification, not browser E2E.
+
+**PRODUCTION UNCHANGED**: 51 migrations · 6/157/188 · installed SRVs 2,662 all
+`needs_station_mapping` with 0/0/0 FKs · decisions 281 · aliases 0/0 · audit 284 · staging 7,163.
+**PROOF NO ROW WAS TOUCHED**: every SRV's `updated_at` equals its `created_at` and both equal the
+single import instant, which also equals the audit and lineage timestamps — 0 rows updated after
+creation, 0 deleted, 0 mapping-audit rows. (`n_tup_upd` on the table reads 3: pre-import
+rolled-back probe tuples, the same counter caveat 23B recorded; the row-version equality above is
+the real evidence.)
