@@ -1003,6 +1003,54 @@ tempts. Category C cannot proceed at all (the Station has no Units, and D7 forbi
 **A Stage B UNIT batch therefore has no source to run on**: Unit mapping needs NEW evidence naming
 the Unit per asset, not a cleverer rule over what is already staged.*
 
+***PROMPT 22C.1 — THE ADMIN EXECUTION SURFACE IS BUILT AND DEPLOYED; THE BATCH IS STILL NOT
+COMMITTED** — see `docs/stage-b-station-mapping.md` §16. **NO MIGRATION WAS REQUIRED.** Prompt 22C
+stopped because the commit derives its actor from a verified Clerk subject and an operator
+connection has none; this adds the authenticated Admin's own path to that one approved batch, at
+`/admin/station-batch`.
+
+**THE EXISTING AUTH PATH WAS VERIFIED BEFORE ANY CODE WAS WRITTEN, and no second one was created.**
+`src/lib/supabase/client.ts` holds ONE client built from the project URL and the PUBLISHABLE key,
+with an `accessToken` callback reading the current Clerk session token per request; Supabase
+verifies it against the trusted Clerk issuer and PostgreSQL reads the claims through
+`cng_jwt_sub()` -> `cng_current_app_user_id()` -> `cng_require_admin()`. No JWT template, no
+service-role key, no hand-built claims. Proved against production READ-ONLY by assuming the owner's
+real subject under role `authenticated` in a deliberately aborted transaction: the app user
+resolved, `cng_is_admin()` was true, and the deployed preview returned 69 groups / 281 rows with the
+approved fingerprints. **The commit was NOT invoked.**
+
+**THE GUARD IS THE LIVE SERVER, NOT THE CONSTANTS.** The approved run, both fingerprints and 69/281
+are constants only in the sense that the LIVE preview is compared against them; the control unlocks
+solely when the server currently reports all of them, and any drift renders
+`APPROVED BATCH HAS CHANGED — EXECUTION BLOCKED` listing EVERY mismatch rather than the first.
+**ACCIDENTAL EXECUTION IS IMPOSSIBLE**: opening the dialog sends nothing, and the final action stays
+disabled until `CONFIRM 281 STATION MAPPINGS` is typed exactly. **RUNNING IT TWICE IS IMPOSSIBLE**:
+the control locks on submit, and **an uncertain result is NEVER a retry** — a thrown request or an
+error carrying no PostgreSQL SQLSTATE is classified `uncertain`, which offers only a READ-ONLY
+outcome check reading committed (281 decided) / not executed (0 decided, fingerprint unchanged) /
+**UNEXPECTED for anything between**, which stops rather than guessing. Replay protection after a
+refresh is **SERVER-DERIVED, never localStorage**: once the batch runs every candidate row carries
+an active decision, the preview reports it, and the completed state is what any Admin in any
+browser sees.
+
+**ONE WORDING PRECISION**: the batch writes a DECISION and does not rewrite
+`import_staging_rows.mapping_status` — `v_admin_staged_mapping_queue` deliberately keeps
+`staged_mapping_status` (raw evidence) and `confirmed_mapping_status` (from the decision) apart — so
+the screen says **"Confirmed mapping status: Needs Unit Mapping"** rather than implying the staged
+column moved.
+
+**AUTHORIZATION IS UNCHANGED**: `cng_require_admin()` untouched, no RLS or grant altered, no
+service-role key or password in the browser, and the RPC carries exactly four parameters. Tests
+assert the payload contains no `actor`, `decided_by`, `clerk`, `sub`, `app_user`, `service_role`,
+`password` or `secret` under any key, and that no table is written directly. The section is hidden
+from non-Admins for UX only; the database remains the authority.
+
+**Frontend tests 584 -> 617** (33 new); schema 240 and authorization 624 unchanged, correctly, as no
+SQL changed. Full gate exit 0. **PRODUCTION IS UNCHANGED**: 47 migrations, `import_mapping_decisions`
+**0** with an all-time `n_tup_ins` of **0**, 1,104 rows still `needs_station_mapping`, canonical
+assets 0, aliases 0, stations 157, units 188, and the live preview still reports 69/281 with
+fingerprint `a014745d...` and 0 rows decided. **The batch awaits the owner's click.***
+
 ### Prompt-21 import blockers (must be resolved before the production import)
 
 | Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |
@@ -1088,6 +1136,7 @@ These rules are permanent and apply to every future prompt.
 | 21B | 584 | 166 | 601 |
 | 21C | 584 | 203 | 611 |
 | 22A | 584 | 240 | 624 |
+| 22C.1 | 617 | 240 | 624 |
 
 Update this table when a prompt is accepted, so the next one has a baseline to compare
 against.
