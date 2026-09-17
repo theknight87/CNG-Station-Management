@@ -1851,4 +1851,316 @@ SELECT pg_temp.assert_rejected(
   'STAGEA-35: a run whose rows are committed cannot be abandoned');
 
 
+
+-- ===========================================================================
+-- STAGE B: the batch STATION mapping mechanism (Prompt 22A, migration 0047)
+-- ===========================================================================
+-- Destructive tests. Each tries to make the batch record something the source
+-- does not prove, or to slip a changed row past an approval, and requires the
+-- database to refuse the WHOLE batch.
+
+INSERT INTO app_users (id, clerk_user_id, role, full_name, is_active)
+VALUES ('11111111-1111-1111-1111-1111111111ad', 'user_test_admin_b', 'admin', 'Test Admin B', true);
+SELECT set_config('request.jwt.claims',
+  json_build_object('sub', 'user_test_admin_b', 'role', 'authenticated')::text, true);
+
+CREATE TEMP TABLE sb AS SELECT
+  '88888888-0000-0000-0000-00000000000a'::uuid AS run,
+  '88888888-0000-0000-0000-00000000000b'::uuid AS batch,
+  repeat('7', 64) AS manifest;
+
+INSERT INTO import_runs (id, mode, label, started_at, completed_at, summary)
+SELECT run, 'commit', 'stage-b-test', now(), now(),
+       jsonb_build_object('manifest_fingerprint', manifest) FROM sb;
+INSERT INTO import_batches (id, import_run_id, source_file, source_sheet, file_checksum,
+                            header_row, rows_read, rows_flagged, rows_failed, rows_imported)
+SELECT batch, run, 'SB.xlsx', 'Sheet1', repeat('8', 64), 1, 0, 0, 0, 0 FROM sb;
+
+CREATE OR REPLACE FUNCTION pg_temp.sb_row(
+  p_row integer, p_target text, p_region text, p_raw text,
+  p_status text DEFAULT 'needs_station_mapping')
+RETURNS uuid LANGUAGE sql AS $$
+  INSERT INTO import_staging_rows (import_run_id, import_batch_id, source_file, source_sheet,
+    source_row, source_raw, source_row_key, source_row_hash, target_table, outcome,
+    mapping_status, normalized)
+  SELECT run, batch, 'SB.xlsx', 'Sheet1', p_row, '{}'::jsonb,
+         'SB.xlsx::Sheet1::' || p_row, md5(p_row::text) || md5(p_row::text),
+         p_target, 'ready_unresolved', p_status,
+         jsonb_build_object('region', p_region, 'source_station_name_raw', p_raw)
+    FROM sb
+  RETURNING id;
+$$;
+
+-- Four candidates, one per family, all resolving to TEST-STATION-A in East.
+SELECT pg_temp.sb_row(1, 'storage_vessels', 'East', 'TEST-STATION-A');
+SELECT pg_temp.sb_row(2, 'recovery_tanks',  'East', 'TEST-STATION-A');
+SELECT pg_temp.sb_row(3, 'gas_detectors',   'East', 'TEST-STATION-A');
+SELECT pg_temp.sb_row(4, 'hoses',           'East', 'TEST-STATION-A');
+-- NOT candidates, and each for a different reason:
+SELECT pg_temp.sb_row(5, 'storage_vessels', 'West',  'TEST-STATION-A');      -- other Region only
+SELECT pg_temp.sb_row(6, 'storage_vessels', 'East',  'NO SUCH STATION');     -- no match
+SELECT pg_temp.sb_row(7, 'storage_vessels', 'East',  'TEST-STATION-A', 'needs_unit_mapping'); -- past this step
+SELECT pg_temp.sb_row(8, 'installed_relief_valves', 'East', 'TEST-STATION-A'); -- not a pre-import family
+
+CREATE TEMP TABLE sb_fp AS
+SELECT pv.preview_fingerprint AS fp, pv.candidate_rows AS rows, pv.candidate_groups AS groups,
+       pv.storage_vessels AS sv, pv.recovery_tanks AS rt, pv.gas_detectors AS gd, pv.hoses AS ho
+  FROM sb, cng_stage_b_station_preview(sb.run) pv;
+
+-- STAGEB-1: the candidate set is DERIVED, and only the four true candidates qualify.
+SELECT pg_temp.assert((SELECT rows FROM sb_fp) = 4 AND (SELECT groups FROM sb_fp) = 1,
+  'STAGEB-1: 4 candidate rows in 1 Region-aware Station group');
+
+-- STAGEB-2: one row per family, proving no family is silently skipped.
+SELECT pg_temp.assert(
+  (SELECT sv FROM sb_fp) = 1 AND (SELECT rt FROM sb_fp) = 1
+  AND (SELECT gd FROM sb_fp) = 1 AND (SELECT ho FROM sb_fp) = 1,
+  'STAGEB-2: all four pre-import families are represented exactly once');
+
+-- STAGEB-3: the OTHER-REGION row is excluded. Region is identity, so a name
+-- matching only in another Region is not a match at all.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM sb, cng_stage_b_station_candidates(sb.run) c
+    WHERE c.region_name = 'West') = 0,
+  'STAGEB-3: a Station name matching only in ANOTHER Region is never a candidate');
+
+-- STAGEB-4: an unmatched name is excluded rather than guessed at.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM sb, cng_stage_b_station_candidates(sb.run) c
+    WHERE c.source_raw_name = 'NO SUCH STATION') = 0,
+  'STAGEB-4: a source name with no canonical Station is excluded, never fuzzy-matched');
+
+-- STAGEB-5: a row already past this lifecycle step is excluded.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM sb, cng_stage_b_station_candidates(sb.run) c
+    WHERE c.mapping_status <> 'needs_station_mapping') = 0,
+  'STAGEB-5: only needs_station_mapping rows are candidates');
+
+-- STAGEB-6: installed SRVs are NOT in this path - their canonical station_id is
+-- nullable and they are mapped in the canonical table instead.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM sb, cng_stage_b_station_candidates(sb.run) c
+    WHERE c.target_table NOT IN ('storage_vessels','recovery_tanks','gas_detectors','hoses')) = 0,
+  'STAGEB-6: only the four pre-import families are candidates - never an installed SRV');
+
+-- STAGEB-7: the preview WRITES NOTHING.
+SELECT pg_temp.assert((SELECT count(*) FROM import_mapping_decisions) = 0,
+  'STAGEB-7: previewing the batch records no mapping decision');
+
+-- --------------------------- refusals, before any write -------------------
+SELECT pg_temp.assert_rejected(
+  format('SELECT * FROM cng_stage_b_station_commit(%L, %L, NULL)', (SELECT run FROM sb), repeat('7',64)),
+  'STAGEB-8: commit with no preview fingerprint is refused');
+
+SELECT pg_temp.assert_rejected(
+  format('SELECT * FROM cng_stage_b_station_commit(%L, %L, %L)', (SELECT run FROM sb), repeat('7',64), '  '),
+  'STAGEB-9: commit with a blank preview fingerprint is refused');
+
+SELECT pg_temp.assert_rejected(
+  format('SELECT * FROM cng_stage_b_station_commit(%L, %L, %L)', (SELECT run FROM sb), repeat('0',64), (SELECT fp FROM sb_fp)),
+  'STAGEB-10: commit with a wrong manifest fingerprint is refused');
+
+SELECT pg_temp.assert_rejected(
+  format('SELECT * FROM cng_stage_b_station_commit(%L, %L, %L)', (SELECT run FROM sb), repeat('7',64), repeat('f',64)),
+  'STAGEB-11: commit with a wrong preview fingerprint is refused');
+
+-- STAGEB-12: A CHANGED SOURCE ROW lapses the approval. The conclusion is
+-- unchanged - the same Station, the same Region - but the evidence moved, which
+-- is exactly the 0041 rule applied to a batch.
+UPDATE import_staging_rows SET source_row_hash = repeat('d', 64)
+ WHERE import_run_id = (SELECT run FROM sb) AND source_row = 1;
+SELECT pg_temp.assert(
+  (SELECT pv.preview_fingerprint FROM sb, cng_stage_b_station_preview(sb.run) pv) <> (SELECT fp FROM sb_fp),
+  'STAGEB-12: a changed source_row_hash lapses the batch approval');
+SELECT pg_temp.assert_rejected(
+  format('SELECT * FROM cng_stage_b_station_commit(%L, %L, %L)', (SELECT run FROM sb), repeat('7',64), (SELECT fp FROM sb_fp)),
+  'STAGEB-13: a stale source hash refuses the ENTIRE batch, not just that row');
+UPDATE import_staging_rows SET source_row_hash = md5('1') || md5('1')
+ WHERE import_run_id = (SELECT run FROM sb) AND source_row = 1;
+
+-- STAGEB-14: A CHANGED LIFECYCLE STATUS refuses the whole batch.
+UPDATE import_staging_rows SET mapping_status = 'needs_unit_mapping'
+ WHERE import_run_id = (SELECT run FROM sb) AND source_row = 2;
+SELECT pg_temp.assert_rejected(
+  format('SELECT * FROM cng_stage_b_station_commit(%L, %L, %L)', (SELECT run FROM sb), repeat('7',64), (SELECT fp FROM sb_fp)),
+  'STAGEB-14: a row whose mapping_status moved refuses the entire batch');
+UPDATE import_staging_rows SET mapping_status = 'needs_station_mapping'
+ WHERE import_run_id = (SELECT run FROM sb) AND source_row = 2;
+
+-- STAGEB-15: A CHANGED STATION IDENTITY refuses the whole batch - here the
+-- canonical Station is renamed, so the candidate silently disappears.
+UPDATE stations SET station_name = 'TEST-STATION-A-RENAMED'
+ WHERE id = 'aaaaaaaa-0000-0000-0000-000000000001';
+SELECT pg_temp.assert_rejected(
+  format('SELECT * FROM cng_stage_b_station_commit(%L, %L, %L)', (SELECT run FROM sb), repeat('7',64), (SELECT fp FROM sb_fp)),
+  'STAGEB-15: a renamed or vanished canonical Station refuses the entire batch');
+UPDATE stations SET station_name = 'TEST-STATION-A'
+ WHERE id = 'aaaaaaaa-0000-0000-0000-000000000001';
+
+-- STAGEB-16: AMBIGUITY refuses the whole batch. A second Station in the SAME
+-- Region whose normalized name collides cannot exist (the unique constraint
+-- forbids it), so ambiguity is proved the only way it can arise: the row's own
+-- Region changing to one where the name resolves differently.
+UPDATE import_staging_rows
+   SET normalized = jsonb_set(normalized, '{region}', '"Canal"')
+ WHERE import_run_id = (SELECT run FROM sb) AND source_row = 3;
+SELECT pg_temp.assert_rejected(
+  format('SELECT * FROM cng_stage_b_station_commit(%L, %L, %L)', (SELECT run FROM sb), repeat('7',64), (SELECT fp FROM sb_fp)),
+  'STAGEB-16: a row whose Region changed refuses the entire batch');
+UPDATE import_staging_rows
+   SET normalized = jsonb_set(normalized, '{region}', '"East"')
+ WHERE import_run_id = (SELECT run FROM sb) AND source_row = 3;
+
+-- STAGEB-17: nothing at all was written by any of those nine refusals.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM import_mapping_decisions) = 0,
+  'STAGEB-17: every refused batch left zero mapping decisions behind');
+
+-- ---------------------------- the authorized batch -------------------------
+CREATE TEMP TABLE sb_before AS SELECT
+  (SELECT count(*) FROM stations)        AS stations,
+  (SELECT count(*) FROM units)           AS units,
+  (SELECT count(*) FROM station_aliases) AS aliases,
+  (SELECT count(*) FROM storage_vessels) AS sv,
+  (SELECT count(*) FROM recovery_tanks)  AS rt,
+  (SELECT count(*) FROM gas_detectors)   AS gd,
+  (SELECT count(*) FROM hoses)           AS ho,
+  (SELECT count(*) FROM audit_logs)      AS audit;
+
+SELECT * FROM cng_stage_b_station_commit((SELECT run FROM sb), repeat('7',64), (SELECT fp FROM sb_fp));
+
+-- STAGEB-18: exactly the four approved rows were decided.
+SELECT pg_temp.assert((SELECT count(*) FROM import_mapping_decisions) = 4,
+  'STAGEB-18: the batch wrote exactly one decision per approved row');
+
+-- STAGEB-19: STATION ONLY. Not one Unit was recorded.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM import_mapping_decisions WHERE confirmed_unit_id IS NOT NULL) = 0,
+  'STAGEB-19: the batch wrote ZERO Unit ids - Station confirmation is not Unit confirmation');
+
+-- STAGEB-20: the derived status is the EXISTING lifecycle step, not a new one.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM import_mapping_decisions WHERE resulting_mapping_status = 'needs_unit_mapping') = 4
+  AND (SELECT count(DISTINCT resulting_mapping_status) FROM import_mapping_decisions) = 1,
+  'STAGEB-20: every decision advances needs_station_mapping -> needs_unit_mapping');
+
+-- STAGEB-21: NO EQUIPMENT PARENT CAN EXIST HERE. Proved from the catalog: the
+-- decision table carries no equipment column, so equipment inference is
+-- structurally impossible rather than merely omitted.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM information_schema.columns
+    WHERE table_name = 'import_mapping_decisions'
+      AND column_name IN ('compressor_id','dispenser_id','storage_vessel_id',
+                          'recovery_tank_id','gas_detector_id','hose_id')) = 0,
+  'STAGEB-21: the decision table has no equipment column - no equipment parent is expressible');
+
+-- STAGEB-22: the Station recorded is the Region-correct one.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM import_mapping_decisions d
+    JOIN stations s ON s.id = d.confirmed_station_id
+   WHERE s.region_id <> d.region_id) = 0
+  AND (SELECT count(DISTINCT confirmed_station_id) FROM import_mapping_decisions) = 1,
+  'STAGEB-22: every decision names the Station in the row''s own Region');
+
+-- STAGEB-23: the reviewed hash is the STAGED row''s own, captured server-side.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM import_mapping_decisions d
+    JOIN import_staging_rows r ON r.id = d.staging_row_id
+   WHERE d.reviewed_source_row_hash IS DISTINCT FROM r.source_row_hash) = 0,
+  'STAGEB-23: every decision records the source_row_hash of its own staged row');
+
+-- STAGEB-24: the non-candidates were not touched.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM import_mapping_decisions d
+    JOIN import_staging_rows r ON r.id = d.staging_row_id
+   WHERE r.source_row IN (5, 6, 7, 8)) = 0,
+  'STAGEB-24: no decision was written for any excluded row');
+
+-- STAGEB-25: the actor is a real administrator, derived server-side.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM import_mapping_decisions
+    WHERE decided_by = '11111111-1111-1111-1111-1111111111ad') = 4,
+  'STAGEB-25: every decision is attributed to the acting administrator');
+
+-- STAGEB-26: every decision is audited.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM audit_logs WHERE action = 'mapping_changed'
+     AND entity_table = 'import_mapping_decisions') >= 4,
+  'STAGEB-26: the batch wrote one audit row per decision');
+
+-- STAGEB-27: REPLAY. A second identical commit cannot duplicate a decision.
+SELECT pg_temp.assert_rejected(
+  format('SELECT * FROM cng_stage_b_station_commit(%L, %L, %L)', (SELECT run FROM sb), repeat('7',64), (SELECT fp FROM sb_fp)),
+  'STAGEB-27: re-running the same approved batch is refused');
+SELECT pg_temp.assert((SELECT count(*) FROM import_mapping_decisions) = 4,
+  'STAGEB-28: the refused replay left the decision count unchanged');
+
+-- STAGEB-29: "exactly one active decision per source row" is a DATABASE
+-- property, so even a direct insert cannot duplicate one.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM pg_indexes WHERE indexname = 'imd_one_active_per_source_row') = 1,
+  'STAGEB-29: the active-decision uniqueness index still backs replay safety');
+
+-- STAGEB-30: THE FIREWALL. No alias, no Station, no Unit, no canonical asset.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM stations)        = (SELECT stations FROM sb_before)
+  AND (SELECT count(*) FROM units)       = (SELECT units    FROM sb_before)
+  AND (SELECT count(*) FROM station_aliases) = (SELECT aliases FROM sb_before)
+  AND (SELECT count(*) FROM storage_vessels) = (SELECT sv FROM sb_before)
+  AND (SELECT count(*) FROM recovery_tanks)  = (SELECT rt FROM sb_before)
+  AND (SELECT count(*) FROM gas_detectors)   = (SELECT gd FROM sb_before)
+  AND (SELECT count(*) FROM hoses)           = (SELECT ho FROM sb_before),
+  'STAGEB-30: the batch created no Station, Unit, alias or canonical asset');
+
+-- STAGEB-31: raw staged evidence is never altered by a decision.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM import_staging_rows
+    WHERE import_run_id = (SELECT run FROM sb) AND mapping_status <> 'needs_station_mapping'
+      AND source_row <= 6) = 0,
+  'STAGEB-31: the staged rows themselves are unchanged - the decision is the record');
+
+-- STAGEB-32: CANONICAL SCOPE, re-derived from the catalog.
+SELECT pg_temp.assert(
+  (SELECT prosrc FROM pg_proc WHERE proname = 'cng_stage_b_station_commit') !~* '\mexecute\M'
+  AND (SELECT prosrc FROM pg_proc WHERE proname = 'cng_stage_b_station_commit') !~* 'quote_ident',
+  'STAGEB-32: the batch commit contains no dynamic SQL');
+
+SELECT pg_temp.assert(
+  (SELECT prosrc FROM pg_proc WHERE proname = 'cng_stage_b_station_commit')
+    !~* '(insert\s+into|update|delete\s+from)\s+(stations|units|station_aliases|unit_aliases|storage_vessels|recovery_tanks|gas_detectors|hoses|compressors|dispensers|installed_relief_valves|warehouse_relief_valves)\M',
+  'STAGEB-33: the batch commit names no hierarchy, alias or canonical asset table');
+
+-- STAGEB-34: no caller-supplied actor.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM pg_proc WHERE proname LIKE 'cng_stage_b%'
+     AND pg_get_function_arguments(oid) ~* '(actor|app_user|user_id|clerk|decided_by)') = 0,
+  'STAGEB-34: no Stage B function accepts an actor identity from its caller');
+
+-- STAGEB-35: pinned search_path on the definer function.
+SELECT pg_temp.assert(
+  (SELECT proconfig FROM pg_proc WHERE proname = 'cng_stage_b_station_commit')
+    @> ARRAY['search_path=pg_catalog, public'],
+  'STAGEB-35: cng_stage_b_station_commit pins its search_path');
+
+
+
+-- STAGEB-36: SAME-REGION AMBIGUITY IS UNREACHABLE, not merely unhandled. Two
+-- Stations in one Region cannot share a normalized name, because
+-- `stations_region_norm_uq` forbids it — so the candidate function's
+-- `n_same_region = 1` test can only ever exclude a row for having ZERO matches.
+-- Proved by attempting the duplicate rather than asserting the constraint text.
+SELECT pg_temp.assert_rejected(
+  $sb$INSERT INTO stations (region_id, station_name)
+      SELECT region_id, 'test-station-a' FROM stations
+       WHERE id = 'aaaaaaaa-0000-0000-0000-000000000001'$sb$,
+  'STAGEB-36: a second Station with the same normalized name in one Region is rejected');
+
+-- STAGEB-37: and the guard is still present, so a future schema change that
+-- relaxed that constraint would not silently make ambiguous rows committable.
+SELECT pg_temp.assert(
+  (SELECT prosrc FROM pg_proc WHERE proname = 'cng_stage_b_station_candidates')
+    LIKE '%n_same_region = 1%',
+  'STAGEB-37: the candidate set still requires EXACTLY one same-Region Station');
+
+
 ROLLBACK;

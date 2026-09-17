@@ -4268,6 +4268,110 @@ SELECT pg_temp.ok(
   AND (SELECT prosrc FROM pg_proc WHERE proname='cng_stage_a_commit') NOT ILIKE '%import_mapping_decisions%',
   'STAGEASEC-10: the commit contains no dynamic SQL and names no alias or decision table');
 
+-- ===========================================================================
+-- STAGE B STATION BATCH AUTHORIZATION (Prompt 22A, migration 0047)
+-- ===========================================================================
+-- A batch that confirms 281 Stations at once must be no easier to reach than
+-- confirming one. It is the SAME gate as the single-row path: administrator
+-- only, actor derived from the verified Clerk subject, never a parameter.
+--
+-- NOTE ON THE SHAPE. Prompt 22A asked for service_role-only. The schema forbids
+-- it: `import_mapping_decisions.decided_by` is NOT NULL REFERENCES app_users, so
+-- a service_role caller could satisfy it only by accepting an actor parameter
+-- (which the same prompt forbids) or by making human rulings unattributed
+-- (which CLAUDE.md §9 forbids). Admin-gated with a server-derived actor is the
+-- stronger of the two available postures, and these assert it.
+
+SELECT pg_temp.ok(
+  (SELECT count(*) FROM pg_proc p WHERE p.proname LIKE 'cng_stage_b%'
+     AND has_function_privilege('anon', p.oid, 'EXECUTE')) = 0,
+  'STAGEBSEC-1: anon may not execute any Stage B function');
+
+SELECT pg_temp.ok(
+  (SELECT prosecdef FROM pg_proc WHERE proname = 'cng_stage_b_station_commit') IS TRUE
+  AND (SELECT proconfig FROM pg_proc WHERE proname = 'cng_stage_b_station_commit')
+        @> ARRAY['search_path=pg_catalog, public'],
+  'STAGEBSEC-2: the batch commit is SECURITY DEFINER with a pinned search_path');
+
+SELECT pg_temp.ok(
+  (SELECT count(*) FROM pg_proc
+    WHERE proname IN ('cng_stage_b_station_candidates','cng_stage_b_station_groups',
+                      'cng_stage_b_station_preview') AND prosecdef) = 0,
+  'STAGEBSEC-3: the Stage B read paths carry no elevated rights');
+
+-- STAGEBSEC-4..7: the admin gate is proved by ATTACK, for every non-admin role,
+-- rather than by reading a grant table. A viewer, an engineer, a regional
+-- manager and a deactivated account must each be refused.
+SELECT pg_temp.become('clerk_view_east');
+SELECT pg_temp.ok(
+  pg_temp.denied(format('SELECT * FROM cng_stage_b_station_commit(%L, %L, %L)',
+                        gen_random_uuid(), 'x', 'y')),
+  'STAGEBSEC-4: a viewer may not run the Station batch');
+
+SELECT pg_temp.become('clerk_eng_east');
+SELECT pg_temp.ok(
+  pg_temp.denied(format('SELECT * FROM cng_stage_b_station_commit(%L, %L, %L)',
+                        gen_random_uuid(), 'x', 'y')),
+  'STAGEBSEC-5: an engineer may not run the Station batch');
+
+SELECT pg_temp.become('clerk_manager');
+SELECT pg_temp.ok(
+  pg_temp.denied(format('SELECT * FROM cng_stage_b_station_commit(%L, %L, %L)',
+                        gen_random_uuid(), 'x', 'y')),
+  'STAGEBSEC-6: a regional manager may not run the Station batch');
+
+SELECT pg_temp.become('clerk_pending');
+SELECT pg_temp.ok(
+  pg_temp.denied(format('SELECT * FROM cng_stage_b_station_commit(%L, %L, %L)',
+                        gen_random_uuid(), 'x', 'y')),
+  'STAGEBSEC-7: a deactivated account may not run the Station batch');
+
+SELECT pg_temp.become(NULL);
+SELECT pg_temp.ok(
+  pg_temp.denied(format('SELECT * FROM cng_stage_b_station_commit(%L, %L, %L)',
+                        gen_random_uuid(), 'x', 'y')),
+  'STAGEBSEC-8: a session with no verified subject may not run the Station batch');
+
+SELECT pg_temp.as_anon();
+SELECT pg_temp.ok(
+  pg_temp.denied(format('SELECT * FROM cng_stage_b_station_commit(%L, %L, %L)',
+                        gen_random_uuid(), 'x', 'y')),
+  'STAGEBSEC-9: anon is refused at the privilege layer');
+RESET ROLE;
+
+-- STAGEBSEC-10: the function is the ONLY writer. Not even an admin may insert,
+-- edit or delete a mapping decision directly — unchanged since 0039, and the
+-- batch must not have widened it.
+SELECT pg_temp.ok(
+  (SELECT count(*) FROM information_schema.role_table_grants
+    WHERE table_schema = 'public' AND table_name = 'import_mapping_decisions'
+      AND grantee IN ('authenticated','anon')
+      AND privilege_type IN ('INSERT','UPDATE','DELETE')) = 0,
+  'STAGEBSEC-10: no browser role holds a direct write grant on import_mapping_decisions');
+
+-- STAGEBSEC-11: no caller-supplied actor on any Stage B function.
+SELECT pg_temp.ok(
+  (SELECT count(*) FROM pg_proc WHERE proname LIKE 'cng_stage_b%'
+     AND pg_get_function_arguments(oid) ~* '(actor|app_user|user_id|clerk|decided_by)') = 0,
+  'STAGEBSEC-11: no Stage B function takes a caller-supplied identity');
+
+-- STAGEBSEC-12: the batch cannot reach the hierarchy, an alias or an asset.
+SELECT pg_temp.ok(
+  (SELECT prosrc FROM pg_proc WHERE proname = 'cng_stage_b_station_commit') !~* '\mexecute\M'
+  AND (SELECT prosrc FROM pg_proc WHERE proname = 'cng_stage_b_station_commit') NOT ILIKE '%quote_ident%'
+  AND (SELECT prosrc FROM pg_proc WHERE proname = 'cng_stage_b_station_commit') NOT ILIKE '%station_aliases%'
+  AND (SELECT prosrc FROM pg_proc WHERE proname = 'cng_stage_b_station_commit') NOT ILIKE '%INSERT INTO stations%'
+  AND (SELECT prosrc FROM pg_proc WHERE proname = 'cng_stage_b_station_commit') NOT ILIKE '%INSERT INTO units%',
+  'STAGEBSEC-12: the batch commit contains no dynamic SQL and names no hierarchy or alias table');
+
+-- STAGEBSEC-13: Stage A stays operator-only. Adding an admin-reachable Stage B
+-- must not have opened the hierarchy commit to a browser.
+SELECT pg_temp.ok(
+  (SELECT count(*) FROM pg_proc p WHERE p.proname LIKE 'cng_stage_a%'
+     AND (has_function_privilege('authenticated', p.oid, 'EXECUTE')
+       OR has_function_privilege('anon', p.oid, 'EXECUTE'))) = 0,
+  'STAGEBSEC-14: Stage A remains service_role-only after Stage B was added');
+
 DO $$ BEGIN RAISE EXCEPTION 'RLS_SUITE_ROLLBACK'; END $$;
 
 ROLLBACK;

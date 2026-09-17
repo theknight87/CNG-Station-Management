@@ -854,6 +854,71 @@ those 240 by count is exactly the distribution rule §4 permanently forbids. All
 `needs_station_mapping`, every lifecycle count is unchanged, and `import_mapping_decisions` is
 still 0. No asset was imported, no alias created, no mapping decision written.*
 
+***PROMPT 22A — THE STAGE B BATCH STATION-MAPPING MECHANISM IS BUILT AND VERIFIED, AND NO
+PRODUCTION DECISION WAS WRITTEN** — see `docs/stage-b-station-mapping.md`. **One additive migration,
+0047**, adding three functions and NO table, column or enum. Phase 1 independently recomputed the
+candidate set from production READ-ONLY and it reconciles exactly: the four-family blocker
+population is **1,104 = 281 candidates + 823 non-candidates**, with **78 raw spellings = 69
+normalized Region-aware identities**, 0 multi-candidate rows, families **100/91/64/26**, and the
+1 other-Region-only identity (5 rows) sitting INSIDE the 823. No identity is partly candidate and
+partly not, so grouping by identity is safe.
+
+**IT REUSES THE EXISTING ARCHITECTURE, NOT A PARALLEL ONE.** `import_mapping_decisions` (0039) plus
+its content binding (0041) already hold one decision per source row, bound to the `source_row_hash`
+the decider read, superseding rather than overwriting, with `imd_one_active_per_source_row` making
+"exactly one active decision" a DATABASE property. **The resulting status is not a new rule
+either**: the batch uses the identical expression `cng_admin_decide_staged_mapping` already
+derives, so all four families advance `needs_station_mapping -> needs_unit_mapping` and nothing
+else. Station confirmation is NOT Unit confirmation and NOT equipment resolution.
+
+**ONE DELIBERATE DEVIATION, WITH THE REASON RECORDED.** Prompt 22A asked for a `service_role`-only
+function; **the schema forbids it**. `import_mapping_decisions.decided_by` is
+`NOT NULL REFERENCES app_users(id)` because §9 requires every mapping change to record who made it
+and §10 forbids a forgeable actor. A `service_role` caller could satisfy that column only by taking
+an actor PARAMETER (which the same prompt forbids) or by making human rulings UNATTRIBUTED. So the
+actor is derived server-side from the verified Clerk subject via `cng_require_admin()`, exactly as
+the single-row path has since 0039, and EXECUTE is `authenticated` only — where the ADMIN CHECK, not
+the grant, is the gate. Viewer, engineer, regional manager, deactivated account, no-subject session
+and anon are each refused BY ATTACK (STAGEBSEC-4..9). Stage A stays `service_role`-only because a
+Station carries no `created_by` (STAGEBSEC-14).
+
+**THE CANDIDATE SET IS DERIVED, NEVER SUPPLIED.** Exactly one same-Region Station by normalized
+name; no similarity, suffix stripping, edit distance or alias lookup. Other-Region matches, unmatched
+names, rows past this step, already-decided rows and installed SRVs are excluded BY CONSTRUCTION.
+**Same-Region ambiguity is UNREACHABLE, not merely unhandled** — `stations_region_norm_uq` forbids
+two Stations sharing a normalized name in one Region, proved by attempting the duplicate
+(STAGEB-36). **Equipment inference is STRUCTURALLY IMPOSSIBLE**: the decision table has no equipment
+column at all, asserted from `information_schema` (STAGEB-21).
+
+**REVIEW IS GROUPED, THE COMMIT IS NOT.** An owner reads 69 identities carrying every raw spelling,
+the exact staging row ids and their hash evidence; the commit stays bound to all 281 individual
+rows. The preview fingerprint folds in, PER ROW, the staging row id, Region, Station id, normalized
+identity, display name, `source_row_hash`, `mapping_status` and whether a decision already exists —
+so one comparison catches every drift the prompt lists, including ambiguity and disappearance via
+set membership.
+
+**VERIFIED AT FULL SCALE LOCALLY** over a 1,104-row fixture on the real 157/188 hierarchy:
+**281 decisions across 69 Stations, 0 Unit ids, 0 equipment ids, 0 Region mismatches, 0 hash
+mismatches, 823 blockers left undecided, 0 other-Region rows decided, hierarchy unchanged, 0
+aliases, 0 canonical assets, 281 audit rows**. **ATOMICITY WAS PROVED, NOT ASSUMED**: 281 written
+inside an explicit transaction then rolled back left **0**. Replay was refused at the fingerprint
+gate. Nine refusal scenarios each left ZERO decisions behind.
+
+**THE REMAINING 823 / 247 (read-only, no fuzzy match proposed)**: Upper 266 rows, Alex 199, Canal
+171, Delta 99, West 82, East 6. **631 of the 823 are in Regions with ZERO canonical Stations** —
+Alex, Canal and Upper have no structural source, so this is not a mapping problem but a missing
+source, and inventing Stations from asset names is what §8 forbids. 178 rows carry a name no Station
+in their Region holds, 9 match a UNIT name rather than a Station, 5 match only in another Region.
+All 823 retain a raw source name.
+
+**NOT DEPLOYED AND NO PRODUCTION DECISION WRITTEN.** Production re-verified: 46 migrations, 0 Stage
+B functions, stations 157, units 188, `import_mapping_decisions` **0** with an all-time
+`n_tup_ins` of **0**, aliases 0, canonical assets 0, all 1,104 four-family rows still
+`needs_station_mapping`, 0 tables without RLS. The production preview
+(**`a014745d...e0cbe769`**, 69 groups / 281 rows, all deterministic) was computed READ-ONLY by
+inlining the identical derivation, validated byte-identical to the deployed functions against a
+local database. Migrations 0044, 0045 and 0046 are byte-identical.*
+
 ### Prompt-21 import blockers (must be resolved before the production import)
 
 | Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |
@@ -938,6 +1003,7 @@ These rules are permanent and apply to every future prompt.
 | 20F | 580 | 152 | 601 |
 | 21B | 584 | 166 | 601 |
 | 21C | 584 | 203 | 611 |
+| 22A | 584 | 240 | 624 |
 
 Update this table when a prompt is accepted, so the next one has a baseline to compare
 against.
