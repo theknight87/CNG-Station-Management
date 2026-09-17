@@ -2231,5 +2231,126 @@ SELECT pg_temp.assert(
         ILIKE '%cng_require_admin()%',
   'STAGEBPERF-7: the commit is untouched — still SECURITY DEFINER and still admin-gated');
 
+-- ===========================================================================
+-- ASSETIMP-*: canonical asset import (Prompt 23A, migration 0049)
+-- ===========================================================================
+
+-- ASSETIMP-1: UNIT IS STRUCTURALLY UNWRITABLE. This is the single most
+-- important property of the whole import: not one of the four INSERT column
+-- lists names `unit_id`, so no caller, payload or code path can set one. It is
+-- re-derived from pg_proc.prosrc rather than trusted from a comment.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM regexp_matches(
+     (SELECT prosrc FROM pg_proc WHERE proname = 'cng_asset_import_commit'),
+     'INSERT INTO (storage_vessels|recovery_tanks|gas_detectors|hoses) \(([^)]*unit_id[^)]*)\)', 'g')) = 0,
+  'ASSETIMP-1: no asset INSERT column list contains unit_id — Unit is unwritable');
+
+-- ASSETIMP-2: THE CANONICAL FIREWALL. The commit may never write hierarchy,
+-- aliases or mapping decisions. The allowlist IS the body: four literal asset
+-- targets plus the audit row.
+SELECT pg_temp.assert(
+  (SELECT prosrc FROM pg_proc WHERE proname = 'cng_asset_import_commit')
+    !~* 'INSERT INTO (stations|units|station_aliases|unit_aliases|import_mapping_decisions)',
+  'ASSETIMP-2: the commit writes no Station, Unit, alias or mapping decision');
+
+-- ASSETIMP-3: NO DYNAMIC SQL, so `target_table` is data in a column and can
+-- never name a destination.
+SELECT pg_temp.assert(
+  (SELECT prosrc FROM pg_proc WHERE proname = 'cng_asset_import_commit') NOT LIKE '%EXECUTE %'
+  AND (SELECT prosrc FROM pg_proc WHERE proname = 'cng_asset_import_commit') NOT LIKE '%quote_ident%',
+  'ASSETIMP-4: the commit contains no dynamic SQL');
+
+-- ASSETIMP-4: the ASSETIMP-1 pattern is PROVED to detect a violation, so a
+-- passing assertion means something. A pattern that can never fail is not a test.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM regexp_matches(
+     'INSERT INTO storage_vessels (station_id, unit_id, region_id)',
+     'INSERT INTO (storage_vessels|recovery_tanks|gas_detectors|hoses) \(([^)]*unit_id[^)]*)\)', 'g')) = 1,
+  'ASSETIMP-4: the unit_id detector actually fires on a violating column list');
+
+-- ASSETIMP-5: service_role ONLY. A canonical asset carries no created_by, so
+-- there is no actor to attribute and no reason to open a browser path.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM pg_proc p
+    WHERE p.proname LIKE 'cng_asset_import%'
+      AND (has_function_privilege('anon', p.oid, 'EXECUTE')
+        OR has_function_privilege('authenticated', p.oid, 'EXECUTE'))) = 0,
+  'ASSETIMP-5: no browser role may execute any asset import function');
+
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM pg_proc p
+    WHERE p.proname LIKE 'cng_asset_import%'
+      AND has_function_privilege('service_role', p.oid, 'EXECUTE')) = 3,
+  'ASSETIMP-6: all three asset import functions are executable by service_role');
+
+-- ASSETIMP-7: search_path pinned on all three; the two read paths are NOT
+-- definer, so they cannot write and RLS still bounds them.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM pg_proc
+    WHERE proname LIKE 'cng_asset_import%' AND proconfig IS NULL) = 0,
+  'ASSETIMP-7: every asset import function pins search_path');
+
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM pg_proc
+    WHERE proname IN ('cng_asset_import_proposal','cng_asset_import_preview')
+      AND (prosecdef OR provolatile <> 's')) = 0,
+  'ASSETIMP-8: the asset import read paths are SECURITY INVOKER and STABLE');
+
+-- ASSETIMP-9: the approval is content-bound and fails closed — both
+-- fingerprints are required and re-derived inside the commit transaction.
+SELECT pg_temp.assert(
+  (SELECT prosrc FROM pg_proc WHERE proname = 'cng_asset_import_commit')
+    LIKE '%p_expected_preview_fingerprint%'
+  AND (SELECT prosrc FROM pg_proc WHERE proname = 'cng_asset_import_commit')
+    LIKE '%p_expected_manifest_fingerprint%'
+  AND (SELECT prosrc FROM pg_proc WHERE proname = 'cng_asset_import_commit')
+    LIKE '%cng_asset_import_preview(p_import_run_id)%',
+  'ASSETIMP-9: the commit re-derives both approval fingerprints itself');
+
+-- ASSETIMP-10: RECORDED ABSENCE IS NOT A DEVICE. A detector row the pipeline
+-- marked `creates_detector_record = false` is evidence an area has NO detector;
+-- importing it would manufacture a device the source says is absent.
+SELECT pg_temp.assert(
+  (SELECT prosrc FROM pg_proc WHERE proname = 'cng_asset_import_proposal')
+    LIKE '%creates_detector_record%',
+  'ASSETIMP-10: recorded detector absence is excluded from canonical import');
+
+-- ASSETIMP-11: NO IDENTITY IS INVENTED. None of the four tables carries a
+-- UNIQUE constraint on serial_number, deliberately (Prompt 14, principle 16):
+-- duplicates are reported, never enforced away or merged.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM pg_constraint c
+     JOIN pg_class t ON t.oid = c.conrelid
+    WHERE t.relname IN ('storage_vessels','recovery_tanks','gas_detectors','hoses')
+      AND c.contype = 'u'
+      AND pg_get_constraintdef(c.oid) LIKE '%serial_number%') = 0,
+  'ASSETIMP-11: no serial_number uniqueness was added — duplicates stay reported, not merged');
+
+-- ASSETIMP-12: the lineage kinds this import uses were ALREADY in the 0046
+-- allowlist, so no enum or CHECK had to be widened to make assets fit.
+SELECT pg_temp.assert(
+  (SELECT pg_get_constraintdef(oid) FROM pg_constraint
+    WHERE conname = 'isr_committed_entity_kind_ck') LIKE '%storage_vessel%'
+  AND (SELECT pg_get_constraintdef(oid) FROM pg_constraint
+    WHERE conname = 'isr_committed_entity_kind_ck') LIKE '%gas_detector%',
+  'ASSETIMP-12: asset lineage kinds already existed in the staging allowlist');
+
+-- ASSETIMP-13: the schema itself is why unit_id NULL is legal, in all four
+-- families — needs_unit_mapping REQUIRES a NULL Unit.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid
+    WHERE t.relname IN ('storage_vessels','recovery_tanks','gas_detectors','hoses')
+      AND c.conname = t.relname || '_needs_unit_ck') = 4,
+  'ASSETIMP-13: all four families carry the needs_unit_mapping => unit_id IS NULL rule');
+
+-- ASSETIMP-14: station_id stayed NOT NULL in all four families. Nothing was
+-- relaxed to make the import possible.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name IN ('storage_vessels','recovery_tanks','gas_detectors','hoses')
+      AND column_name = 'station_id' AND is_nullable = 'NO') = 4,
+  'ASSETIMP-14: station_id is still NOT NULL in every asset family');
+
 
 ROLLBACK;

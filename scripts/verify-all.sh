@@ -62,7 +62,7 @@ run "report contract" npx tsx scripts/verify-report-contract.mjs "$DB"
 # runs but asserts nothing (a failed connection, a renamed file, a truncated
 # run) must FAIL rather than report a cheerful zero - that is precisely the
 # silent coverage loss this gate exists to stop.
-declare -A MIN=( [schema_scenarios]=247 [rls_authorization]=624 )
+declare -A MIN=( [schema_scenarios]=261 [rls_authorization]=624 )
 
 for suite in schema_scenarios rls_authorization; do
   out="$(sudo -n -u postgres psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "supabase/tests/$suite.sql" 2>&1)"
@@ -87,15 +87,15 @@ done
 UDB="${VERIFY_UPGRADE_DB:-cng_upgrade}"
 sudo -n -u postgres psql -q -c "DROP DATABASE IF EXISTS $UDB" -c "CREATE DATABASE $UDB" >/dev/null 2>&1
 up_fail=0
-for f in $(ls supabase/migrations/*.sql | head -47); do
+for f in $(ls supabase/migrations/*.sql | head -48); do
   sudo -n -u postgres psql -d "$UDB" -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null 2>&1 \
     || { echo "BASE MIGRATION FAILED: $f"; up_fail=1; break; }
 done
 if [ $up_fail -eq 0 ]; then
-  line "production-equivalent base" "PASS (47 applied)"
-  # The upgrade path from the CURRENT production migration count. 0047 is
-  # deployed; 0048 is what this prompt adds.
-  for f in supabase/migrations/0048_*.sql; do
+  line "production-equivalent base" "PASS (48 applied)"
+  # The upgrade path from the CURRENT production migration count. 0048 is
+  # deployed; 0049 is what this prompt adds.
+  for f in supabase/migrations/0049_*.sql; do
     if sudo -n -u postgres psql -d "$UDB" -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null 2>&1; then
       line "upgrade $(basename "$f" .sql)" "PASS (exit 0)"
     else

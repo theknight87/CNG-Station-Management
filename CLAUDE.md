@@ -1186,6 +1186,66 @@ against the real committed decisions rather than a simulation.
 confirmed Station mappings 281, remaining without Station confirmation 823, canonical assets 0,
 aliases 0.*
 
+***PROMPT 23A — THE CANONICAL ASSET IMPORT IS BUILT AND LOCALLY VERIFIED; MIGRATION 0049 IS NOT
+DEPLOYED AND NO ASSET WAS IMPORTED** — see `docs/asset-import.md`. **One additive migration, 0049**,
+adding three functions and NO table, column or enum.
+
+**UNIT_ID NULL IS LEGAL IN ALL FOUR FAMILIES, AND THE SCHEMA IS WHY**: each carries
+`<table>_needs_unit_ck CHECK (mapping_status <> 'needs_unit_mapping' OR unit_id IS NULL)` — that
+status REQUIRES a NULL Unit, so Station-level existence with an unknown Unit is the shape these
+tables were designed for, not a workaround. **No family is blocked and nothing was relaxed**
+(ASSETIMP-14: `station_id` still NOT NULL in all four).
+
+**UNIT IS STRUCTURALLY UNWRITABLE, NOT MERELY DEFAULTED**: the four INSERT statements name no
+`unit_id` column at all, re-derived from `pg_proc.prosrc` (ASSETIMP-1), and ASSETIMP-4 PROVES the
+detector fires on a violating column list so a pass means something.
+
+**NOTHING IS DEDUPLICATED, BECAUSE THE SCHEMA DELIBERATELY HAS NO IDENTITY**: no family has a
+UNIQUE on `serial_number` (Prompt 14, principle 16). 199 of 281 rows carry a serial and **8 groups
+covering 16 rows repeat within a family (6 at the same Station)** — they are FLAGGED as duplicate
+candidates and imported as DISTINCT assets, because merging them would destroy real equipment on
+the strength of a repeated string. Replay is guarded PER SOURCE ROW using lineage that already
+existed: `committed_entity_id`/`committed_at`/`committed_entity_kind`, whose allowlist ALREADY
+contained all four asset kinds (ASSETIMP-12).
+
+**A REAL FINDING — 279 ELIGIBLE, NOT 281.** 2 of the 64 detector rows carry
+`presence = 'not_installed'` with the pipeline's own `creates_detector_record = false`: they are
+evidence an area has NO detector, and creating a `gas_detectors` row would manufacture a device the
+source explicitly denies. They are classified `E_BLOCKED_BY_TARGET`, stay staging-only, and belong
+to `gas_detector_presence` — a different table with a different contract that this prompt did not
+authorize building. Production read-only eligibility: **279 ready (sv 100, rt 91, gd 62, hoses 26)
+across 68 Stations, 2 blocked, 0 needs-review, 0 already imported, 0 rows with a Unit**.
+
+**DELIBERATELY NOT MAPPED**: `area_type` (lives on `gas_detector_presence`, classifies the AREA,
+Prompt 13), `location_raw` (equipment kind), and `model`/`model_raw` — **0 of 281 rows carry any
+model value**, so the columns stay NULL rather than being filled from the compressor TYPE, which is
+a different thing. Dates map only at `exact_date` precision (the CHECK makes any other value store
+NULL and keep its raw text); measured precisions are only `exact_date` and `unknown`, and pressures
+are never ranges.
+
+**SECURITY FOLLOWS THE EXISTING ARCHITECTURE**: `service_role` ONLY, matching Stage A, because a
+canonical asset carries NO `created_by` — there is no actor to attribute, so no browser path is
+opened. SECURITY DEFINER with pinned `search_path`, read paths deliberately not definer, no dynamic
+SQL, four literal targets. The region-scoped INSERT policies are the OPERATIONAL path for an
+engineer adding one asset by hand and were not touched.
+
+**LINEAGE links on `source_row_key`, not payload equality** — two rows sharing a serial and every
+other value would otherwise be indistinguishable and could link to the wrong asset. Stage A's 402
+structural rows are disjoint and keep their `station`/`unit` kinds.
+
+**ALL 20 REQUIRED DESTRUCTIVE TESTS PASS LOCALLY** at full scale through the real functions, and
+TWO were stronger than intended: a wrong Station and a Unit-bearing decision could not even be
+CONSTRUCTED, because `imd_station_region_fk` and `imd_status_shape_ck` already forbid them. Atomicity
+proved by rollback (5 created in-transaction -> 0 assets, 0 linked, 0 audit). Replay refused with
+both the old and the current fingerprint.
+
+**NO PRODUCTION PREVIEW FINGERPRINT IS CLAIMED**: the 22B rule is that it must come from the
+DEPLOYED function, and 0049 is not deployed, so the counts are reproduced read-only and the
+fingerprint is left for deployment. Gate exit 0: frontend 617, schema **247 -> 261**, authorization
+624, 49 migrations from zero, upgrade replay 48 -> 49. Migrations 0044-0048 byte-identical.
+**PRODUCTION UNCHANGED**: 48 migrations, 157 Stations, 188 Units, 281 decisions, canonical assets
+**0**, aliases 0, asset lineage rows 0, asset-import functions deployed **0**.*
+
 ### Prompt-21 import blockers (must be resolved before the production import)
 
 | Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |
@@ -1275,6 +1335,7 @@ These rules are permanent and apply to every future prompt.
 | 22C.2 | 617 | 247 | 624 |
 | 22C.3 | 617 | 247 | 624 |
 | 22D | 617 | 247 | 624 |
+| 23A | 617 | 261 | 624 |
 
 Update this table when a prompt is accepted, so the next one has a baseline to compare
 against.
