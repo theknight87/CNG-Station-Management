@@ -1598,6 +1598,42 @@ station/unit/equipment id and no unit-bearing field exists. **AFTER STATION CONF
 NEW BECOMES IMPORTABLE**, because the canonical table accepts `needs_station_mapping` today. Gate
 exit 0 (627 / 274 / 624 / 50).*
 
+***PROMPT 25C — STOPPED AT PHASE 2: THE STAGED INSTALLED-SRV STATUSES REST ON A FORBIDDEN
+INFERENCE AND ON ORPHAN FKs** — see `docs/station-mapping-forensics.md` §"Prompt 25C". Read-only;
+no migration created, nothing deployed, no canonical SRV imported, production identical (decisions
+all-time `n_tup_ins` still **281**).
+
+**PHASE 1 RECONCILES EXACTLY**: run `cdad1e5e…`, manifest `764d3c0f…`, **2,662 = 1,599 + 262 + 801**,
+2,662 distinct keys, 0 malformed hashes, 0 committed, canonical IRV 0, all `ready_unresolved`,
+**0 active decisions on any installed SRV ever**, 2,489 distinct hashes (173 legitimate repeats).
+
+**THE BLOCKING DISCREPANCY, TWO INDEPENDENT PARTS.** (1) **The implied FKs do not exist**: the 1,063
+non-`needs_station_mapping` rows carry `station_id` (1,063) and `unit_id` (801) in their payload, but
+every one is a **32-char hex SYNTHETIC key** (`^[0-9a-f]{32}$`, not a UUID) minted by the dry run
+BEFORE Stage A — **0 of 1,063 exist in `stations`, 0 of 801 in `units`, and 0 payloads mention any
+real canonical id.** (2) **The status came from an inference this project permanently forbids**:
+`resolution->>'mapping'` says, verbatim, for all **801** `needs_equipment_mapping` rows,
+**"station has exactly one unit, so the unit is proven"** — exactly the reasoning §4 bans and that
+Prompts 21D, 22C and 22D each refused ("a NARROWING, NOT A DETERMINATION"; "a fact about the
+HIERARCHY, not about the ASSET"). The premise does hold for all 801 against the real hierarchy,
+which is why it is seductive and why it stays forbidden. The 262 are no better: pipeline-era name
+resolution with no human decision, and **224 of 262 name a Station not in the hierarchy at all**.
+
+**PROVED BY REJECTED INSERT, not by reading the constraint** (the Prompt 13 standard), locally at 50
+migrations: `needs_station_mapping` with all FKs NULL **ACCEPTED**; `needs_unit_mapping` without a
+Station **REJECTED** by `irv_status_shape_ck`; `needs_equipment_mapping` without Station/Unit
+**REJECTED**. So **1,063 of 2,662 cannot be imported at their staged status**, and forcing them
+would require fabricating an FK or adopting the one-Unit inference.
+
+**PART A IS SOUND**: the 1,599 import cleanly with all FKs NULL, keeping `source_station_name_raw`,
+and **the 215 rows of Prompt 25B sit inside them** — Station-confirmable later through
+`cng_admin_map_srv` with no Stage B and no constraint change, so the 25B recommendation is intact.
+**THE OWNER MUST RULE ON THE OTHER 1,063**: (1) import all 2,662 as `needs_station_mapping` with
+NULL FKs, preserving the staged status and reason in provenance — RECOMMENDED; (2) import only the
+1,599; (3) honour the staged statuses — NOT AVAILABLE, it is what §4 forbids. **No migration was
+written**, because writing it would decide a data-principle question on the owner's behalf. Gate
+exit 0 (627 / 274 / 624 / 50); migrations 0044-0050 byte-identical.*
+
 ### Prompt-21 import blockers (must be resolved before the production import)
 
 | Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |

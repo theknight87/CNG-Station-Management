@@ -319,3 +319,89 @@ unit-bearing field of any kind exists.** `expected_parent_kind` must never popul
 importable now**, because the canonical table accepts `needs_station_mapping` today. Canonical
 installed-SRV import remains blocked only by the absence of an import path, and full resolution
 still requires Unit evidence (none exists) and then equipment evidence (D3, permanently manual).
+
+---
+
+## Prompt 25C — canonical installed-SRV import: STOPPED at Phase 2
+
+**Read-only.** No migration created, nothing deployed, no canonical SRV imported, no decision,
+alias, Station, Unit or equipment created. Production re-verified identical.
+
+### Phase 1 reconciles exactly
+
+Run `cdad1e5e-7faa-4f3b-9432-12a720f3dd64`, manifest `764d3c0f…f5091b8f`.
+**2,662 staged installed SRVs = 1,599 + 262 + 801**, 2,662 distinct source keys, 0 malformed
+hashes, 0 already committed, 0 lineage markers, canonical `installed_relief_valves` **0**, all
+`outcome = ready_unresolved`, one run, one file/sheet. 2,489 distinct hashes (173 legitimate
+byte-identical repeats — the 25B condition at full scale). **0 active decisions on any installed
+SRV, ever.**
+
+### Phase 2 — THE DISCREPANCY, and why it is blocking
+
+The staged `mapping_status` is **not a canonical state**. Two independent problems:
+
+**1. The FKs it implies do not exist.** The 1,063 non-`needs_station_mapping` rows carry
+`station_id` (1,063) and `unit_id` (801) inside their `normalized` payload — but every one is a
+**32-character hex synthetic key from the dry run**, matching `^[0-9a-f]{32}$`, not a UUID.
+**0 of 1,063 exist in `stations`; 0 of 801 exist in `units`; 0 payloads mention any real canonical
+id anywhere.** They are pipeline-internal identifiers minted before Stage A created the hierarchy.
+
+**2. The status was derived from an inference this project has since permanently forbidden.**
+Reading `resolution->>'mapping'` verbatim:
+
+| Staged status | Pipeline's own stated reason | Rows |
+| --- | --- | --- |
+| `needs_equipment_mapping` | **"station has exactly one unit, so the unit is proven; the parent equipment is not named by the source"** | **801** |
+| `needs_unit_mapping` | "station has 2 units; the source names none" | 194 |
+| `needs_unit_mapping` | "station has 4 units; the source names none" | 37 |
+| `needs_unit_mapping` | "station has 3 units; the source names none" | 22 |
+| `needs_unit_mapping` | "station has no known unit structure" | 9 |
+| `needs_station_mapping` | "station name not resolved by any confirmed alias or canonical name" | 1,583 |
+| `needs_station_mapping` | "station evidence is ambiguous; held for human confirmation" | 16 |
+
+**All 801 `needs_equipment_mapping` rows got their Unit from "the Station has exactly one Unit."**
+That is precisely the reasoning §4 bans and that Prompts 21D, 22C and 22D each refused in turn —
+*"'One Unit under the candidate Station' is a NARROWING, NOT A DETERMINATION"* and *"a fact about
+the HIERARCHY, not about the ASSET."* Measured against the real hierarchy the premise does hold for
+all 801, which is exactly why it is seductive and exactly why it stays forbidden: the Station's Unit
+count is not evidence about the valve.
+
+The 262 are no better founded: their Station came from pipeline-era name resolution with no human
+decision, and **224 of 262 name a Station that is not in the canonical hierarchy at all**.
+
+### Proved by rejected insert, not by reading the constraint
+
+Against a local database at 50 migrations, inserting each shape with the FKs actually available:
+
+| Shape | Result |
+| --- | --- |
+| `needs_station_mapping`, all FKs NULL (the 1,599) | **ACCEPTED** |
+| `needs_unit_mapping`, no `station_id` (the 262) | **REJECTED** — `irv_status_shape_ck` |
+| `needs_equipment_mapping`, no Station/Unit (the 801) | **REJECTED** — `irv_status_shape_ck` |
+
+Final table state: 1 row. So **1,063 of 2,662 cannot be imported at their staged status**, and the
+only way to force them would be to fabricate an FK or to honour the forbidden one-Unit inference.
+
+### What this means
+
+Phase 2's conceptual model (A 1,599 / B 262 / C 801) is **not achievable**, and the prompt's own
+instruction applies: *do not blindly force the labels; if any discrepancy exists, STOP.*
+
+**Part A is sound and unaffected**: the 1,599 import cleanly with Station, Unit and equipment NULL,
+keeping `source_station_name_raw`, and `cng_admin_map_srv` takes them forward. **The 215 rows of
+Prompt 25B are inside that 1,599** and would be Station-confirmable through the existing SRV
+workflow with no Stage B and no constraint change — the 25B recommendation is intact.
+
+**The open question is the other 1,063, and it is the owner's to answer**, because every route
+changes what the record asserts:
+
+1. **Import all 2,662 as `needs_station_mapping`** with NULL FKs, preserving the staged status and
+   the pipeline's reason in provenance. Truthful about canonical state, loses no evidence, and puts
+   every Station/Unit/equipment step behind a human decision. *Recommended.*
+2. **Import only the 1,599** and hold the 1,063 until their Stations are decided. Smaller, but
+   leaves 40% of the family unstored for no gain, since option 1 stores them just as honestly.
+3. **Honour the staged statuses** — requires fabricating FKs and adopting the one-Unit inference.
+   **Not available**; it is what §4 forbids.
+
+No migration was written, because writing the import function would mean choosing between these on
+the owner's behalf, and the choice is a data-principle ruling rather than an implementation detail.
