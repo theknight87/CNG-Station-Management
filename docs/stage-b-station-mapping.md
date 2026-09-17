@@ -682,3 +682,110 @@ Migrations 0044-0047 re-hashed after the work and byte-identical.
 `import_mapping_decisions` **0** (all-time `n_tup_ins` **0**), 1,104 rows still
 `needs_station_mapping`, canonical assets 0, aliases 0/0, 7,163 staging rows, 0 tables
 without RLS. **The batch still awaits the owner's click.**
+
+## 19. Prompt 22D — post-commit production reconciliation (read-only)
+
+The owner executed the approved batch from the production Admin UI. This section is an
+INDEPENDENT read-only verification of the database; nothing was created or modified.
+
+**281 DECISIONS, ALL WELL-FORMED.** `import_mapping_decisions` = **281**, all active
+(0 superseded). Every one: `confirmed_station_id` NOT NULL (281), `confirmed_unit_id` **NULL
+(281/281 — 0 Units assigned)**, `previous_mapping_status = needs_station_mapping` (0 wrong),
+`resulting_mapping_status = needs_unit_mapping` (0 wrong), a 64-character
+`reviewed_source_row_hash` with **0 mismatches against the staging row's current hash**.
+**0 duplicates** (the partial unique index `imd_one_active_per_source_row` makes a second
+active decision per source row inexpressible), **0 orphan staging references, 0 orphan
+Station references, 0 wrong-Region decisions**. 69 distinct Station targets. One import run.
+
+**ATTRIBUTION IS REAL AND SINGULAR**: 1 distinct `decided_by`, resolving to the **active
+`admin`** account; 0 unresolved actors. All 281 share **one identical `decided_at`**
+(`2026-09-17 11:27:06.099923+00`), which is the signature of a single transaction.
+
+**STAGED AND CONFIRMED STATUS ARE CORRECTLY SEPARATE** — read from
+`v_admin_staged_mapping_queue`, which keeps raw evidence and decision apart:
+
+| `staged_mapping_status` (raw evidence) | `confirmed_mapping_status` (from the decision) | Rows |
+| --- | --- | --- |
+| `needs_station_mapping` | `needs_unit_mapping` | **281** |
+| `needs_station_mapping` | *(no decision)* | **823** |
+
+The staged column did NOT move, and was never supposed to. 0 rows are
+`stale_source_decision`.
+
+**THE 823 FIREWALL HOLDS EXACTLY** — Upper 266, Alex 199, Canal 171, Delta 99, West 82,
+East 6 = **823**, with **0 decisions among them**. The 281 decided are Delta 199 + West 82,
+matching the 22B group projection. The **5 other-Region-only rows remain unmapped (0
+decided)** — Region is identity, so a name matching only in another Region is not a match.
+
+**FAMILIES EXACT**: storage vessels 100, recovery tanks 91, gas detectors 64, hoses 26 = 281.
+
+**HIERARCHY UNCHANGED**: regions 6, stations 157, units 188 — East 42/56, West 40/58,
+Delta 75/74, Canal 0/0, Alex 0/0, Upper 0/0. `station_aliases` 0, `unit_aliases` 0.
+
+**CANONICAL ASSETS ALL STILL ZERO**: compressors, dispensers, installed SRV, warehouse SRV,
+storage vessels, recovery tanks, gas detectors, hoses — 0 each. Station confirmation is a
+STAGING decision; it imports nothing.
+
+**AUDIT RECONCILES**: `audit_logs` 282 = 1 pre-existing + **281 new** on
+`import_mapping_decisions`. 1 distinct actor, 1 distinct timestamp, **0 orphan audit rows,
+0 decisions without an audit row, 0 actor mismatches** between audit and decision.
+
+**REPLAY IS NOW BLOCKED BY THREE INDEPENDENT SERVER-SIDE CONDITIONS**, verified read-only
+without re-invoking the commit:
+
+1. **The preview fingerprint has CHANGED** — `a014745d...e0cbe769` -> **`01390ef4...926a6d54`**.
+   `has_active_decision` is folded into the fingerprint per row, so all 281 flipping
+   false -> true necessarily changes it. The commit REQUIRES `p_expected_preview_fingerprint`
+   to match the value it re-derives in its own transaction, so presenting the approved
+   constant now FAILS CLOSED. **This is the approval being content-bound doing its job**: the
+   proposal genuinely is different now, because it has already been carried out.
+2. **`imd_one_active_per_source_row`** — `UNIQUE (source_row_key) WHERE superseded_at IS NULL`
+   — makes a duplicate active decision impossible at the DATABASE level, independent of any
+   function.
+3. **The UI reads `rows_with_existing_decision = 281 >= 281`** and renders the
+   `already_executed` state, so the control is not offered. Server-derived, not localStorage,
+   so it stays true in any browser after any refresh.
+
+**UNIT WORKLOAD: 240 / 38 / 3 EXACTLY** — A (Station has exactly one Unit) 240 rows across 63
+Stations; B (multiple) 38 rows across 5 Stations, every one holding exactly TWO Units; C
+(zero Units) 3 rows on 1 Station.
+
+### The Unit evidence question, answered from a full key census
+
+Every key present in the 281 staged rows was enumerated from `normalized` and `source_raw`
+rather than probing for fields assumed to exist:
+
+**PROVEN UNIT EVIDENCE — NONE. Zero rows, in all three categories.** `unit_id` is present as a
+key on all 281 and **non-empty on 0**. **No key named unit, unit name, unit number, unit code
+or job number exists anywhere in the 281 rows** — not in the normalized blob and not in the
+preserved raw source. There is no Job Number attributable to any of these assets.
+
+**CONTEXT ONLY / NOT SUFFICIENT**:
+- `location_raw` / `Location` — 191 rows, and its complete value set is exactly
+  **`Recovery | Storage`**: an equipment KIND, which §4 states in terms "is not evidence of
+  Unit membership".
+- `compressor_context_raw` / `Type OF Compressor` — 191 rows, 9 distinct values. It is a
+  compressor TYPE/model, not a Unit identifier; several Units can hold the same model and it
+  names no instance.
+- `area_type_raw` — 64 detector rows, 2 distinct values (open/close area). It classifies the
+  AREA, not a Unit.
+- **The trailing number in a Station name is NOT a Unit index here.** 140 of the 281 raw
+  source names end in a digit — and so do the canonical Stations they matched, all 140. Because
+  candidacy required normalized-name equality, the digit is part of the STATION's committed
+  identity, absorbed at Stage A. Reading it as decision D2's `<base> <n>` Unit index would
+  contradict the Station identity already committed, and only 8 of the 73 Units under these
+  Stations carry a digit-suffixed name at all.
+
+**NO UNIT EVIDENCE**: the remaining rows carry only Station, Region, serial, dates and
+pressures — none of which names a Unit.
+
+**CATEGORY A IS THEREFORE NOT RESOLVABLE BY ITS OWN SHAPE.** "The Station has exactly one
+Unit" is a fact about the HIERARCHY, not about the ASSET. Assigning those 240 rows on that
+basis is the distribution rule §4 permanently forbids, and 240 rows is precisely the size at
+which the shortcut tempts. Category B (38) has two candidate Units and nothing to choose
+between them. Category C (3) cannot proceed at all — the Station has no Units and D7 forbids
+inventing one.
+
+**A Stage B UNIT batch still has no source to run on.** Unit mapping needs NEW evidence that
+names the Unit per asset; no rule over the currently staged data can supply it. This confirms
+the 22C finding against the real committed decisions rather than against a simulation.

@@ -1137,6 +1137,55 @@ replay 47 -> 48. **PRODUCTION AFTER**: 48 migrations, regions 6, stations 157, u
 canonical assets 0, aliases 0/0, 0 tables without RLS. Migrations 0044-0047 byte-identical.
 **The batch awaits the owner's click at `/admin/station-batch`.***
 
+***PROMPT 22D — THE STAGE B STATION MAPPING IS COMMITTED AND INDEPENDENTLY VERIFIED IN
+PRODUCTION** — see `docs/stage-b-station-mapping.md` §19. The owner executed the approved batch
+from the production Admin UI; this was a READ-ONLY reconciliation that created and modified nothing.
+
+**281 DECISIONS, ALL WELL-FORMED**: all active, `confirmed_station_id` set on 281,
+**`confirmed_unit_id` NULL on 281/281**, previous/resulting status correct on every row, a
+64-char `reviewed_source_row_hash` with **0 mismatches**, **0 duplicates, 0 orphans, 0
+wrong-Region**, 69 distinct Station targets, 1 import run. **ATTRIBUTION IS REAL**: one
+`decided_by` resolving to the ACTIVE `admin`, 0 unresolved, and a SINGLE identical `decided_at`
+across all 281 — the signature of one transaction.
+
+**STAGED AND CONFIRMED STATUS ARE CORRECTLY SEPARATE**: 281 rows read
+`staged_mapping_status = needs_station_mapping` (raw evidence, deliberately unmoved) with
+`confirmed_mapping_status = needs_unit_mapping`; 823 carry no decision; 0 stale.
+
+**THE 823 FIREWALL HOLDS EXACTLY** — Upper 266, Alex 199, Canal 171, Delta 99, West 82, East 6,
+with **0 decisions among them**, and the 5 other-Region-only rows still unmapped. The 281 are
+Delta 199 + West 82. **FAMILIES EXACT** 100/91/64/26. **HIERARCHY UNCHANGED** (6 / 157 / 188,
+East 42/56, West 40/58, Delta 75/74, Canal-Alex-Upper 0/0), aliases 0/0. **ALL EIGHT CANONICAL
+ASSET TABLES STILL 0** — Station confirmation is a STAGING decision and imports nothing.
+**AUDIT**: 282 = 1 pre-existing + 281 new, 1 actor, 1 timestamp, 0 orphans, 0 decisions without
+an audit row, 0 actor mismatches.
+
+**REPLAY IS BLOCKED BY THREE INDEPENDENT SERVER-SIDE CONDITIONS**, proved without re-invoking the
+commit: the preview fingerprint has CHANGED `a014745d... -> 01390ef4...` because
+`has_active_decision` is folded in per row, so the approved constant now FAILS CLOSED — the
+content-bound approval working as designed; `imd_one_active_per_source_row` makes a duplicate
+active decision impossible at the DATABASE level; and the UI reads 281 >= 281 and renders
+`already_executed`, server-derived so it survives any refresh in any browser.
+
+**UNIT WORKLOAD 240 / 38 / 3 EXACTLY** (63 / 5 / 1 Stations; every Category-B Station has exactly
+two Units). **THE UNIT EVIDENCE QUESTION IS ANSWERED FROM A FULL KEY CENSUS** of both `normalized`
+and `source_raw`: **PROVEN UNIT EVIDENCE = NONE, zero rows in all three categories** — `unit_id` is
+non-empty on 0, and NO key named unit/unit name/unit number/unit code/job number exists anywhere in
+the 281 rows. **CONTEXT ONLY**: `Location` (191 rows) whose complete value set is exactly
+`Recovery | Storage` — an equipment KIND §4 says is not Unit evidence; `Type OF Compressor` (191, 9
+values) — a MODEL naming no instance; `area_type_raw` (64) classifying the AREA. **AND A TRAP
+CLOSED**: 140 raw names end in a digit, but so do all 140 canonical Stations they matched, because
+candidacy required normalized-name equality — the digit is part of the STATION identity committed at
+Stage A, not a D2 Unit index, and only 8 of the 73 Units under these Stations carry a digit-suffixed
+name. **Category A is NOT resolvable by its own shape**: "the Station has exactly one Unit" is a
+fact about the HIERARCHY, not the ASSET, and assigning those 240 on that basis is the distribution
+rule §4 permanently forbids. **A Stage B UNIT batch still has no source to run on** — confirmed now
+against the real committed decisions rather than a simulation.
+
+**PRODUCTION**: 48 migrations, regions 6, stations 157, units 188, `import_mapping_decisions` 281,
+confirmed Station mappings 281, remaining without Station confirmation 823, canonical assets 0,
+aliases 0.*
+
 ### Prompt-21 import blockers (must be resolved before the production import)
 
 | Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |
@@ -1225,6 +1274,7 @@ These rules are permanent and apply to every future prompt.
 | 22C.1 | 617 | 240 | 624 |
 | 22C.2 | 617 | 247 | 624 |
 | 22C.3 | 617 | 247 | 624 |
+| 22D | 617 | 247 | 624 |
 
 Update this table when a prompt is accepted, so the next one has a baseline to compare
 against.
