@@ -1343,6 +1343,61 @@ approved constant fails closed; Gate 5 refuses with `eligible_rows = 0`; and all
 schema 261, authorization 624, 49 from zero, upgrade replay 48 -> 49. Migrations 0044-0049
 byte-identical.*
 
+***PROMPT 24A — LIVE DATA VERIFICATION AGAINST THE 279 CANONICAL ASSETS (read-only)** — see
+`docs/asset-import.md` §13. **SCOPE LIMIT FIRST: this environment answers 403 at CONNECT for
+`cng-station-management.pages.dev` (RE-TESTED, not assumed), so NOTHING here is BROWSER VERIFIED.**
+What is verified is the database and the VIEW/QUERY LAYER THE UI ACTUALLY READS, plus the CSV
+encoder run against real production rows. Rendering and interaction still need owner acceptance.
+
+**DATABASE TRUTH**: 279 assets (100/91/62/26), **all** with `station_id NOT NULL`, `unit_id NULL`,
+`mapping_status = needs_unit_mapping` — 0 exceptions. Delta 199 / West 80 across 68 Stations (West
+is 80 not 82 because both excluded detectors were West).
+
+**EVERY UI VIEW RECONCILES EXACTLY**: `v_vessel_management` 191 (100+91), `v_gas_detector_management`
+62 with **0 absence rows**, `v_report_gas_detectors` 62, `v_hose_registry` 26, `v_report_due_compliance`
+279, `v_installed_srv_management` 0. **ZERO view drift** — every row in all four families compared
+field-by-field against its canonical table, 0 differences. **THE DETECTOR EXCLUSION IS VISIBLE END TO
+END**: Data Quality shows 64 detector staged decisions against 62 canonical, the difference being
+exactly the two `not_installed` rows; `gas_detector_presence` still 0.
+
+**DUE SEMANTICS EXACT**: `days_left`/`due_status` match a fresh evaluation of the alert engine's own
+functions with **0 drift**; all **51** `unknown`-precision rows carry NULL days-left and
+`due_status = unknown`, and 0 non-exact rows are classified. **A REAL OPERATIONAL FINDING: 142 of
+279 assets are OVERDUE** (SV 60, RT 56, GD 26), worst by 764 days — business content, not a defect.
+
+**CSV VERIFIED ON REAL PRODUCTION ROWS**: production has **0** naturally occurring formula-lead
+values (so that case used the local fixtures, as the prompt anticipated) but **33** comma/quote
+values and **179 Arabic values incl. 157 Arabic Station names**. Through the real encoder: BOM
+`ef bb bf`, CRLF, **Arabic byte-intact**, the real `NK CO.,LTD.` correctly quoted, NULL emitted as
+genuinely EMPTY, `-624` bare so the column sorts numerically, and all four formula leads neutralised
+while a genuine numeric `-5` stays numeric.
+
+**PAGING VERIFIED ON REAL ROWS**: ordering by the spec column plus the always-appended id tiebreak
+gives **279 rows, 279 distinct ids, 0 duplicated, 6 pages (50x5 + 29)**, with the 51 NULL-due rows
+deterministically last. **REPORT CONTRACT RE-VERIFIED AGAINST PRODUCTION**: every column all eight
+specs select/order/filter/identify by exists — **0 missing**, so the 20B failure mode is absent.
+
+**NULL UNIT UX IS CORRECT IN CODE**: `NullValue` renders an em dash with an `sr-only`
+"not recorded" (never N/A, Unknown, dash, 0 or undefined) and `needs_unit_mapping` renders as
+"Needs unit mapping" with kind `unmapped`, explicitly not an error; no Unit is fabricated and no
+one-Unit Station is assumed.
+
+**DATA QUALITY — ONLY EXISTING RULES FIRE**: canonical 279 all `needs_unit_mapping` and nothing
+else (no rule invented because a field is NULL); staged 281 recorded / 1,037 awaiting; import issues
+from the existing enum led by `unmatched_station` 2,435, `year_only_date` 372, `missing_serial` 339.
+
+**THREE E-CLASS OBSERVATIONS, NO FIX APPLIED**: (1) three columns are entirely empty dataset-wide
+and will render as a full column of em dashes — vessel `model` 191/191, detector `serial_number`
+62/62, detector `area_type` 62/62 (it lives on `gas_detector_presence`); all correct, but worth a
+product decision. (2) **16 duplicate-serial storage vessels (8 serials, 12 at the same Station) are
+surfaced nowhere** — `serial_duplicate` exists only on `v_hose_registry` by the Prompt 14 design,
+so principle 16's "report duplicate candidates" is unmet for vessels. (3) all 26 hoses sit at ONE
+West Station and 60 of 62 detectors are one-per-Station in Delta — worth an operator sanity check.
+
+**PRODUCTION UNCHANGED**: 49 migrations, 6 / 157 / 188, 281 decisions, 100/91/62/26, aliases 0, Unit
+mappings 0, presence 0, asset lineage 279; no row created, updated or deleted. **Gate exit 0**:
+frontend 617, schema 261, authorization 624.*
+
 ### Prompt-21 import blockers (must be resolved before the production import)
 
 | Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |
@@ -1435,6 +1490,7 @@ These rules are permanent and apply to every future prompt.
 | 23A | 617 | 261 | 624 |
 | 23B | 617 | 261 | 624 |
 | 23C | 617 | 261 | 624 |
+| 24A | 617 | 261 | 624 |
 
 Update this table when a prompt is accepted, so the next one has a baseline to compare
 against.

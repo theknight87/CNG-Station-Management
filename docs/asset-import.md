@@ -396,3 +396,117 @@ East 42/56, West 40/58, Delta 75/74, Canal/Alex/Upper 0/0; 0 tables without RLS.
 
 **Gate exit 0**: frontend 617, schema 261, authorization 624, 49 migrations from zero, upgrade
 replay 48 -> 49. Migrations 0044-0049 byte-identical.
+
+## 13. Prompt 24A — live data verification against the 279 canonical assets
+
+**SCOPE LIMIT STATED FIRST.** This environment answers **403 at CONNECT** for
+`cng-station-management.pages.dev` (re-tested, not assumed). **I could not open the
+application in a browser**, so nothing here is BROWSER VERIFIED. What is verified is the
+DATABASE and the **view/query layer the UI actually reads**, plus the CSV encoder run against
+real production rows. Rendering and interaction still need owner browser acceptance.
+
+### Database truth (Phase 1)
+
+279 assets: storage vessels 100, recovery tanks 91, gas detectors 62, hoses 26. **All 279**
+carry `station_id NOT NULL`, `unit_id NULL` and `mapping_status = needs_unit_mapping` — 0
+exceptions in every family. Distribution: **Delta 199** (SV 67, RT 72, GD 60) and **West 80**
+(SV 33, RT 19, GD 2, hoses 26), across 68 Stations. Both excluded detector rows were West,
+which is why West is 80 rather than 82.
+
+### The views the UI reads reconcile exactly
+
+| View | Rows | Expected |
+| --- | --- | --- |
+| `v_vessel_management` | **191** (100 storage + 91 recovery) | 191 |
+| `v_gas_detector_management` | **62**, of which absence rows **0** | 62 |
+| `v_report_gas_detectors` | **62** | 62 |
+| `v_hose_registry` / `v_hose_management` | **26** / **26** | 26 |
+| `v_report_due_compliance` | **279** | 279 |
+| `v_installed_srv_management` | **0** | 0 (no SRV imported) |
+
+**Zero view drift**: every row in all four families was compared field-by-field against its
+canonical table (serial, manufacturer, model, station, unit, next-due date, pressure) — **0
+differences** in each.
+
+**THE DETECTOR EXCLUSION IS VISIBLE AND CORRECT END TO END**: the detector registry shows 62
+with **0** absence rows, and Data Quality shows `staged_decision_recorded` of **64** detectors
+against **62** canonical — the difference being exactly the two `not_installed` rows, decided at
+staging and correctly never canonical. `gas_detector_presence` remains 0 rows.
+
+### Due semantics (Phase 5) — exact, with zero drift
+
+`days_left` and `due_status` were compared against a fresh evaluation of `cng_days_left()` /
+`cng_due_status()` on every row: **0 drift on both**. **51 rows carry `unknown` precision and
+every one has `days_left` NULL and `due_status = unknown`** — 0 non-exact rows carry a
+days-remaining figure and 0 are classified. Only `exact_date` drives classification, exactly as
+principle 17 requires.
+
+**A REAL OPERATIONAL FINDING: 142 of 279 assets are OVERDUE** — storage vessels 60, recovery
+tanks 56, gas detectors 26 — the worst by **764 days**. 51 are `unknown`, 86 valid/due_60.
+This is the first real compliance picture the system has produced and is business content, not
+a defect.
+
+### CSV export (Phase 6) — verified against REAL production rows
+
+Production contains **0** naturally occurring formula-lead values, so that case was exercised
+with the local fixtures, as anticipated. But production **does** contain 33 values with a comma
+or quote and **179 Arabic values (157 Arabic Station names)**, so the export was run through the
+real `csv.ts` encoder on actual production rows:
+
+- UTF-8 BOM present (`ef bb bf`) and CRLF line endings.
+- **Arabic Station names round-trip byte-intact.**
+- `NK CO.,LTD.` — a real manufacturer value — correctly quoted as `"NK CO.,LTD."`.
+- NULL Unit and NULL model emit a genuinely **empty** field: no `N/A`, `-`, `0` or `undefined`.
+- `-624` days left is emitted **bare as a number**, so the column still sorts numerically.
+- Formula guard on fixtures: `=cmd|calc`, `+1+1`, `-5`, `@SUM(A1)` and a leading tab each gain
+  the apostrophe prefix and quoting; a genuine numeric `-5` in a numeric column stays `-5`; a
+  non-numeric value in a numeric column falls back to the text guard.
+
+### Paging (Phase 7) — verified on the real 279 rows
+
+The UI orders by the spec column then **always** appends the id column. Simulating that exactly
+over `v_report_due_compliance` at PAGE_SIZE 50: **279 rows, 279 distinct ids across all pages,
+0 duplicated, 6 pages (50×5 + 29)**. The 51 NULL-due rows sort deterministically last
+(positions 229-279), so no row can appear on two pages or vanish between them.
+
+### Report contract re-verified against PRODUCTION (the 20B defect class)
+
+Every column all eight report specs select, order, filter or identify by was checked against
+`information_schema` **in production**: **0 missing columns**. The 20B failure mode is absent.
+
+### NULL Unit UX (Phase 8)
+
+Correct by design in the code: `NullValue` renders an em dash with an `sr-only`
+"not recorded" (never `N/A`, `Unknown`, `-`, `0` or `undefined`), and `needs_unit_mapping`
+renders as "Needs unit mapping" with kind `unmapped` — explicitly **not** an error state. No
+Unit is fabricated and no one-Unit Station is assumed. Visual confirmation still needs a browser.
+
+### Data Quality (Phase 9) — rules that actually fire
+
+Canonical layer: **279 rows, all `needs_unit_mapping`** (100/91/62/26) and nothing else — no
+rule was invented merely because a field is NULL. Staged layer: 281 `staged_decision_recorded`
+(100/91/64/26) and 1,037 `staged_awaiting_decision`. Import-issue layer, from the existing enum:
+`unmatched_station` 2,435 · `year_only_date` 372 · `missing_serial` 339 ·
+`not_found_in_assets_database` 142 · `placeholder_value` 48 · `invalid_date` 37 ·
+`ambiguous_station_identity` 20 · `missing_job_number` 6 ·
+`suspected_part_number_in_serial_column` 3.
+
+### Observations (E-class, no fix applied)
+
+1. **Three columns are entirely empty across the whole dataset** and will render as a full
+   column of em dashes: `model` (191/191 vessels — no model value exists in any source),
+   detector `serial_number` (62/62), and detector `area_type` (62/62, because it lives on
+   `gas_detector_presence` and no presence row exists). All three are *correct* — the data
+   genuinely is not there — but an all-empty column is worth a product decision.
+2. **16 duplicate-serial storage vessels (8 serials, 12 at the same Station) are not flagged in
+   the UI.** `serial_duplicate` exists only on `v_hose_registry`, by the Prompt 14 design where
+   a hose is individually traceable. Principle 16 says report duplicate candidates; for vessels
+   they currently are not surfaced anywhere in the product.
+3. **All 26 hoses sit at a single Station in West**, and 60 of 62 detectors are one-per-Station
+   in Delta — a distribution worth an operator sanity check against the real estate.
+
+### Firewall and gate
+
+Production unchanged: 49 migrations, 6 / 157 / 188, 281 decisions, 100 / 91 / 62 / 26,
+aliases 0, Unit mappings 0, `gas_detector_presence` 0, asset lineage 279. No row was created,
+updated or deleted by this review. Gate exit 0 — frontend 617, schema 261, authorization 624.
