@@ -1390,4 +1390,68 @@ SELECT pg_temp.assert(
       AND prosecdef AND array_to_string(proconfig, ',') LIKE '%search_path%') = 3,
   'DL17: every SECURITY DEFINER delivery function pins search_path');
 
+
+-- ===========================================================================
+-- STAGING COMMIT (Prompt 20F, migration 0044)
+--
+-- The canonical firewall is asserted from the CATALOG, not from the migration's
+-- comment: `prosrc` is read back and checked for any canonical table name and
+-- for dynamic SQL. A later edit that reached for `stations` or introduced an
+-- EXECUTE would fail here rather than in production.
+-- ===========================================================================
+
+-- STG-1: the writer exists, is SECURITY DEFINER and pins search_path.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM pg_proc
+    WHERE proname = 'cng_stage_import_batch'
+      AND prosecdef
+      AND array_to_string(proconfig, ',') LIKE '%search_path%') = 1,
+  'STG-1: cng_stage_import_batch is SECURITY DEFINER with a pinned search_path');
+
+-- STG-2: it contains NO dynamic SQL, so the caller cannot name a destination.
+SELECT pg_temp.assert(
+  (SELECT prosrc FROM pg_proc WHERE proname = 'cng_stage_import_batch')
+    NOT ILIKE '%EXECUTE %'
+  AND (SELECT prosrc FROM pg_proc WHERE proname = 'cng_stage_import_batch')
+    NOT ILIKE '%format(%'
+  AND (SELECT prosrc FROM pg_proc WHERE proname = 'cng_stage_import_batch')
+    NOT ILIKE '%quote_ident%',
+  'STG-2: the staging writer contains no dynamic SQL - target_table is data, never an identifier');
+
+-- STG-3: THE FIREWALL. Its body names no canonical table.
+SELECT pg_temp.assert(
+  NOT EXISTS (
+    SELECT 1 FROM unnest(ARRAY[
+      'stations','units','regions','storage_vessels','recovery_tanks',
+      'gas_detectors','hoses','installed_relief_valves','warehouse_relief_valves',
+      'compressors','dispensers','import_mapping_decisions'
+    ]) AS canonical(t)
+    WHERE (SELECT prosrc FROM pg_proc WHERE proname = 'cng_stage_import_batch')
+          ~* ('(insert|update|delete)[[:space:]]+(into[[:space:]]+)?' || canonical.t || '\M')
+  ),
+  'STG-3: the staging writer writes NO canonical table and NO mapping decision');
+
+-- STG-4: replay identity is a DATABASE property, and it is partial so a failed
+-- run never blocks a corrected retry of the same sources.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM pg_indexes
+    WHERE tablename = 'import_runs'
+      AND indexname = 'import_runs_manifest_fingerprint_uq'
+      AND indexdef ILIKE '%UNIQUE%'
+      AND indexdef ILIKE '%completed_at IS NOT NULL%') = 1,
+  'STG-4: one completed staging run per distinct source content, enforced by a partial unique index');
+
+-- STG-5: abandonment is a STATE change, never a delete.
+SELECT pg_temp.assert(
+  (SELECT prosrc FROM pg_proc WHERE proname = 'cng_abandon_import_run')
+    NOT ILIKE '%DELETE FROM%',
+  'STG-5: abandoning a staging run never deletes a row');
+
+-- STG-6: and it is batch-scoped - it refuses a NULL run id rather than acting broadly.
+SELECT pg_temp.assert(
+  (SELECT prosrc FROM pg_proc WHERE proname = 'cng_abandon_import_run')
+    ILIKE '%p_import_run_id IS NULL%',
+  'STG-6: abandoning requires an explicit run id');
+
+
 ROLLBACK;

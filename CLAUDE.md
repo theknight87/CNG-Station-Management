@@ -700,6 +700,55 @@ a cosmetic reason, and Prompt 19's own guards exist to prevent exactly that.
 This status update changed NO application code, schema, migration, production data, role,
 notification setting or security configuration, and created no records.***
 
+***PROMPT 20E CORRECTION, AND PROMPT 20F — THE PERSISTED STAGING WRITE PATH.**
+**A 20E STATEMENT WAS WRONG**: I reported the source workbooks as unreachable. I had searched the
+REPOSITORY TREE, not the filesystem. All six are present in this session's working area, read-only
+and dated 2026-09-14, and the dry run runs against them. The rest of 20E stands — production
+staging really is empty, and the reason really is that `src/import/` has no database write path.
+
+**PROMPT 20F CLOSES EXACTLY THAT GAP. One additive migration, 0044, adding NO table, NO column and
+NO enum** — `import_runs`, `import_batches` (with `file_checksum`), `import_staging_rows`,
+`import_issues` and `import_source_conflicts` have existed since 0004/0026 and already hold
+everything needed. Only the WRITER was missing, so a second import architecture was not invented.
+
+**THE CANONICAL FIREWALL IS STRUCTURAL, NOT INTENTIONAL.** `cng_stage_import_batch` contains five
+INSERTs whose targets are literals — the allowlist IS the body — and NO dynamic SQL at all, so
+`target_table` arrives as DATA in a column and a caller can never name a destination. STG-2 and
+STG-3 re-derive this from `pg_proc.prosrc` rather than trusting the comment, and the STG-3 pattern
+was PROVED to detect `INSERT INTO stations`, `UPDATE hoses` and `import_mapping_decisions` before
+being accepted. Verified empirically too: committing the real 7,163-row payload into a local
+database left `stations`, `units`, all five asset tables and `import_mapping_decisions` at **0**.
+
+**IT IS AN OPERATOR ACTION, NOT A BROWSER ACTION.** EXECUTE is granted to `service_role` ONLY — not
+even an admin in a browser can call it — and the runner is a server-side CLI
+(`scripts/stage-import.mjs preview|commit`). Putting it in the frontend would have meant uploading
+workbooks to a browser-reachable endpoint or granting `authenticated` INSERT on the import tables,
+adding permanent attack surface for a task one operator performs a handful of times.
+**STGSEC-6 asserts `authenticated` still holds ZERO write grants on every import table**, and
+STGSEC-7 that all five stay readable so Admin → Data Quality keeps working.
+
+**REPLAY IS A DATABASE PROPERTY.** The manifest fingerprint hashes every filename with its SHA-256,
+sorted, so identical content gives an identical value and one changed byte gives a different one;
+`import_runs_manifest_fingerprint_uq` makes one completed run per distinct source content
+enforceable. Proved by attack: committing the identical payload twice was REFUSED by that index
+(psql exit 3), leaving 7,163 rows, 1 run and 7 batches untouched — which also demonstrates
+atomicity, since one call is one transaction and a partial batch cannot exist to look ready. The
+index is PARTIAL on `completed_at` so a failed run never blocks a corrected retry. Abandonment is a
+STATE (`rolled_back`), never a DELETE, is batch-scoped by a required id, and REFUSES a run with
+canonically committed rows or referenced mapping decisions.
+
+**STAGING DECIDES NOTHING**: no `import_mapping_decisions` row, so the 0039/0041 content binding is
+untouched, and no Station, Unit or asset is created. **NOTHING WAS WRITTEN TO PRODUCTION** — every
+write was to an isolated local database.
+
+**RECONCILIATION IS EXACT.** The preview reproduces the historical dry run to the row: 7,163 staged
+rows; stations_units 402, unit_attributes 325, installed SRV 2,662, warehouse SRV 2,188, storage
+vessels 671, recovery tanks 528, gas detectors 316, hoses 71; and the four NOT-NULL-`station_id`
+families give **433 / 403 / 219 / 49 = 1,104** exactly. 3,402 issues, 0 blocking, 0 source
+conflicts. The `SS-4R3A` owner rule applied to 48 rows in its one authorized context and nowhere
+else; the `Repair Kit` sheet was excluded and staged no row. **ZERO unexplained difference.**
+***
+
 ### Prompt-21 import blockers (must be resolved before the production import)
 
 | Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |
@@ -781,6 +830,7 @@ These rules are permanent and apply to every future prompt.
 | 20 | 547 | 146 | 560 |
 | 20A | 557 | 146 | 591 |
 | 20B | 565 | 146 | 591 |
+| 20F | 580 | 152 | 601 |
 
 Update this table when a prompt is accepted, so the next one has a baseline to compare
 against.

@@ -4103,5 +4103,79 @@ BEGIN
   RESET ROLE;
 END $$;
 
+
+
+-- ===========================================================================
+-- STAGING COMMIT AUTHORIZATION (Prompt 20F)
+--
+-- The staging write path is an OPERATOR action, not a browser action. Nothing
+-- reachable from a session may call it, and the browser gains no new authority:
+-- every import table keeps the SELECT-only grant it has had since 0019.
+-- ===========================================================================
+
+-- STGSEC-1..2: EXECUTE is service_role ONLY. Not anon, not authenticated -
+-- and therefore not an admin in a browser either.
+SELECT pg_temp.ok(
+  NOT has_function_privilege('authenticated',
+    (SELECT oid FROM pg_proc WHERE proname='cng_stage_import_batch'), 'EXECUTE'),
+  'STGSEC-1: authenticated cannot execute the staging writer');
+SELECT pg_temp.ok(
+  NOT has_function_privilege('anon',
+    (SELECT oid FROM pg_proc WHERE proname='cng_stage_import_batch'), 'EXECUTE'),
+  'STGSEC-2: anon cannot execute the staging writer');
+SELECT pg_temp.ok(
+  has_function_privilege('service_role',
+    (SELECT oid FROM pg_proc WHERE proname='cng_stage_import_batch'), 'EXECUTE'),
+  'STGSEC-3: service_role can execute the staging writer');
+
+SELECT pg_temp.ok(
+  NOT has_function_privilege('authenticated',
+    (SELECT oid FROM pg_proc WHERE proname='cng_abandon_import_run'), 'EXECUTE'),
+  'STGSEC-4: authenticated cannot abandon a staging run');
+SELECT pg_temp.ok(
+  has_function_privilege('service_role',
+    (SELECT oid FROM pg_proc WHERE proname='cng_abandon_import_run'), 'EXECUTE'),
+  'STGSEC-5: service_role can abandon a staging run');
+
+-- STGSEC-6..10: the browser still cannot write ANY import table directly.
+-- Staging arriving in the database must not have widened these.
+SELECT pg_temp.ok(
+  (SELECT count(*) FROM information_schema.role_table_grants
+    WHERE table_schema='public' AND grantee='authenticated'
+      AND table_name IN ('import_runs','import_batches','import_staging_rows',
+                         'import_issues','import_source_conflicts')
+      AND privilege_type IN ('INSERT','UPDATE','DELETE')) = 0,
+  'STGSEC-6: authenticated holds NO write grant on any import table');
+
+SELECT pg_temp.ok(
+  (SELECT count(DISTINCT table_name) FROM information_schema.role_table_grants
+    WHERE table_schema='public' AND grantee='authenticated' AND privilege_type='SELECT'
+      AND table_name IN ('import_runs','import_batches','import_staging_rows',
+                         'import_issues','import_source_conflicts')) = 5,
+  'STGSEC-7: the import tables remain readable, so Admin - Data Quality still works');
+
+SELECT pg_temp.ok(
+  (SELECT count(*) FROM information_schema.role_table_grants
+    WHERE table_schema='public' AND grantee='anon'
+      AND table_name LIKE 'import_%') = 0,
+  'STGSEC-8: anon holds nothing on any import table');
+
+-- STGSEC-9: the writer takes no actor parameter, so a caller cannot attribute
+-- a staging run to someone else.
+SELECT pg_temp.ok(
+  (SELECT pg_get_function_arguments(oid) FROM pg_proc WHERE proname='cng_stage_import_batch')
+    NOT ILIKE '%actor%'
+  AND (SELECT pg_get_function_arguments(oid) FROM pg_proc WHERE proname='cng_stage_import_batch')
+    NOT ILIKE '%user%',
+  'STGSEC-9: the staging writer accepts no actor or user identifier');
+
+-- STGSEC-10: staging writes no mapping decision, so the 0039/0041 content
+-- binding cannot be bypassed by staging a row.
+SELECT pg_temp.ok(
+  (SELECT prosrc FROM pg_proc WHERE proname='cng_stage_import_batch')
+    NOT ILIKE '%import_mapping_decisions%',
+  'STGSEC-10: staging never touches import_mapping_decisions');
+
 DO $$ BEGIN RAISE EXCEPTION 'RLS_SUITE_ROLLBACK'; END $$;
+
 ROLLBACK;
