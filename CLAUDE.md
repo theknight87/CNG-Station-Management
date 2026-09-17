@@ -1477,6 +1477,31 @@ RE-TESTED and still answers 403 at CONNECT, so owner browser acceptance is the f
 Gate exit 0: frontend 627, schema 274, authorization 624, 50 migrations from zero, upgrade replay
 49 -> 50. Migrations 0044-0050 byte-identical.*
 
+***PROMPT 24D — THE 24B FRONTEND WAS NEVER DEPLOYED; ROOT CAUSE WAS DEPLOYMENT-SOURCE DRIFT** —
+see `docs/vessels-management.md` §"Prompt 24D". Owner browser verification failed: 0050's DATABASE
+work was live but the badge, metric and filter were absent. **Cloudflare Pages builds from `main`,
+and `main` was at `ca106e5` (Prompt 22C.1) — NINE COMMITS BEHIND** the branch on which everything
+from 22C.2 onward was written and verified. Commit `b7b6da7` was NOT an ancestor of `main`, so the
+deployed bundle could not contain it; `main`'s own copy of `VesselPieces.tsx` held **0** occurrences
+of "Duplicate serial candidate". **The migrations had advanced independently** (deployed straight to
+Supabase), which is exactly why the database looked right and the UI did not.
+
+**ONLY THIS FEATURE WAS MISSING**: a full diff of `main` against the branch shows the ONLY `src/`
+changes across all nine commits are the four 24B vessel files, so `/reports`, `/admin/station-batch`
+and every previously accepted screen were genuinely current. **THE FIX WAS A FAST-FORWARD, NOT NEW
+CODE** — `main` -> **`213d643`**, carrying the four approved frontend files, three migration FILES
+already applied to production, docs, the gate script and the schema suite, and **no new
+functionality**. A Pages build applies no migrations, so the merge could not touch the database.
+Gate exit 0 on the exact deployable tree (frontend 627, schema 274, authorization 624, 50
+migrations), and the built bundle was grepped directly to prove all three features present.
+**PRODUCTION DATABASE UNCHANGED**: 50 migrations, 100/91/62/26 = 279, 281 decisions, 0 Unit
+mappings, 823 Station-unconfirmed, 16 flagged, vessel fingerprint still `2fca1cfb...`. **THE PAGES
+BUILD IS NOT OBSERVED** — pages.dev and api.cloudflare.com both answer 403 at CONNECT (re-tested);
+the push to `main` is confirmed at the GitHub remote, the deployment is not. **DURABLE LESSON:
+verification ran on a branch while deployment ran from `main`. Any future prompt reporting a
+frontend change as DEPLOYED must confirm the commit is an ANCESTOR OF THE BRANCH CLOUDFLARE PAGES
+BUILDS, not merely that it was pushed somewhere.***
+
 ### Prompt-21 import blockers (must be resolved before the production import)
 
 | Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |

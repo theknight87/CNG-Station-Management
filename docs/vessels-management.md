@@ -354,3 +354,46 @@ with anything), so the equivalent gap is latent, not live.
 still answers **403 at CONNECT**, so the badge, the summary metric and the filter are
 verified at the deployed database and query-contract layer only. Owner browser acceptance
 remains the final step.
+
+### Prompt 24D — the frontend was never deployed, and why
+
+Owner browser verification failed: migration 0050's database work was live, but the
+badge, the summary metric and the filter were absent from the production site.
+
+**ROOT CAUSE — A DEPLOYMENT-SOURCE DRIFT, NOT A CODE DEFECT.** Cloudflare Pages builds
+from **`main`**, and `main` was at **`ca106e5` (Prompt 22C.1)** — **nine commits behind**
+the `claude/stoic-noether-tu4jpm` branch on which every prompt from 22C.2 onward was
+written and verified. The 24B frontend commit `b7b6da7` was **not an ancestor of `main`**,
+so the deployed bundle could not contain it. Confirmed by reading `main` directly: its copy
+of `VesselPieces.tsx` contained **0** occurrences of "Duplicate serial candidate".
+
+**WHY ONLY THIS FEATURE WAS MISSING.** Migrations 0048, 0049 and 0050 were deployed
+straight to Supabase, so the database advanced independently of Pages while the frontend
+stayed at 22C.1. And a full diff of `main` against the branch shows the **only** `src/`
+changes in all nine commits are the four 24B vessel files — so `/reports`,
+`/admin/station-batch` and every other screen the owner had already accepted were genuinely
+current. 24B was the single undeployed frontend change.
+
+**THE FIX WAS A FAST-FORWARD, NOT NEW CODE.** `main` fast-forwarded cleanly to `213d643`.
+The merge carried exactly: the four approved 24B frontend files, three migration **files**
+already applied to production, the docs, the gate script and the schema suite — **no new
+functionality**. A Pages build applies no migrations, so the merge could not and did not
+touch the database.
+
+**VERIFIED BEFORE PUSHING**: gate exit 0 on the exact deployable tree (frontend 627,
+schema 274, authorization 624, 50 migrations), and the built bundle
+`dist/assets/index-D18RMC56.js` was grepped directly — "Duplicate serial candidate" ×2,
+"Duplicate serial candidates only" ×1, `serial_duplicate_count` ×2.
+
+**PRODUCTION DATABASE UNCHANGED**: 50 migrations, 100 / 91 / 62 / 26 = 279 canonical assets,
+281 decisions, 0 Unit mappings, 823 Station-unconfirmed rows, 16 flagged duplicates, and the
+191-row vessel fingerprint still **`2fca1cfb...`**.
+
+**THE PAGES BUILD IS NOT OBSERVED FROM HERE.** `cng-station-management.pages.dev` and
+`api.cloudflare.com` both answer **403 at CONNECT** (re-tested). The push to `main` is
+confirmed at the GitHub remote; the resulting deployment is not. Owner browser recheck is
+the final step.
+
+**DURABLE LESSON**: verification ran on a branch while deployment ran from `main`. A future
+prompt that reports a frontend change as DEPLOYED must confirm the commit is an ancestor of
+the branch Cloudflare Pages actually builds — not merely that it was pushed somewhere.
