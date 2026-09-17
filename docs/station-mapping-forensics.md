@@ -484,3 +484,95 @@ deployed **0**, 0 tables without RLS.
 **Gate exit 0**: frontend 627, schema 274, authorization 624, 51 migrations from zero, upgrade
 replay 50 → 51 (the replay base was advanced from 49 to 50 to match the deployed production
 count). Migrations 0044–0050 verified byte-identical to their recorded hashes.
+
+## Prompt 25E — Migration 0051 deployed; production preview verified; NO canonical import
+
+Production went **50 -> 51**, recorded once (`20260917221254 installed_srv_import`), file SHA-256
+`f63f8bffc0aa4d498052cdbbf632d83eed810e0b9c8f2e63291c7a8446973fee` recomputed immediately before
+transmission and matching approved commit `c91ca6e` byte for byte. Migrations 0044-0050 were
+verified byte-identical first.
+
+**DEPLOYMENT PROVED BYTE-EXACT.** All three bodies were hashed FROM THE APPROVED FILE BEFORE
+deploying and compared to `pg_proc.prosrc` after: `cng_irv_import_proposal`
+`9e25e8836ba0c125f2f0041d029c4f10` (4755), `cng_irv_import_preview`
+`074d2bc4d3f053e3d50dbcecf7c7117a` (3112), `cng_irv_import_commit`
+`f19350d30dc8a46f26f348a4a2098a99` (7384) — all identical. **NOTHING ELSE MOVED**:
+`cng_normalize_name` `3c4d8a93…`, `cng_require_admin` `ff29bdea…`,
+`cng_stage_b_station_commit` `b040117a…`, `cng_asset_import_commit` `e759bebb…`,
+`cng_stage_a_commit` and `cng_admin_map_srv` are all bit-identical.
+
+**THE MIGRATION EXECUTES NO DML.** Machine-scanned with function bodies and `--` lines stripped:
+exactly 15 statements — 3 `CREATE OR REPLACE FUNCTION`, 3 `COMMENT`, 3 `GRANT EXECUTE`, 6 `REVOKE`
+— and **ZERO** INSERT/UPDATE/DELETE/TRUNCATE/ALTER/DROP/POLICY/INDEX/CONSTRAINT/CREATE TYPE. No
+dynamic SQL (`EXECUTE` appears only in the three `GRANT EXECUTE` tokens; no `quote_ident`).
+
+**DEPLOYED SECURITY AS APPROVED**: commit SECURITY DEFINER and VOLATILE; both read paths INVOKER
+and STABLE, so they cannot write and RLS still bounds them; `search_path` pinned on all three;
+EXECUTE **anon 0 / authenticated 0 / PUBLIC 0 / service_role 3** — no browser canonical-import path.
+Schema shape unchanged: 33 tables, 1,178 columns, 241 constraints, 164 indexes, 27 enums, 70
+policies, 0 tables without RLS. **No constraint weakened**: `irv_status_shape_ck` is verbatim, and
+`station_id` is still NOT NULL on all four blocker families (nullable on installed SRVs, as
+designed).
+
+**PRODUCTION PREVIEW (deployed function, real staging, zero writes).** Run
+`cdad1e5e-7faa-4f3b-9432-12a720f3dd64`, manifest
+`764d3c0fbe09f3ac95b27ce235f0fb08cfd92711e2a4ec56defb227b5f091b8f`.
+
+**PREVIEW FINGERPRINT
+`f4757c75a7513aa2ed8779ae5b4df29b1db686b3aaa05c995873be87168acb44`.**
+
+eligible **2,662** · excluded 0 · already imported 0 · invalid evidence 0 · invalid hashes 0 ·
+proposed `needs_station_mapping` **2,662** · needs_unit 0 · needs_equipment 0 · resolved 0 ·
+**station FK 0 / unit FK 0 / equipment FK 0** · distinct source keys **2,662** · duplicate keys 0 ·
+distinct hashes 2,489 · serial 2,494 · exact-date next 2,333 · regions 6 · canonical SRVs now 0.
+Region distribution East 563, Delta 634, West 454, Alex 390, Canal 323, Upper 298 = 2,662.
+
+**FINGERPRINT REPRODUCIBLE**: a second read-only run returned the identical fingerprint and the
+identical 2,662-row eligible set.
+
+**ONE NUMBER DIFFERS FROM THE 25D LOCAL REPORT, AND THE LOCAL ONE WAS THE FIXTURE'S**:
+`repeated_hash_groups` is **85** in production (258 rows), not the 173 the local fixture produced.
+Both are consistent with 2,662 keys and 2,489 distinct hashes — 173 is the EXCESS ROW count, which
+the fixture happened to spread over 173 pairs while production concentrates it into 85 larger
+groups. The production figure is the real one and is reported as such.
+
+**HISTORICAL PROVENANCE IS CARRIED, NEVER PROMOTED**: staged statuses **1,599 / 262 / 801** exactly.
+The pipeline's own reasons are preserved verbatim and reconcile to 2,662: *station name not
+resolved by any confirmed alias or canonical name* 1,583 · *station has exactly one unit, so the
+unit is proven; the parent equipment is not named by the source* **801** · *station has 2 units;
+the source names none* 194 · *3 units* 22 · *4 units* 37 · *station evidence is ambiguous* 16 ·
+*station has no known unit structure* 9. **The 801 reason is the forbidden one-Unit inference,
+recorded as evidence and not acted on.**
+
+**THE SYNTHETIC IDENTIFIERS ARE PROVENANCE, PROVED**: 1,063 carry a `synthetic_station_id` and 801
+a `synthetic_unit_id`; **1,063 of 1,063 match `^[0-9a-f]{32}$`** (not UUIDs); **0 exist in
+`stations` and 0 in `units`**; and **0 payloads carry any `canonical_station_id`,
+`canonical_unit_id` or `canonical_equipment_id` key at all**.
+
+**FIELD FIDELITY**: model values **0** anywhere; `non_exact_last_with_date` **0** and
+`non_exact_next_with_date` **0**, so a date exists only at `exact_date` precision;
+`location_raw` and `expected_parent_kind` present on 2,662 as hints and on 0 foreign keys;
+part number 48 (the one authorized `SS-4R3A` context).
+
+**THE 215 ANALYTICAL SET IS UNCHANGED**: 215 rows / 27 identities, Delta 118 / West 62 / East 35,
+0 multi-candidate, 0 cross-Region, 0 already decided. No mapping was written.
+
+**THE 268 QUARANTINE IS RECONFIRMED AND RECORDED**: 268 four-family staged rows carry the
+historical `resolved` status that rests on the forbidden one-Unit inference — storage vessels 116,
+recovery tanks 76, gas detectors 54, hoses 22. **0 of them overlap the 281 production decisions**,
+and the 281 are clean: 281 active, **0 asserting a Unit**, 0 with a wrong resulting status, 0 with
+a wrong previous status. Nothing was repaired, decided or imported.
+
+**FIREWALL AFTER THE PREVIEW — ZERO WRITE**: 51 migrations · 6 / 157 / 188 ·
+`installed_relief_valves` **0** · warehouse 0 · decisions 281 (all-time `n_tup_ins` 281) ·
+aliases 0/0 · staging 7,163 with **0 installed-SRV rows committed** · audit **283** with **0**
+`service_role:installed_srv_import` rows · assets 100/91/62/26 · compressors, dispensers and
+presence 0 · 0 tables without RLS. (`installed_relief_valves` shows an all-time `n_tup_ins` of 15 —
+historical ROLLED-BACK probe tuples from the Prompt 25C rejected-insert proofs; the live count is 0
+and the preview's delta is zero, the same caveat 23B recorded for other families.)
+
+**Gate exit 0**: frontend 627, schema 274, authorization 624, 51 migrations from zero, upgrade
+replay 50 -> 51. Installed-SRV import suite 39/39, SRV mapping suite 15/15, both exit 0.
+
+**`cng_irv_import_commit` was NOT invoked in any execution context.** The fingerprint above is a
+CANDIDATE approval token; it is not approved here.
