@@ -1,0 +1,15 @@
+# Prompt 21A - Stage A Region coverage. Machine-derived from production run cdad1e5e (READ-ONLY).
+# structural_stations : distinct Stations in the staged stations_units source for this Region.
+# Category A : asset identity matches exactly one structural Station IN THE SAME REGION.
+# Category B : asset identity appears in NO structural source (any Region).
+# Category C : asset identity matches a structural Station in a DIFFERENT Region - owner decision, never automatic.
+# Matching uses the proposed separator-folding comparison (see stage-a-hierarchy-summary.md section 4).
+# NOTHING HERE IS A MAPPING DECISION.
+region,structural_stations,structural_units,asset_identities,asset_rows,A_identities,A_rows,B_identities,B_rows,C_identities,C_rows
+East,42,56,5,6,0,0,5,6,0,0
+West,40,58,31,164,9,82,22,82,0,0
+Delta,75,74,95,298,69,199,26,99,0,0
+Canal,0,0,51,171,0,0,51,171,0,0
+Alex,0,0,61,199,0,0,60,194,1,5
+Upper,0,0,86,266,0,0,86,266,0,0
+TOTAL,157,188,327,1104,78,281,249,818,1,5
