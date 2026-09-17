@@ -275,3 +275,41 @@ only.
 | `/reports` in a browser | **NOT LIVE VERIFIED** — owner acceptance pending |
 
 Production security verification is recorded in CLAUDE.md §7 under the Prompt 20 deployment note.
+
+## Prompt 20 final status — PASS WITH DOCUMENTED POST-IMPORT / ROLE-SPECIFIC VERIFICATION ITEMS
+
+Closed by owner production browser verification (Prompt 20D).
+
+### Live verified in production
+
+| Item | State |
+| --- | --- |
+| `/reports` loads | LIVE VERIFIED |
+| All seven tabs route | LIVE VERIFIED |
+| Due & Overdue canonical-empty state | LIVE VERIFIED |
+| Data Quality layers + `stale_source_decision` semantics (admin) | LIVE VERIFIED |
+| Vessels renders | LIVE VERIFIED |
+| Gas Detectors renders | LIVE VERIFIED |
+| Hoses renders | LIVE VERIFIED |
+| `station_display` contract failure absent | LIVE VERIFIED |
+| Reports read-only; corrections directed to Admin | LIVE VERIFIED |
+| `/settings` preference persists across refresh | LIVE VERIFIED — **closes Prompt 18** |
+
+### Deferred to after the controlled import (Prompt 21)
+
+These need real rows. Production holds none, and **no data was manufactured to verify them** —
+fabricating records to produce a passing verification is what data principle #1 forbids.
+
+| Item | Covered now by |
+| --- | --- |
+| Arabic CSV content vs. real Station names | automated tests asserting the downloaded file's bytes, incl. the UTF-8 BOM |
+| CSV formula-injection vs. real source text | automated tests: apostrophe prefix on TEXT cells only, numbers left bare |
+| Non-empty deterministic paging and sorting | automated tests: server-side order always ends on the id tiebreak |
+
+### Deferred as role-specific
+
+Viewer/engineer Data Quality visibility — the canonical layer only, with staging stated as out of
+scope rather than left to look absent. Asserted in SQL against real RLS (DQR-12/13/16/17). Live
+verification needs a genuine non-admin account; **the owner's Admin account is not to be downgraded
+to perform it**, since demoting the only active administrator for a cosmetic check is a real
+authorization change, and Prompt 19's guards exist to prevent exactly that.

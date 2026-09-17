@@ -670,6 +670,36 @@ gate against the database built from zero, and was **PROVED to fail against the 
 before being accepted. Security is untouched: no view, migration, grant, policy or RLS boundary was
 changed, and no data was created.***
 
+***PROMPT 20 IS CLOSED — PASS WITH DOCUMENTED POST-IMPORT / ROLE-SPECIFIC VERIFICATION ITEMS
+(Prompt 20D).** Owner production browser verification is complete for everything that can be
+meaningfully verified BEFORE the controlled import. **LIVE VERIFIED in production**: `/reports`
+loads; all seven tabs route; Due & Overdue renders the correct canonical-empty state; the Data
+Quality admin view explains the canonical / staging / import-issue layers and the
+`stale_source_decision` semantics; Vessels, Gas Detectors and Hoses all render after the 20B
+contract fix, with the `station_display` failure gone from each; Reports expose no correction or
+mutation control and Data Quality directs corrections to Admin. **`/settings` persisted a changed
+notification preference across a full production refresh, which CLOSES PROMPT 18** — the 18A fix
+(migration 0037) is confirmed working in production.
+
+**THREE ITEMS ARE DEFERRED TO AFTER THE CONTROLLED IMPORT, and deliberately NOT verified by
+manufacturing data**: Arabic CSV content against real Station names, CSV formula-injection
+behaviour against real source text, and non-empty deterministic paging and sorting. All three need
+REAL ROWS, production holds none, and creating rows to watch a report render them would fabricate
+records to produce a passing verification — the precise thing data principle #1 and every prior
+prompt's no-fabrication rule forbid. They remain covered by automated tests (the CSV tests assert
+the downloaded file's bytes, including the BOM and the apostrophe prefix on text cells only) and
+are LIVE-VERIFIABLE the moment Prompt 21 commits real assets.
+
+**ONE ITEM IS DEFERRED AS ROLE-SPECIFIC**: viewer/engineer Data Quality visibility — that a
+Region-scoped user reads the canonical layer alone and is TOLD staging is out of scope. It is
+asserted in SQL against real RLS (DQR-12/13/16/17), and verifying it live needs a genuine
+non-admin account. **The owner's Admin account must NOT be downgraded to perform it**, because
+demoting the only active administrator to observe a report is a real authorization change made for
+a cosmetic reason, and Prompt 19's own guards exist to prevent exactly that.
+
+This status update changed NO application code, schema, migration, production data, role,
+notification setting or security configuration, and created no records.***
+
 ### Prompt-21 import blockers (must be resolved before the production import)
 
 | Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |
