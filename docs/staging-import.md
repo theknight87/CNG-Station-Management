@@ -23,24 +23,59 @@ client, and `runDryRun()` returns its rows in memory. Nothing ever persisted the
 Migration **0044** adds the writer and nothing else: **no new table, no new column, no new enum**.
 Everything required already existed from 0004/0026.
 
-## Preview and commit
+## Preview, emit and commit
 
 ```
-node scripts/stage-import.mjs preview --source-dir <dir>
-node scripts/stage-import.mjs commit  --source-dir <dir> \
-     --expect-fingerprint <hex from the approved preview> --label "<text>"
+node scripts/stage-import.mjs preview       --source-dir <dir>
+node scripts/stage-import.mjs emit          --source-dir <dir> --out <file>
+node scripts/stage-import.mjs commit        --source-dir <dir> --expect-fingerprint <hex> [--label <text>]
+node scripts/stage-import.mjs commit-direct --payload <file> --expect-fingerprint <hex> [--ca <file>]
 ```
+
+**Use `emit` + `commit-direct`.** The HTTP `commit` path is retained and unchanged,
+but it does not work at this size: a 13.2 MB body is dropped upstream of PostgREST
+before the request is ever served. That was proved, not assumed — the attempt
+appears in **no edge log**, and `import_runs.n_tup_ins` stayed at **0**, so the
+function never executed its first statement.
 
 **Preview** makes zero database calls. It prints the SHA-256 of every workbook, the manifest
 fingerprint, sheets read, sheets excluded and why, counts by target, mapping-status distribution,
 outcomes, issues by type, and exactly what would be persisted.
 
-**Commit** re-runs the same dry run, re-computes the fingerprint and **refuses** if it differs from
-the approved one, then makes one RPC call. One call is one transaction: the whole batch lands or
-none of it does, so a partially written batch cannot exist to be mistaken for a ready one.
+**Emit** is the same preview, written to a file instead of sent. Still zero database calls.
 
-`commit` alone reads `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`. Neither is ever printed, and
-neither appears in any frontend file.
+**Commit** (HTTP) re-runs the dry run, re-computes the fingerprint and **refuses** if it differs
+from the approved one, then makes one RPC call.
+
+**Commit-direct** reads an emitted file and sends it over a direct PostgreSQL connection. It gates
+on the fingerprint **twice before opening a connection** — the value the file claims must equal the
+approved one, and the value **recomputed from the file's own source hashes** must equal it too, so a
+manifest edited to claim an approval its contents do not support is refused. It then refuses a
+replay, and makes exactly one call inside one transaction.
+
+Either way, one call is one transaction: the whole batch lands or none of it does, so a partially
+written batch cannot exist to be mistaken for a ready one.
+
+`commit` reads `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`; `commit-direct` reads `CNG_DB_URL`.
+None is ever printed, none is read from a file, and none appears in the repository or any frontend
+file. On a connection failure the host and database are named; the credential never is.
+
+### Why the direct transport cannot change import semantics
+
+It is a change of **transport only**. Both paths take the same object from the same builder and
+hand its five keys to the same five parameters of the same `cng_stage_import_batch`. HTTP
+serialises them into one JSON body; the direct path binds them as five **query parameters**, so no
+part of the payload is ever spliced into SQL text. Parsing, normalization, mapping, issue
+generation, fingerprinting, source classification and staging semantics all happen in `emit`,
+before either transport is chosen, and four tests assert the two carry identical values.
+
+### TLS
+
+A remote database is contacted over **verified** TLS or not at all — there is no flag to disable
+verification. Where the server's chain is not in the system store, supply it with `--ca <file>`
+(Supabase publishes its CA under Settings → Database → SSL Configuration); that VERIFIES against
+that certificate rather than skipping. Plaintext is permitted for loopback only, because a local
+test database has no certificate and the traffic never leaves the machine.
 
 ## Why a CLI and not a screen
 

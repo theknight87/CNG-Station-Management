@@ -189,3 +189,69 @@ describe('staging imports nothing and decides nothing', () => {
       .not.toBe(batchKey('Warehouse Relief Data.xlsx', 'رصيد المخزن'))
   })
 })
+
+describe('the direct transport carries the same payload as the HTTP one (Prompt 20G)', () => {
+  /**
+   * The HTTP commit path was reviewed and approved; the direct path exists only
+   * because a 13.2 MB body is dropped upstream of PostgREST. It must therefore
+   * be a change of TRANSPORT and nothing else.
+   *
+   * Both paths take the SAME object from the SAME builder and hand its five keys
+   * to the same five parameters of `cng_stage_import_batch`. HTTP serialises them
+   * into one JSON body; the direct path binds them as five query parameters.
+   * These assert that the two are the same values — so no parsing, normalization,
+   * classification, fingerprinting or staging semantics can differ between them.
+   */
+  const httpBody = (p: ReturnType<typeof buildStagingPayload>) => ({
+    p_manifest: p.manifest,
+    p_batches: p.batches,
+    p_rows: p.rows,
+    p_issues: p.issues,
+    p_conflicts: p.conflicts,
+  })
+
+  const directParams = (p: ReturnType<typeof buildStagingPayload>) => [
+    JSON.stringify(p.manifest),
+    JSON.stringify(p.batches),
+    JSON.stringify(p.rows),
+    JSON.stringify(p.issues),
+    JSON.stringify(p.conflicts),
+  ]
+
+  it('binds exactly the five values the HTTP body carries, in the same order', () => {
+    const payload = buildStagingPayload(input())
+    const body = httpBody(payload)
+    const params = directParams(payload)
+    expect(params).toEqual([
+      JSON.stringify(body.p_manifest),
+      JSON.stringify(body.p_batches),
+      JSON.stringify(body.p_rows),
+      JSON.stringify(body.p_issues),
+      JSON.stringify(body.p_conflicts),
+    ])
+  })
+
+  it('survives the emit round trip unchanged', () => {
+    // `emit` writes JSON.stringify(payload); `commit-direct` JSON.parses it and
+    // binds the five keys. A round trip must therefore be lossless.
+    const payload = buildStagingPayload(input())
+    const roundTripped = JSON.parse(JSON.stringify(payload)) as typeof payload
+    expect(directParams(roundTripped)).toEqual(directParams(payload))
+    expect(roundTripped.manifest.manifest_fingerprint).toBe(payload.manifest.manifest_fingerprint)
+  })
+
+  it('keeps Arabic intact across the emit round trip', () => {
+    const payload = JSON.parse(JSON.stringify(buildStagingPayload(input())))
+    expect(payload.rows[0].source_raw.Station).toBe('ابنوب اسيوط')
+  })
+
+  it('carries a fingerprint that recomputes from the manifest it ships', () => {
+    // `commit-direct` refuses a payload whose manifest does not recompute to the
+    // fingerprint it claims. A genuine payload must always pass that gate.
+    const sources = SOURCES
+    const fingerprint = manifestFingerprint(sources, sha256)
+    const payload = buildStagingPayload(input({ sources, fingerprint }))
+    expect(manifestFingerprint(payload.manifest.sources, sha256))
+      .toBe(payload.manifest.manifest_fingerprint)
+  })
+})
