@@ -211,12 +211,44 @@ Every one of these remains an **explicit human decision** recorded through
 `cng_admin_decide_staged_mapping`. Stage A proposes no mapping, writes no
 decision, and auto-resolves nothing.
 
-## 10. Status
+## 10. Status — DEPLOYED, PREVIEWED, NOT COMMITTED (Prompt 21C-DEPLOY)
 
-**NOT DEPLOYED. NOT COMMITTED TO PRODUCTION.** Production remains at 45
-migrations with `stations` = 0, `units` = 0, `station_aliases` = 0 and
-`import_mapping_decisions` = 0. Migrations 0044 and 0045 are byte-identical to
-what is deployed.
+Migration 0046 is **deployed** to production: 45 → **46**, recorded once as
+`20260917085835 stage_a_hierarchy`. SHA-256 of the approved file
+`478dd95c41bba156df4133304445e4a78ac7bd752d083e9a5eb82befde55bbc5`.
 
-Running the hierarchy commit against production is a separate, explicitly
-authorized act that this prompt did not perform.
+Deployment was proved byte-exact rather than merely "applied": the MD5 of
+`pg_proc.prosrc` for all three deployed functions matches the locally built
+approved copy exactly, and `cng_normalize_name` hashes identically too, so
+migration 0045's behaviour is demonstrably untouched.
+
+### The production preview
+
+| | |
+| --- | --- |
+| import run | `cdad1e5e-7faa-4f3b-9432-12a720f3dd64` |
+| manifest fingerprint | `764d3c0f…f091b8f` |
+| **preview fingerprint** | **`12941a1c0842a217dd5c7d52fcd416ec9282821704289d2977c671942eb5d90a`** |
+| source rows | 402 |
+| proposed Stations | **157** |
+| proposed Units | **188** |
+| Stations with no Unit | **1** |
+| existing Stations / Units | 0 / 0 |
+
+Region distribution: East 42/56, West 40/58, Delta 75/74, Canal 0/0, Alex 0/0,
+Upper 0/0.
+
+All conflict classes are **zero**: display spelling (Station and Unit), Region,
+job number within a Unit, compressor model within a Unit.
+
+The preview was proved read-only empirically, not by inspection:
+`pg_stat_user_tables.n_tup_ins` for `stations`, `units`, `station_aliases` and
+`import_mapping_decisions` was identical before and after, and `n_tup_upd` on
+`import_staging_rows` stayed 0.
+
+**THE HIERARCHY COMMIT HAS NOT BEEN RUN.** Production holds `stations` = 0,
+`units` = 0, `station_aliases` = 0, `import_mapping_decisions` = 0, 0 canonical
+assets, and all 7,163 staging rows uncommitted. Migrations 0044 and 0045 remain
+byte-identical.
+
+Running the commit is a separate, explicitly authorized act.
