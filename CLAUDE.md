@@ -648,6 +648,28 @@ means to assert.
 
 **PROMPT 20 IS DEPLOYED (Prompt 20 merge + deployment).** Main is at `792df36` by fast-forward merge. Production (`cng-station-management`, ref `ypkggegquetvpsflkaxg`) went from **41 to 43 migrations**: 0042 `report_due_compliance` then 0043 `report_data_quality`, applied sequentially, each succeeding. Verified IN PRODUCTION by catalog query: all three report views exist with `security_invoker = true`, `authenticated` holds SELECT and **no write grant** on them (the 9 write grants first observed were `postgres`, the view owner's implicit privileges present on every view in the schema — a defective assertion, not a defective deployment), 0 `authenticated` UPDATE columns on `alerts`, the claim functions remain `service_role` only, `cng_mark_all_alerts_read` is still SECURITY INVOKER, `cng_admin_decide_staged_mapping` is still admin-gated, and 0 public tables lack RLS. **NO DATA WAS CREATED**: every asset table, staging, `import_issues`, `import_mapping_decisions` and `alerts` are 0 rows; `app_users` is 1 and `audit_logs` 1, both pre-existing. A read-only probe as `authenticated` with no verified subject returned 0 rows from every report view and was discarded by a deliberate `RAISE`. **CLOUDFLARE IS NOT OBSERVED**: this environment answers 403 at CONNECT for `api.cloudflare.com` and `cng-station-management.pages.dev`, and the Cloudflare tooling available here covers Workers/D1/KV/R2, not Pages — the push to `main` is confirmed at the GitHub remote, but the Pages build is NOT verified. **THE FRONTEND IS NOT LIVE VERIFIED**: `/reports` needs owner browser acceptance.***
 
+***PROMPT 20B — a REAL PRODUCTION DEFECT in the report contract**, found by owner browser
+verification: *column v_report_gas_detectors.station_display does not exist*, with equivalent
+failures on Vessels and Hoses. **NO MIGRATION WAS REQUIRED — 0044 was NOT created.** The defect was
+entirely frontend: every report shared one `HIERARCHY_COLUMNS` constant naming `station_display`,
+which migration 0016 defines as `coalesce(station_name, source_station_name_raw)` and which exists
+ONLY where a Station can be unconfirmed — installed SRVs, whose `station_id` is nullable. Storage
+vessels, recovery tanks, gas detectors and hoses all carry `station_id NOT NULL`, so there is no
+raw fallback to fall back TO and their views correctly never had the column. `v_report_due_compliance`
+already said so in SQL: its vessel, detector and hose branches select `v.station_name` into the
+`station_display` position. **Adding the alias to three views would have been inventing a column to
+satisfy frontend code**; the fix names the Station column per report instead. A FULL SEVEN-REPORT
+CONTRACT AUDIT was run before any change, machine-comparing every column each report selects,
+renders, filters, searches, orders, identifies and summarises against `information_schema.columns`:
+it found **exactly three mismatches, all `station_display`, all on the three reports the owner
+observed** — Due, SRV, Warehouse SRV, Data Quality and Notification Activity were clean, so no
+latent failure was left behind. **THE REAL GAP WAS THE VERIFICATION BOUNDARY**: the SQL suites do
+not know what the browser asks for and the frontend tests do not know what the database exposes, so
+the defect passed every check. `scripts/verify-report-contract.mjs` now closes it, wired into the
+gate against the database built from zero, and was **PROVED to fail against the defective spec**
+before being accepted. Security is untouched: no view, migration, grant, policy or RLS boundary was
+changed, and no data was created.***
+
 ### Prompt-21 import blockers (must be resolved before the production import)
 
 | Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |
@@ -728,6 +750,7 @@ These rules are permanent and apply to every future prompt.
 | 19B | 499 | 146 | 508 |
 | 20 | 547 | 146 | 560 |
 | 20A | 557 | 146 | 591 |
+| 20B | 565 | 146 | 591 |
 
 Update this table when a prompt is accepted, so the next one has a baseline to compare
 against.

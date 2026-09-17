@@ -52,6 +52,12 @@ for f in supabase/migrations/*.sql; do
 done
 [ $mig_fail -eq 0 ] && line "migrations from zero" "PASS ($(ls supabase/migrations/*.sql | wc -l) applied)"
 
+# REPORT CONTRACT. Compares every column the report specs ask for against the
+# columns the views actually expose, against the database just built. Neither
+# the SQL suites nor the frontend tests can see this boundary, and a report spec
+# naming a column no view has reached production once (Prompt 20B).
+run "report contract" npx tsx scripts/verify-report-contract.mjs "$DB"
+
 # Minimum assertion counts, from the CLAUDE.md baseline table. A suite that
 # runs but asserts nothing (a failed connection, a renamed file, a truncated
 # run) must FAIL rather than report a cheerful zero - that is precisely the

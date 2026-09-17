@@ -82,11 +82,34 @@ const DUE_COLUMNS: ReportColumn[] = [
   { key: 'last_done_date', header: 'Last Done', kind: 'date', render: 'date_display', displayKey: 'last_done_display' },
 ]
 
-const HIERARCHY_COLUMNS: ReportColumn[] = [
-  { key: 'region_name', header: 'Region' },
-  { key: 'station_display', header: 'Station' },
-  { key: 'unit_name', header: 'Unit' },
-]
+/**
+ * Region / Station / Unit, with the Station column named EXPLICITLY per report.
+ *
+ * `station_display` is not a universal column and must not be treated as one.
+ * Migration 0016 defines it as `coalesce(station_name, source_station_name_raw)`
+ * and it exists ONLY where a Station can be unconfirmed — installed SRVs, whose
+ * `station_id` is nullable. Storage vessels, recovery tanks, gas detectors and
+ * hoses all carry `station_id NOT NULL`, so there is no raw fallback to fall
+ * back TO: their Station column is `station_name`, full stop.
+ *
+ * `v_report_due_compliance` states the same thing in SQL — its vessel, detector
+ * and hose branches select `v.station_name` into the `station_display` position
+ * and NULL into `source_station_name_raw`. Asking those family views for a
+ * `station_display` column was asking for something the schema never had, which
+ * PostgREST answers with `column ... does not exist`, not an empty value.
+ */
+function hierarchyColumns(stationKey: 'station_display' | 'station_name'): ReportColumn[] {
+  return [
+    { key: 'region_name', header: 'Region' },
+    { key: stationKey, header: 'Station' },
+    { key: 'unit_name', header: 'Unit' },
+  ]
+}
+
+/** Families whose Station may be unconfirmed, so the raw fallback is real. */
+const HIERARCHY_COLUMNS = hierarchyColumns('station_display')
+/** Families with `station_id NOT NULL` — the Station name is always present. */
+const HIERARCHY_COLUMNS_NAMED = hierarchyColumns('station_name')
 
 /** A Unit link is the one drill-through every asset family shares. */
 function unitDrill(row: ReportRow): string | null {
@@ -198,7 +221,7 @@ export const REPORT_SPECS: ReportSpec[] = [
     idColumn: 'id',
     columns: [
       { key: 'asset_type', header: 'Vessel Type' },
-      ...HIERARCHY_COLUMNS,
+      ...HIERARCHY_COLUMNS_NAMED,
       { key: 'serial_number', header: 'Serial', render: 'serial', statusKey: 'serial_status' },
       { key: 'manufacturer', header: 'Manufacturer' },
       { key: 'model', header: 'Model' },
@@ -234,7 +257,7 @@ export const REPORT_SPECS: ReportSpec[] = [
     view: 'v_report_gas_detectors',
     idColumn: 'detector_id',
     columns: [
-      ...HIERARCHY_COLUMNS,
+      ...HIERARCHY_COLUMNS_NAMED,
       { key: 'area_type', header: 'Area Type' },
       { key: 'serial_number', header: 'Serial', render: 'serial', statusKey: 'serial_status' },
       { key: 'manufacturer', header: 'Manufacturer' },
@@ -262,7 +285,7 @@ export const REPORT_SPECS: ReportSpec[] = [
     view: 'v_hose_registry',
     idColumn: 'id',
     columns: [
-      ...HIERARCHY_COLUMNS,
+      ...HIERARCHY_COLUMNS_NAMED,
       { key: 'dispenser_name', header: 'Dispenser' },
       { key: 'serial_number', header: 'Serial', render: 'serial', statusKey: 'serial_status' },
       { key: 'description', header: 'Description' },

@@ -102,7 +102,7 @@ vi.mock('@/hooks/useAppUser', () => ({
 
 const { ReportsView } = await import('@/features/reports/ReportsView')
 const { ReportWorkspace } = await import('@/features/reports/ReportWorkspace')
-const { reportSpec, selectColumnsFor, csvColumnsFor } = await import('@/features/reports/reportSpecs')
+const { reportSpec, selectColumnsFor, csvColumnsFor, REPORT_SPECS } = await import('@/features/reports/reportSpecs')
 const {
   DataQualityReportSection, SrvReportSection, ActivityReportSection,
 } = await import('@/features/reports/sections/ReportSections')
@@ -667,5 +667,69 @@ describe('gas detectors exclude recorded absence', () => {
   it('leaves the due report reading installed detectors only, as before', () => {
     // 0042 already filtered detector_id IS NOT NULL; 20A changes nothing there.
     expect(reportSpec('due').view).toBe('v_report_due_compliance')
+  })
+})
+
+describe('the Station column matches the view that serves it (Prompt 20B)', () => {
+  /**
+   * The production defect: every report shared one `HIERARCHY_COLUMNS`
+   * constant naming `station_display`, a column that exists only on the two
+   * views whose Station can be unconfirmed. Vessels, Gas Detectors and Hoses
+   * asked three views for a column they never had, and PostgREST answered
+   * `column v_report_gas_detectors.station_display does not exist`.
+   *
+   * `scripts/verify-report-contract.mjs` proves the columns exist against a
+   * real schema. These assert the SEMANTIC half that a column check cannot:
+   * that the fallback is used where a Station may genuinely be unconfirmed,
+   * and NOT used where `station_id` is NOT NULL and there is nothing to fall
+   * back to.
+   */
+  const stationKeyOf = (id: Parameters<typeof reportSpec>[0]) =>
+    reportSpec(id).columns.find((c) => c.header === 'Station')?.key
+
+  it.each(['due', 'srv'] as const)(
+    '%s keeps the raw-source fallback, because its Station may be unconfirmed',
+    (id) => {
+      expect(stationKeyOf(id)).toBe('station_display')
+    },
+  )
+
+  it.each(['vessels', 'gas-detectors', 'hoses'] as const)(
+    '%s reads station_name — station_id is NOT NULL, so no fallback exists',
+    (id) => {
+      expect(stationKeyOf(id)).toBe('station_name')
+    },
+  )
+
+  it('never asks a view for station_display unless that report also searches the raw name', () => {
+    // The two are the same evidence: a report that can show a raw source
+    // Station name is exactly one that can also search it. If they ever
+    // disagree, one of the two was changed without the other.
+    for (const spec of REPORT_SPECS) {
+      const usesDisplay = spec.columns.some((c) => c.key === 'station_display')
+      const searchesRaw = (spec.filterColumns.search ?? []).includes('source_station_name_raw')
+      if (usesDisplay) expect(searchesRaw).toBe(true)
+    }
+  })
+
+  it('exports the Station column the table shows, for every report', () => {
+    // The CSV is generated from the same spec columns, so a divergence here
+    // would mean the export reached for a field the query never selected.
+    for (const spec of REPORT_SPECS) {
+      const stationColumn = spec.columns.find((c) => c.header === 'Station')
+      if (!stationColumn) continue
+      expect(selectColumnsFor(spec)).toContain(stationColumn.key)
+      expect(csvColumnsFor(spec).map((c) => c.header)).toContain('Station')
+    }
+  })
+
+  it('selects every column it renders, filters, searches and orders by', () => {
+    // The frontend-side mirror of the contract script: whatever a report uses
+    // must be in its own select list, whether or not the view has it.
+    for (const spec of REPORT_SPECS) {
+      const selected = new Set(selectColumnsFor(spec))
+      for (const c of spec.columns) expect(selected.has(c.key)).toBe(true)
+      expect(selected.has(spec.idColumn)).toBe(true)
+    }
   })
 })
