@@ -517,3 +517,95 @@ receives no service-role key or password, and the RPC carries exactly four
 parameters: the run and the three approved strings. Tests assert the payload
 contains no `actor`, `decided_by`, `clerk`, `sub`, `app_user`, `service_role`,
 `password` or `secret` under any key, and that no table is written directly.
+
+---
+
+## 17. Prompt 22C.2 — the preview timeout, diagnosed and fixed
+
+`/admin/station-batch` failed in production with *"canceling statement due to
+statement timeout"* while loading the READ-ONLY preview. The commit was never
+reached and nothing was written.
+
+### It was RLS evaluation count, not data volume
+
+The same call, same data, same moment:
+
+| | |
+| --- | --- |
+| as an operator connection (RLS bypassed) | **225 ms** |
+| as the owner's authenticated session (RLS enforced) | **39,371 ms** |
+
+A 175× gap over 7,163 staged rows and 157 Stations is not size. Broken down
+under RLS:
+
+| | |
+| --- | --- |
+| plain staged scan | 894 ms |
+| `stations` scan | 27 ms |
+| `import_mapping_decisions` scan | 0.8 ms |
+| `cng_stage_b_station_candidates` | **9,737 ms** |
+| `cng_stage_b_station_groups` | 9,892 ms |
+| `cng_stage_b_station_preview` | **39,371 ms** ≈ 4 × candidates |
+
+**Two compounding causes, both structural:**
+
+1. `candidates` asked, for **every one of the 1,104 staged rows**, "how many
+   Stations in this Region carry this normalized name?" as a correlated
+   subquery — and each evaluation re-scanned `stations` **through its RLS
+   policy**. 1,104 × ~9 ms is the 9.7 s almost exactly.
+2. `preview` then evaluated that **four times** — once for its own candidate
+   CTE and once inside each of its three calls to `groups`. 4 × 9.7 s is the
+   39 s almost exactly.
+
+### The first fix attempt was four times slower
+
+Joining once and counting with a window function — the obvious rewrite —
+measured **37,444 ms**, worse than the original, because the planner still
+re-scanned the RLS-protected table and added window overhead on top. It is
+recorded here because it is exactly the change a reasonable reviewer would
+propose, and only measurement rules it out.
+
+Measured alternatives, same session, same RLS, all returning the same 281 rows:
+
+| Shape | Time |
+| --- | --- |
+| current correlated shape | 9,795 ms |
+| window-function rewrite — **rejected** | 37,444 ms |
+| materialize `stations` only | 1,321 ms |
+| **materialize `stations` and the staged set** | **303 ms** |
+
+### The fix, and what it does not change
+
+Migration **0048** marks both CTEs `AS MATERIALIZED`, so RLS is evaluated **once
+per table** rather than once per staged row, and has `preview` hold its candidate
+and group sets in materialized CTEs so `groups` is called once instead of three
+times.
+
+**The exact new body, measured in production under real RLS, read-only:
+307.6 ms, 281 rows, fingerprint
+`a014745dd823917027a082a2d61a57fc831ccd59d22c67dcd7145982e0cbe769` — byte-for-byte
+the approved one.**
+
+Semantics were proved unchanged locally at full scale, by snapshotting the old
+output and diffing against the new: **0 rows differ** in candidates, groups and
+preview; row **order** is identical; 281 rows both ways; the local fingerprint is
+identical before and after.
+
+RLS is evaluated fewer **times**, never bypassed. The read paths stay SECURITY
+INVOKER and STABLE, so a caller still sees exactly the rows their own policies
+allow — asserted from the catalog (STAGEBPERF-6). No grant, policy, RLS setting
+or `cng_require_admin()` was touched, and `cng_stage_b_station_commit` is not
+modified.
+
+### Raising the timeout was deliberately not the fix
+
+A preview over 7,163 rows has no business taking 39 seconds. Hiding that behind
+a longer `statement_timeout` would have left the same per-row RLS re-evaluation
+in place to bite a larger dataset later. No timeout was changed.
+
+### One limit worth stating plainly
+
+**The slowness does not reproduce locally** — the same preview runs in ~235 ms
+against the local fixture before *and* after 0048, because local RLS is cheap.
+So the performance evidence is **production-measured** (read-only) and the
+correctness evidence is **local**. Neither is presented as the other.

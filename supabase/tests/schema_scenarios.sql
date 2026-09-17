@@ -2163,4 +2163,73 @@ SELECT pg_temp.assert(
   'STAGEB-37: the candidate set still requires EXACTLY one same-Region Station');
 
 
+
+-- ===========================================================================
+-- STAGE B PREVIEW PERFORMANCE (Prompt 22C.2, migration 0048)
+-- ===========================================================================
+-- The production defect was a TIMEOUT, not a wrong answer, so these assert the
+-- two structural properties that made it slow — measured, not guessed:
+-- RLS was being evaluated once per staged row, and the candidate set four
+-- times per preview. Both are catalog-visible, so a later edit that quietly
+-- reverts either one fails here rather than in a browser.
+
+-- STAGEBPERF-1: the candidate CTEs stay MATERIALIZED. Without this the planner
+-- inlines them and re-scans RLS-protected `stations` per staged row, which is
+-- the 9.7 s measured in production.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM regexp_matches(
+     (SELECT prosrc FROM pg_proc WHERE proname = 'cng_stage_b_station_candidates'),
+     'AS MATERIALIZED', 'g')) >= 2,
+  'STAGEBPERF-1: the candidate function materializes both its station and staged CTEs');
+
+-- STAGEBPERF-2: the preview holds its candidate and group sets once each,
+-- rather than re-deriving them per output column.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM regexp_matches(
+     (SELECT prosrc FROM pg_proc WHERE proname = 'cng_stage_b_station_preview'),
+     'AS MATERIALIZED', 'g')) >= 2,
+  'STAGEBPERF-2: the preview materializes its candidate and group sets');
+
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM regexp_matches(
+     (SELECT prosrc FROM pg_proc WHERE proname = 'cng_stage_b_station_preview'),
+     'cng_stage_b_station_groups', 'g')) = 1,
+  'STAGEBPERF-3: the preview calls the grouping function exactly once');
+
+-- STAGEBPERF-4: THE FINGERPRINT EXPRESSION IS UNCHANGED. A performance fix is
+-- not allowed to move an approval: the fields, their order, both separators and
+-- the sort key are what the owner's approved hash was computed over.
+SELECT pg_temp.assert(
+  (SELECT prosrc FROM pg_proc WHERE proname = 'cng_stage_b_station_preview')
+    LIKE '%c.staging_row_id::text, c.region_id::text, c.station_id::text,%'
+  AND (SELECT prosrc FROM pg_proc WHERE proname = 'cng_stage_b_station_preview')
+    LIKE '%c.station_norm, c.station_name, c.source_row_hash,%'
+  AND (SELECT prosrc FROM pg_proc WHERE proname = 'cng_stage_b_station_preview')
+    LIKE '%chr(30) ORDER BY c.staging_row_id%',
+  'STAGEBPERF-4: the preview fingerprint covers the same fields, separators and order');
+
+-- STAGEBPERF-5: the exactly-one-Station test survived the rewrite.
+SELECT pg_temp.assert(
+  (SELECT prosrc FROM pg_proc WHERE proname = 'cng_stage_b_station_candidates')
+    LIKE '%n_same_region = 1%',
+  'STAGEBPERF-5: the candidate set still requires EXACTLY one same-Region Station');
+
+-- STAGEBPERF-6: STILL SECURITY INVOKER AND STABLE. Materializing changes how
+-- OFTEN RLS is evaluated, never whether it is — speed must not have been bought
+-- by making the read paths definer, which would let them see rows the caller
+-- may not.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM pg_proc
+    WHERE proname IN ('cng_stage_b_station_candidates','cng_stage_b_station_preview')
+      AND (prosecdef OR provolatile <> 's')) = 0,
+  'STAGEBPERF-6: the optimized read paths are still SECURITY INVOKER and STABLE');
+
+-- STAGEBPERF-7: the optimization did not touch the commit.
+SELECT pg_temp.assert(
+  (SELECT prosecdef FROM pg_proc WHERE proname = 'cng_stage_b_station_commit') IS TRUE
+  AND (SELECT prosrc FROM pg_proc WHERE proname = 'cng_stage_b_station_commit')
+        ILIKE '%cng_require_admin()%',
+  'STAGEBPERF-7: the commit is untouched — still SECURITY DEFINER and still admin-gated');
+
+
 ROLLBACK;

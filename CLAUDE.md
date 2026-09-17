@@ -1051,6 +1051,49 @@ SQL changed. Full gate exit 0. **PRODUCTION IS UNCHANGED**: 47 migrations, `impo
 assets 0, aliases 0, stations 157, units 188, and the live preview still reports 69/281 with
 fingerprint `a014745d...` and 0 rows decided. **The batch awaits the owner's click.***
 
+***PROMPT 22C.2 — THE STAGE B PREVIEW TIMEOUT IS DIAGNOSED AND FIXED; MIGRATION 0048 IS NOT
+DEPLOYED** — see `docs/stage-b-station-mapping.md` §17. `/admin/station-batch` failed in production
+with *canceling statement due to statement timeout* while loading the READ-ONLY preview; the commit
+was never reached and nothing was written.
+
+**IT WAS RLS EVALUATION COUNT, NOT DATA VOLUME**, and it was MEASURED, not guessed: the same call,
+same data, same moment, took **225 ms as an operator connection (RLS bypassed)** and **39,371 ms as
+the owner's authenticated session (RLS enforced)** — 175x over 7,163 rows and 157 Stations. Under
+RLS: staged scan 894 ms, `stations` 27 ms, decisions 0.8 ms, **candidates 9,737 ms**, groups
+9,892 ms, preview 39,371 ms. **TWO COMPOUNDING STRUCTURAL CAUSES**: `candidates` asked "how many
+Stations in this Region carry this name?" as a CORRELATED SUBQUERY for every one of the 1,104 staged
+rows, each re-scanning `stations` THROUGH ITS RLS POLICY (1,104 x ~9 ms = the 9.7 s); and `preview`
+then evaluated that FOUR times — its own CTE plus three calls to `groups` (4 x 9.7 s = the 39 s).
+
+**THE OBVIOUS REWRITE WAS FOUR TIMES SLOWER AND IS RECORDED AS REJECTED**: joining once and counting
+with a window function measured **37,444 ms**, worse than the original, because the planner still
+re-scanned the RLS-protected table and added window overhead. Measured alternatives, same session,
+same RLS, all returning the same 281 rows: current 9,795 ms · window rewrite 37,444 ms · materialize
+`stations` only 1,321 ms · **materialize `stations` AND the staged set 303 ms**.
+
+**MIGRATION 0048** marks both CTEs `AS MATERIALIZED` so RLS is evaluated ONCE PER TABLE rather than
+once per staged row, and has `preview` hold its candidate and group sets in materialized CTEs so
+`groups` runs once instead of three times. **THE EXACT NEW BODY, MEASURED IN PRODUCTION UNDER REAL
+RLS, READ-ONLY: 307.6 ms, 281 rows, fingerprint `a014745d...e0cbe769` — BYTE-FOR-BYTE THE APPROVED
+ONE**, so the owner's approval does NOT lapse and no re-approval is needed. Semantics were proved
+unchanged locally at full scale by snapshotting the old output and diffing: **0 rows differ** in
+candidates, groups and preview, row ORDER identical, 281 both ways, local fingerprint identical
+before and after.
+
+**RLS IS EVALUATED FEWER TIMES, NEVER BYPASSED**: the read paths stay SECURITY INVOKER and STABLE
+(STAGEBPERF-6 asserts both from the catalog), no grant, policy, RLS setting or `cng_require_admin()`
+was touched, and the commit function is unmodified. **RAISING `statement_timeout` WAS DELIBERATELY
+NOT THE FIX** — a preview over 7,163 rows has no business taking 39 s, and a longer timeout would
+have left the per-row re-evaluation to bite a larger dataset later; no timeout was changed.
+
+**ONE LIMIT STATED PLAINLY**: the slowness does NOT reproduce locally (~235 ms before AND after
+0048, because local RLS is cheap), so the PERFORMANCE evidence is production-measured and the
+CORRECTNESS evidence is local — neither is presented as the other. Schema assertions 240 -> 247;
+frontend 617 and authorization 624 unchanged. **NOT DEPLOYED**: production stays at 47 migrations,
+`import_mapping_decisions` 0 with an all-time `n_tup_ins` of 0, 1,104 rows still
+`needs_station_mapping`, canonical assets 0, aliases 0, stations 157, units 188. Migrations 0044,
+0045, 0046 and 0047 are byte-identical.*
+
 ### Prompt-21 import blockers (must be resolved before the production import)
 
 | Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |
@@ -1137,6 +1180,7 @@ These rules are permanent and apply to every future prompt.
 | 21C | 584 | 203 | 611 |
 | 22A | 584 | 240 | 624 |
 | 22C.1 | 617 | 240 | 624 |
+| 22C.2 | 617 | 247 | 624 |
 
 Update this table when a prompt is accepted, so the next one has a baseline to compare
 against.
