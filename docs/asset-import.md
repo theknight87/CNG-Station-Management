@@ -216,3 +216,107 @@ functions deployed**.
 come from the **deployed** function, not from an inlined reproduction; 0049 is not deployed,
 so the counts above are reproduced read-only and the fingerprint is deliberately left for
 deployment. Nothing is presented as more verified than it is.
+
+## 11. Prompt 23B — 0049 deployed, production preview verified (read-only)
+
+Production went **48 -> 49**, recorded once (`20260917120310 asset_import`), from the file
+approved at commit `55e7e18`, SHA-256 `7fad16bb...` recomputed immediately before transmission.
+
+**DEPLOYMENT IS BYTE-EXACT, NOT MERELY APPLIED.** All three function bodies were hashed FROM
+THE APPROVED FILE BEFORE deploying and compared to `pg_proc.prosrc` afterwards:
+
+| Function | Expected `prosrc` MD5 | Deployed | Length |
+| --- | --- | --- | --- |
+| `cng_asset_import_proposal` | `7a6394c2a7eb0ddcb7ac9235f259cf64` | identical | 5772 |
+| `cng_asset_import_preview` | `9da86e438005c79a215ca071b47e8150` | identical | 1829 |
+| `cng_asset_import_commit` | `e759bebb4c585dd026cf3bd2b24413ad` | identical | 11594 |
+
+**THE MIGRATION EXECUTES NO DML.** Machine-scanned with function bodies stripped out: at
+migration time it runs 3 `CREATE OR REPLACE FUNCTION`, 3 `COMMENT`, 3 `GRANT` and 6 `REVOKE`,
+and **zero** INSERT/UPDATE/DELETE/ALTER/DROP/POLICY/INDEX. All six DML statements in the file sit
+**inside function bodies** (4 asset INSERTs, 1 audit INSERT, 1 staging UPDATE), and the file
+contains **no write of any kind** to `stations`, `units`, `station_aliases`, `unit_aliases`,
+`import_mapping_decisions` or `gas_detector_presence`.
+
+**SECURITY AS APPROVED**: commit `prosecdef = true`, both read paths `false` and STABLE (so they
+cannot write); `search_path` pinned on all three; EXECUTE **anon 0, authenticated 0,
+service_role 3** — no browser canonical-import path exists. No dynamic SQL. **Nothing else
+moved**: `cng_normalize_name` `3c4d8a93...`, `cng_stage_a_commit` `4aef8bea...`,
+`cng_stage_b_station_commit` `b040117a...`, candidates `ddf963f6...`, preview `5780e33f...`,
+`cng_require_admin` `ff29bdea...` all unchanged; Stage A EXECUTE service_role 3 / browser 0;
+70 policies and 0 tables without RLS, exactly as before. The four operational asset INSERT
+policies are intact and still `WITH CHECK (cng_can_write_region(region_id))` — untouched.
+
+### The deployed preview fingerprint
+
+```
+b0d594482b40c21099ba39cb3b9a827cb5dee46cd557fcb676055054bd91104b
+```
+
+obtained from the **deployed** function, not an inlined reproduction — the 22B rule. Manifest
+`764d3c0f...` as expected.
+
+| | value |
+| --- | --- |
+| eligible canonical assets | **279** |
+| storage vessels / recovery tanks / gas detectors / hoses | **100 / 91 / 62 / 26** |
+| excluded | **2** (all `E_BLOCKED_BY_TARGET`) |
+| needs review / already imported | 0 / 0 |
+| duplicate-serial rows flagged | 16 |
+| distinct Stations | 68 |
+| rows with a Unit | **0** |
+| canonical assets now | 0 |
+
+**Every 23A expectation reconciles exactly.**
+
+### Verified against the deployed proposal
+
+- **Unit appears nowhere**: 0 eligible payloads carry any of `unit_id`, `unit`, `unit_name`,
+  `unit_no`, `unit_number`, `unit_code`.
+- **Station comes from the active Stage B decision**: 279/279 match on Station AND
+  `confirmed_unit_id IS NULL` AND `reviewed_source_row_hash = source_row_hash`;
+  0 eligible rows without a decision; 0 Region mismatches against the Station's own Region.
+- **0 candidates from the remaining 823**, and **0 from the two not-installed rows**.
+- **Identity**: 199 serial-present / 82 no-serial over all 281 (reconciling 23A exactly), 16
+  duplicate-serial warnings retained, and **279 eligible rows carry 279 distinct
+  `source_row_key`s and 279 distinct hashes** — one canonical asset per source row, nothing
+  deduplicated.
+
+### The two detector exclusions, by provenance
+
+Both from `Gas detector.xlsx / Sheet1`, rows **75** and **109**, hashes `78a9207b77e6…` and
+`ea8e6c272b78…`. Each carries `presence = not_installed` with `creates_detector_record = false`
+and `area_type_raw = Open Area`. No identity text was retyped: the raw Station name is confirmed
+**retained** (lengths 6 and 15) and `source_raw` is intact, so nothing was discarded from
+provenance. Both remain `staged_mapping_status = needs_station_mapping`, staging-only, with no
+canonical row proposed. **No `gas_detector_presence` write occurred** — that table still holds 0
+rows and is not touched by this migration at all.
+
+### Field and NULL preservation — 17 checks, 0 violations
+
+no fabricated serial · **0 model keys anywhere** (no model value exists in the source, and none
+was filled from the compressor type) · compressor context copied verbatim · **`location` and
+`area_type` appear nowhere in any payload** · a date value exists **only** where precision is
+`exact_date` (next, last-calibration and last-test rules each 0 violations) · raw date text
+retained including on non-exact rows · pressure units and values faithful with **0 ranges
+flattened** · no fabricated notes or status · serial_status faithful.
+
+### Lineage and write-free proof
+
+Guards present on all 279 (`source_row_key`, 64-char `source_row_hash`, payload key matching the
+row key). Stage A's **402** `station`/`unit` lineage rows are untouched and **0 rows overlap**
+with the asset proposal. Asset lineage rows: **0** — no lineage write has occurred.
+
+Counters either side of the preview are **identical**: `storage_vessels`/`recovery_tanks`/
+`gas_detectors`/`hoses` live counts 0, `audit_logs` 282 with **0** `service_role:asset_import`
+rows, decisions 281, Unit mappings 0, aliases 0, `gas_detector_presence` 0. (The non-zero
+all-time `n_tup_ins` on `storage_vessels` (2), `hoses` (1) and `gas_detector_presence` (1) are
+historical ROLLED-BACK probe tuples from Prompts 12-14; live counts are 0 and the delta across
+this preview is zero on every table.)
+
+**Gate exit 0**: frontend 617, schema 261, authorization 624, 49 migrations from zero, upgrade
+replay 48 -> 49. 0044-0048 byte-identical.
+
+**NO CANONICAL ASSET WAS IMPORTED.** `cng_asset_import_commit` was not invoked in any execution
+context. Production: 49 migrations, 6 / 157 / 188, 281 decisions, 0 Unit mappings, canonical
+assets 0, aliases 0, asset lineage 0, 0 tables without RLS.

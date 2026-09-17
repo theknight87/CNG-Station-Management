@@ -1246,6 +1246,60 @@ fingerprint is left for deployment. Gate exit 0: frontend 617, schema **247 -> 2
 **PRODUCTION UNCHANGED**: 48 migrations, 157 Stations, 188 Units, 281 decisions, canonical assets
 **0**, aliases 0, asset lineage rows 0, asset-import functions deployed **0**.*
 
+***PROMPT 23B — MIGRATION 0049 IS DEPLOYED AND THE CANONICAL ASSET PREVIEW IS VERIFIED IN
+PRODUCTION; NO ASSET WAS IMPORTED** — see `docs/asset-import.md` §11. Production went **48 -> 49**,
+recorded once (`20260917120310 asset_import`), SHA-256 `7fad16bb...` matching approved commit
+55e7e18 byte for byte.
+
+**BYTE-EXACT DEPLOYMENT**: all three bodies hashed FROM THE APPROVED FILE BEFORE deploying and
+matched after — proposal `7a6394c2...` (5772), preview `9da86e43...` (1829), commit `e759bebb...`
+(11594). **THE MIGRATION EXECUTES NO DML**: machine-scanned with function bodies stripped, it runs
+3 CREATE FUNCTION, 3 COMMENT, 3 GRANT, 6 REVOKE and ZERO INSERT/UPDATE/DELETE/ALTER/DROP/POLICY/
+INDEX; all six DML statements sit INSIDE function bodies, and the file contains no write of any
+kind to `stations`, `units`, aliases, `import_mapping_decisions` or `gas_detector_presence`.
+
+**SECURITY AS APPROVED**: commit SECURITY DEFINER, both read paths INVOKER and STABLE, search_path
+pinned on all three, EXECUTE **anon 0 / authenticated 0 / service_role 3** — no browser
+canonical-import path. No dynamic SQL. **Nothing else moved**: normalizer, Stage A commit, all
+four Stage B functions and `cng_require_admin` are bit-identical; Stage A browser EXECUTE 0;
+70 policies, 0 tables without RLS; the four operational asset INSERT policies still
+`WITH CHECK (cng_can_write_region(region_id))`, untouched.
+
+**DEPLOYED PREVIEW FINGERPRINT `b0d594482b40c21099ba39cb3b9a827cb5dee46cd557fcb676055054bd91104b`**
+— obtained from the DEPLOYED function, per the 22B rule. **279 eligible (100 / 91 / 62 / 26),
+2 excluded, 0 needs-review, 0 already imported, 16 duplicate-serial warnings, 68 Stations, 0 rows
+with a Unit, 0 canonical assets now.** Every 23A expectation reconciles exactly.
+
+**VERIFIED AGAINST THE DEPLOYED PROPOSAL**: 0 payloads carry any unit key; 279/279 take their
+Station from the ACTIVE decision with `confirmed_unit_id IS NULL` and a matching
+`reviewed_source_row_hash`; 0 Region mismatches; **0 candidates from the remaining 823** and
+**0 from the two not-installed rows**; 199 serial-present / 82 no-serial across all 281; and the
+279 eligible rows carry **279 distinct source keys and 279 distinct hashes** — one asset per
+source row, nothing deduplicated.
+
+**THE TWO EXCLUSIONS, BY PROVENANCE** (no identity text retyped): `Gas detector.xlsx / Sheet1`
+rows **75** and **109**, hashes `78a9207b...` and `ea8e6c27...`, both `presence = not_installed`
+with `creates_detector_record = false`. Raw Station name RETAINED (lengths 6 and 15) and
+`source_raw` intact, so nothing was discarded from provenance; both stay staging-only and
+**no `gas_detector_presence` write occurred** (that table still holds 0 rows).
+
+**FIELD/NULL PRESERVATION — 17 checks, 0 violations**: no fabricated serial; **0 model keys
+anywhere** and none filled from compressor type; `location` and `area_type` appear in no payload;
+a date exists ONLY at `exact_date` precision (three separate rules, 0 violations each); raw date
+text retained on non-exact rows; pressure units/values faithful with 0 ranges flattened; no
+fabricated notes or status.
+
+**LINEAGE AND WRITE-FREE**: guards present on all 279; Stage A's 402 `station`/`unit` lineage rows
+untouched with **0 overlap**; asset lineage rows 0. Counters IDENTICAL either side of the preview —
+assets 0, `audit_logs` 282 with 0 `service_role:asset_import` rows, decisions 281, Unit mappings 0,
+aliases 0. (Non-zero all-time `n_tup_ins` on storage_vessels/hoses/presence are historical
+ROLLED-BACK probe tuples from Prompts 12-14; live counts are 0 and the preview delta is zero.)
+
+**Gate exit 0**: frontend 617, schema 261, authorization 624, 49 from zero, upgrade replay 48 -> 49.
+0044-0048 byte-identical. **`cng_asset_import_commit` was NOT invoked in any execution context.**
+Production: 49 migrations, 6 / 157 / 188, 281 decisions, 0 Unit mappings, canonical assets 0,
+aliases 0, asset lineage 0.*
+
 ### Prompt-21 import blockers (must be resolved before the production import)
 
 | Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |
@@ -1336,6 +1390,7 @@ These rules are permanent and apply to every future prompt.
 | 22C.3 | 617 | 247 | 624 |
 | 22D | 617 | 247 | 624 |
 | 23A | 617 | 261 | 624 |
+| 23B | 617 | 261 | 624 |
 
 Update this table when a prompt is accepted, so the next one has a baseline to compare
 against.
