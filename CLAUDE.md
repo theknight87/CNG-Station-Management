@@ -809,6 +809,51 @@ A functions, 0 `committed_entity_kind` column, stations 0, units 0, aliases 0, m
 assets 0, 7,163 staging rows with 0 committed, 0 tables without RLS. Migrations 0044 and 0045 are
 byte-identical (0045 SHA-256 `e8b92cc8...` unchanged).*
 
+***PROMPT 21D — THE STAGE A CANONICAL HIERARCHY IS COMMITTED TO PRODUCTION** — see
+`docs/stage-a-hierarchy.md` §10. Migration 0046 was deployed in 21C-DEPLOY (45 -> **46**, recorded
+once, file SHA-256 `478dd95c...`), and deployment was proved BYTE-EXACT rather than merely applied:
+the `pg_proc.prosrc` MD5 of all three functions matched the locally built approved copy, and
+`cng_normalize_name` hashed identically so 0045 was demonstrably untouched.
+
+`cng_stage_a_commit` was then invoked **EXACTLY ONCE**, after a final pre-commit guard re-ran the
+preview and matched every approved value. Result: **157 Stations, 188 Units, 402 staging rows
+linked** — East 42/56, West 40/58, Delta 75/74, Canal/Alex/Upper 0/0. **`stations` and `units` are
+no longer empty, and Prompt 21's canonical hierarchy now exists.**
+
+**NOTHING WAS INVENTED.** The 1 Station with zero Units is Delta source row 352, exactly the one
+approved, and NO Unit was created for it. All four reused job numbers are each held by 2 Units
+across 2 distinct Stations — nothing merged, because job number is an attribute and never identity.
+2 Units keep `job_number` NULL and `job_number_raw` matches `job_number` on every row. 0 Stations
+carry an invented bay status or note, 0 Units an invented dispenser/hose/storage count, 0 records
+are flagged `needs_review`. 0 duplicate identities, 0 names spanning two Regions, 0 Region
+mismatches, 0 missing provenance.
+
+**LINEAGE RECONCILES EXACTLY, WITHOUT A FALSE ONE-ROW-ONE-ENTITY MODEL**: 402 linked / 0 unlinked;
+340 rows -> a Unit and 62 -> their Station, which matches the 340 rows naming a Unit and the 62 not,
+so no row was classified against its own evidence (0 kind/evidence mismatches in either direction).
+0 orphans, 0 wrong-type pointers, a SINGLE `committed_at` across all 402 (one transaction), all 188
+Units referenced, every Station and Unit source-supported, and **0 non-structural staging rows
+touched**.
+
+**THE FIREWALL HELD**: aliases 0, `import_mapping_decisions` 0, all eight canonical asset tables 0,
+Canal/Alex/Upper 0/0, and 0 Stations sourced from any batch but the structural workbook.
+**REPLAY WAS NOT RE-TESTED DESTRUCTIVELY**: Gate 5's predicate now evaluates TRUE with 402
+satisfying rows, both identity unique constraints stand as a second barrier, and STAGEA-27 already
+proves the refusal locally. Security re-verified after the commit: 46 migrations, 0 tables without
+RLS, Stage A EXECUTE authenticated 0 / anon 0 / service_role 3, commit and normalizer prosrc
+unchanged, normalizer still IMMUTABLE, Station uniqueness still Region-scoped and Unit uniqueness
+still Station-scoped, 0 browser write grants on `import_staging_rows`.
+
+**STAGE B IS UNBLOCKED AND STILL ENTIRELY A HUMAN DECISION.** Re-measured against the REAL
+hierarchy: 78 raw spellings = 69 normalized identities = **281 rows** gain exactly ONE same-Region
+Station candidate, **0** gain more than one, and 1 identity (5 rows) matching only in ANOTHER Region
+stays unmatched because Region is identity. Of the 281 — storage vessels 100, recovery tanks 91,
+gas detectors 64, hoses 26 — 240 sit under a Station with exactly one Unit, 38 under several, 3
+under none. **"One Unit under the candidate Station" is a NARROWING, NOT A DETERMINATION**; assigning
+those 240 by count is exactly the distribution rule §4 permanently forbids. All 281 remain
+`needs_station_mapping`, every lifecycle count is unchanged, and `import_mapping_decisions` is
+still 0. No asset was imported, no alias created, no mapping decision written.*
+
 ### Prompt-21 import blockers (must be resolved before the production import)
 
 | Asset | Staged as `needs_station_mapping` | Why it cannot be stored | Found in |

@@ -211,44 +211,99 @@ Every one of these remains an **explicit human decision** recorded through
 `cng_admin_decide_staged_mapping`. Stage A proposes no mapping, writes no
 decision, and auto-resolves nothing.
 
-## 10. Status — DEPLOYED, PREVIEWED, NOT COMMITTED (Prompt 21C-DEPLOY)
+## 10. Status — COMMITTED TO PRODUCTION (Prompt 21D)
 
-Migration 0046 is **deployed** to production: 45 → **46**, recorded once as
-`20260917085835 stage_a_hierarchy`. SHA-256 of the approved file
-`478dd95c41bba156df4133304445e4a78ac7bd752d083e9a5eb82befde55bbc5`.
+Migration 0046 was deployed in 21C-DEPLOY (45 → **46**, recorded once as
+`20260917085835 stage_a_hierarchy`, file SHA-256
+`478dd95c41bba156df4133304445e4a78ac7bd752d083e9a5eb82befde55bbc5`), proved
+byte-exact by matching `pg_proc.prosrc` MD5 against the local approved build.
 
-Deployment was proved byte-exact rather than merely "applied": the MD5 of
-`pg_proc.prosrc` for all three deployed functions matches the locally built
-approved copy exactly, and `cng_normalize_name` hashes identically too, so
-migration 0045's behaviour is demonstrably untouched.
-
-### The production preview
+**The hierarchy is now committed.** `cng_stage_a_commit` was invoked **exactly
+once** against the approved run with both approved fingerprints, immediately
+after a final pre-commit guard re-ran the preview and matched every approved
+value.
 
 | | |
 | --- | --- |
 | import run | `cdad1e5e-7faa-4f3b-9432-12a720f3dd64` |
 | manifest fingerprint | `764d3c0f…f091b8f` |
-| **preview fingerprint** | **`12941a1c0842a217dd5c7d52fcd416ec9282821704289d2977c671942eb5d90a`** |
-| source rows | 402 |
-| proposed Stations | **157** |
-| proposed Units | **188** |
-| Stations with no Unit | **1** |
-| existing Stations / Units | 0 / 0 |
+| preview fingerprint | `12941a1c0842a217dd5c7d52fcd416ec9282821704289d2977c671942eb5d90a` |
+| **Stations created** | **157** |
+| **Units created** | **188** |
+| **staging rows linked** | **402** |
 
-Region distribution: East 42/56, West 40/58, Delta 75/74, Canal 0/0, Alex 0/0,
-Upper 0/0.
+East 42/56 · West 40/58 · Delta 75/74 · Canal 0/0 · Alex 0/0 · Upper 0/0.
 
-All conflict classes are **zero**: display spelling (Station and Unit), Region,
-job number within a Unit, compressor model within a Unit.
+### What was verified after the commit
 
-The preview was proved read-only empirically, not by inspection:
-`pg_stat_user_tables.n_tup_ins` for `stations`, `units`, `station_aliases` and
-`import_mapping_decisions` was identical before and after, and `n_tup_upd` on
-`import_staging_rows` stayed 0.
+- **1** Station has zero Units — Delta, source row 352, exactly the approved one.
+  **No Unit was invented for it.**
+- All four reused job numbers (`2919ps003`, `CSKD0000459N-2`, `SC21006/030`,
+  `SC21006/092`) are each held by **2 Units across 2 distinct Stations**. Nothing
+  merged; job number is an attribute, never identity.
+- **2** Units carry `job_number` NULL, exactly as approved. `job_number_raw`
+  matches `job_number` on every row, so nothing was normalized away.
+- Nothing was invented: 0 Stations carry a bay status or note, 0 Units carry a
+  dispenser/hose/storage count or bay status, and 0 records are flagged
+  `needs_review`. Missing stays missing.
+- 0 duplicate Station identities, 0 duplicate Unit identities, 0 names spanning
+  two Regions, 0 Units whose Region differs from their Station's.
+- Every Station and every Unit carries its `import_batch_id`, file, sheet and
+  row — 0 missing provenance, 0 without source support.
 
-**THE HIERARCHY COMMIT HAS NOT BEEN RUN.** Production holds `stations` = 0,
-`units` = 0, `station_aliases` = 0, `import_mapping_decisions` = 0, 0 canonical
-assets, and all 7,163 staging rows uncommitted. Migrations 0044 and 0045 remain
-byte-identical.
+### Lineage, reconciled
 
-Running the commit is a separate, explicitly authorized act.
+All **402** structural rows are linked; **0** unlinked. The split is exactly what
+0046 defines and nothing was forced into a one-row-one-entity shape:
+
+| | |
+| --- | --- |
+| rows → a Unit (`committed_entity_kind = 'unit'`) | **340** |
+| rows → their Station (`'station'`) | **62** |
+| rows naming a Unit in source | 340 |
+| rows with no Unit in source | 62 |
+
+The two pairs agree exactly, so no row was classified against its own evidence:
+0 rows are kind `unit` without a source unit name, and 0 are kind `station` with
+one. 0 orphan lineage rows, 0 pointing at the wrong entity type, 0 linked rows
+missing `committed_at`, and a **single** `committed_at` value across all 402 —
+one transaction. All 188 Units are referenced by at least one row; the 62
+Station-linked rows resolve to 32 Stations. **0** non-structural staging rows
+were touched.
+
+### The firewall held
+
+`station_aliases` 0 · `unit_aliases` 0 · `import_mapping_decisions` 0 · all eight
+canonical asset tables 0 · Canal, Alex and Upper 0 Stations / 0 Units · 0
+Stations sourced from any batch other than the structural workbook.
+
+### Replay
+
+Not re-tested destructively. Gate 5's exact predicate now evaluates **true** with
+402 satisfying rows, so a second call raises `unique_violation` before any write;
+both identity unique constraints are present as a second barrier; and the refusal
+path is already proved by local assertion STAGEA-27. The run is also now
+un-abandonable, as the 0044 guard intends.
+
+### Security, re-verified after the commit
+
+46 migrations · 0 tables without RLS · Stage A EXECUTE: authenticated 0, anon 0,
+service_role 3 · `cng_stage_a_commit` prosrc MD5 unchanged · `cng_normalize_name`
+unchanged and still IMMUTABLE · `stations_region_norm_uq` still
+`UNIQUE (region_id, normalized_name)` · `units_station_norm_uq` still
+`UNIQUE (station_id, normalized_name)` · 0 browser write grants on
+`import_staging_rows` · 0 anon grants on the hierarchy.
+
+### Stage B is now unblocked, and still entirely a human decision
+
+Re-measured against the real hierarchy: **78** raw spellings = **69** normalized
+identities = **281** asset rows gain exactly one same-Region Station candidate;
+**0** gain more than one; 1 identity (5 rows) matches only in another Region and
+stays unmatched, because Region is identity.
+
+Of the 281 — storage vessels 100, recovery tanks 91, gas detectors 64, hoses 26 —
+240 sit under a Station with exactly one Unit, 38 under several, 3 under none.
+**"One Unit under the candidate Station" is a narrowing, not a determination.**
+Assigning those 240 by count is precisely the distribution rule CLAUDE.md
+forbids. All 281 remain `needs_station_mapping`; every lifecycle count is
+unchanged and `import_mapping_decisions` is still 0.
