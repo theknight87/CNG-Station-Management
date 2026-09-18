@@ -87,17 +87,21 @@ done
 UDB="${VERIFY_UPGRADE_DB:-cng_upgrade}"
 sudo -n -u postgres psql -q -c "DROP DATABASE IF EXISTS $UDB" -c "CREATE DATABASE $UDB" >/dev/null 2>&1
 up_fail=0
-for f in $(ls supabase/migrations/*.sql | head -53); do
+# The migration count currently DEPLOYED to production. This is the ONE number
+# to bump after a deployment; the pending set below is derived from it, so the
+# base and the replay can never drift apart (they did twice, in 25I and 25J-C).
+DEPLOYED_MIGRATIONS=53
+for f in $(ls supabase/migrations/*.sql | head -"$DEPLOYED_MIGRATIONS"); do
   sudo -n -u postgres psql -d "$UDB" -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null 2>&1 \
     || { echo "BASE MIGRATION FAILED: $f"; up_fail=1; break; }
 done
 if [ $up_fail -eq 0 ]; then
-  line "production-equivalent base" "PASS (53 applied)"
-  # The upgrade path from the CURRENT production migration count. Everything in
-  # the repository is deployed, so there is nothing newer to replay. An unmatched
-  # glob must report "nothing pending", never run psql on the literal pattern.
+  line "production-equivalent base" "PASS ($DEPLOYED_MIGRATIONS applied)"
+  # The upgrade path from the CURRENT production migration count: everything the
+  # repository has BEYOND what is deployed, derived rather than hard-coded. An
+  # empty set reports "nothing pending" and must never run psql on a literal glob.
   shopt -s nullglob
-  pending=(supabase/migrations/0053_*.sql)
+  pending=($(ls supabase/migrations/*.sql | tail -n +$((DEPLOYED_MIGRATIONS + 1))))
   shopt -u nullglob
   if [ ${#pending[@]} -eq 0 ]; then
     line "upgrade replay" "PASS (nothing pending beyond the deployed count)"
