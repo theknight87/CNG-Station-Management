@@ -334,3 +334,60 @@ confirmed at the GitHub remote; the Pages build is **not** verified here.
 **Gate exit 0**: frontend 631, schema 285, authorization 624, 53 migrations from zero, upgrade
 replay 52 -> 53, report contract PASS, batch matrix 64/64, installed-SRV import 39/39, single-SRV
 mapping 15/15.
+
+## Prompt 25K — the batch audit summary read the world AFTER changing it (0054, not deployed)
+
+**THE DEFECT, CONFIRMED IN THE DEPLOYED BODY.** The Prompt 25J batch mapped 1,054 SRVs correctly,
+but its `audit_logs` row recorded `byte_exact_rows: 0` where the truth was **839** (with **215** by
+normalization). Root cause re-derived from `pg_proc.prosrc` in production rather than from memory:
+the deployed `cng_irv_station_batch_commit` calls `cng_irv_station_batch_preview()` **TWICE** — once
+at Gate 2, correctly, before any mutation, and once more INLINE in the audit payload. That second
+call runs AFTER the UPDATE in the same transaction, when the mapped rows are no longer
+`needs_station_mapping`, so the eligible set is EMPTY and every eligibility-derived count reads 0.
+
+**IT WAS A REPORTING DEFECT ONLY.** The mapping, the row and identity counts, the fingerprint, the
+per-row `asset_mapping_audit` and every guard were already taken from the PRE-UPDATE preview. Only
+the one informational field re-read the world after changing it.
+
+**THE FIX — ONE MIGRATION, 0054** (SHA-256 `b9b199ae…`), replacing exactly ONE function body and
+adding no table, column, enum, constraint, index, policy, grant, view or new function. Gate 2 now
+captures every preview-derived value the audit needs — both mechanism counts at row AND identity
+level, distinct target Stations, the per-Region breakdown and the one-Unit population — from the
+SAME single preview whose fingerprint is compared against the approval. **The body now calls the
+preview EXACTLY ONCE, and that is machine-checked** (IRVAUD-2 re-derives the count from
+`pg_proc.prosrc`; IRVAUD-2b proves the detector would catch a second call). The payload also now
+records `units_assigned: 0` and `equipment_assigned: 0` beside `rows_under_one_unit_station`, so the
+refusal of the forbidden inference is legible in the history rather than merely true.
+
+**NOTHING ELSE CHANGED**, carried over verbatim: candidate eligibility, the same-Region requirement,
+both evidence mechanisms, fingerprint construction, the row-count / identity-count / stale-state /
+lineage / hash guards, Admin-only authorization with a server-derived actor, atomicity, the
+Station-only UPDATE, the `needs_station_mapping -> needs_unit_mapping` transition, per-row audit,
+`bulk_batch_id` semantics, replay refusal, RLS and permissions. The UPDATE still names `station_id`
+and `mapping_status` ONLY (IRVAUD-33 asserts no unit or equipment column appears in it).
+
+**THE REGRESSION WAS PROVED TO FAIL AGAINST 0052 FIRST.** A disposable batch carrying BOTH
+mechanisms (839 byte-exact + 215 normalization-only, 1,054 rows / 127 identities) gives
+**36/36 PASS against 0054 and 9 FAILURES against the 0052 body** — and, tellingly, the 27 that pass
+under BOTH are the mapping-semantics and guard assertions, which is precisely the point: the mapping
+was never wrong. The suite proves the recorded figures equal the pre-commit preview row AND that the
+recorded fingerprint IS the approved one (IRVAUD-9/10), while the post-commit preview is empty
+(IRVAUD-11) — so the values demonstrably come from before the UPDATE, not after.
+
+**THE HISTORICAL AUDIT ROW IS UNTOUCHED AND WILL STAY THAT WAY.** Batch
+`2fb604cf-fdc6-47c4-933f-d0e052ae2fa3` still records `byte_exact_rows: 0` at
+`2026-09-18 08:46:45.502608+00`, with all 1,054 per-row audit rows intact. `audit_logs` is
+append-only evidence; a batch that really did record 0 is part of the record, and no corrective row
+was inserted or backfilled. **The true composition of that batch is 839 byte-exact + 215
+normalization-only**, independently verified from the canonical rows in Prompt 25J and recorded here
+instead.
+
+**Gate exit 0**: frontend 631, schema 285, authorization 624, 54 migrations from zero, upgrade
+replay 53 -> 54; audit suite **36/36**, batch matrix 64/64, installed-SRV import 39/39, single-SRV
+mapping 15/15. Migrations 0052 (`828dd03a…`) and 0053 (`18abe4a3…`) are byte-identical and were not
+modified.
+
+**0054 IS NOT DEPLOYED.** Production remains at **53 migrations** with the 0052 commit body still
+live (`107b62f5…`, two preview calls), 2,662 SRVs (1,054 / 1,608), unit and equipment FKs 0,
+decisions 281, `asset_mapping_audit` 1,054, `audit_logs` 285, aliases 0, and the mapped rows still
+on the single 25J timestamp. No DML, no mapping, no audit correction.
