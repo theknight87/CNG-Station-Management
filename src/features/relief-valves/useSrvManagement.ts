@@ -411,36 +411,40 @@ export function useInstalledSummary(): { state: Loadable<InstalledSummary>; relo
       }
       if (!cancelled) setState({ status: 'loading' })
 
-      const view = () => supabase.from('v_installed_srv_management').select('id', { count: 'exact', head: true })
-      const [total, overdue, attention, station, unit, equipment, conflict] = await Promise.all([
-        view(),
-        view().eq('due_status', 'overdue'),
-        view().in('due_status', ATTENTION_BUCKETS),
-        view().eq('mapping_status', 'needs_station_mapping'),
-        view().eq('mapping_status', 'needs_unit_mapping'),
-        view().eq('mapping_status', 'needs_equipment_mapping'),
-        view().eq('mapping_status', 'conflict'),
-      ])
+      // ONE round trip, ONE RLS-evaluated scan. This was previously seven
+      // parallel count queries, and in production those statements peaked at
+      // 7.9s against the `authenticated` role's 8s statement_timeout -- so
+      // whichever crossed the line was cancelled and blanked the whole strip
+      // (Prompt 25J-B). The counts are identical; only the number of scans
+      // changed. Aggregation stays in SQL because tallying rows in the browser
+      // could be silently truncated by PostgREST's row limit, and a WRONG count
+      // is worse than a stated failure.
+      const { data, error } = await supabase
+        .from('v_installed_srv_summary')
+        .select('total, overdue, attention, needs_station_mapping, needs_unit_mapping, needs_equipment_mapping, conflict')
+        .maybeSingle()
       if (cancelled) return
 
-      // ANY failure fails the whole strip. Seven metrics where one silently
-      // reads 0 because its count errored is the same lie in a smaller box.
-      const failure = [total, overdue, attention, station, unit, equipment, conflict].find((r) => r.error)
-      if (failure?.error) {
-        setState({ status: 'error', message: failure.error.message })
+      // A failure is STATED, never rendered as 0.
+      if (error) {
+        setState({ status: 'error', message: error.message })
+        return
+      }
+      if (!data) {
+        setState({ status: 'error', message: 'The attention summary returned no row.' })
         return
       }
 
       setState({
         status: 'ready',
         data: {
-          total: total.count ?? 0,
-          overdue: overdue.count ?? 0,
-          attention: attention.count ?? 0,
-          needs_station_mapping: station.count ?? 0,
-          needs_unit_mapping: unit.count ?? 0,
-          needs_equipment_mapping: equipment.count ?? 0,
-          conflict: conflict.count ?? 0,
+          total: data.total ?? 0,
+          overdue: data.overdue ?? 0,
+          attention: data.attention ?? 0,
+          needs_station_mapping: data.needs_station_mapping ?? 0,
+          needs_unit_mapping: data.needs_unit_mapping ?? 0,
+          needs_equipment_mapping: data.needs_equipment_mapping ?? 0,
+          conflict: data.conflict ?? 0,
         },
       })
     }

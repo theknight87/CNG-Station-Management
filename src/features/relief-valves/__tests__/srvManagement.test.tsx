@@ -29,6 +29,8 @@ const replies = vi.hoisted(() => ({
   warehouse: { data: [] as unknown[], error: null, count: 0 } as Reply,
   /** The unfiltered head count, used to tell "no match" from "nothing exists". */
   headCount: { data: null, error: null, count: 0 } as Reply,
+  /** The attention strip, now ONE row from v_installed_srv_summary (25J-B). */
+  summary: { data: null as unknown, error: null } as Reply,
   regions: { data: [] as unknown[], error: null } as Reply,
 }))
 
@@ -59,13 +61,18 @@ vi.mock('@/lib/supabase/client', () => {
           calls.list.push(`${table}.order:${col}:${opts?.ascending === false ? 'desc' : 'asc'}`)
           return chain
         },
+        maybeSingle: () => {
+          calls.list.push(`${table}.maybeSingle`)
+          return Promise.resolve(replies.summary)
+        },
         range: (a: number, b: number) => {
           calls.list.push(`${table}.range:${a}-${b}`)
           return Promise.resolve(table === 'v_warehouse_srv_management' ? replies.warehouse : replies.installed)
         },
         then: (resolve: (v: unknown) => unknown) => {
           const reply =
-            table === 'v_dashboard_region_summary' ? replies.regions
+            table === 'v_installed_srv_summary' ? replies.summary
+            : table === 'v_dashboard_region_summary' ? replies.regions
             : head ? replies.headCount
             : table === 'v_warehouse_srv_management' ? replies.warehouse
             : replies.installed
@@ -130,6 +137,11 @@ beforeEach(() => {
   replies.installed = { data: [], error: null, count: 0 }
   replies.warehouse = { data: [], error: null, count: 0 }
   replies.headCount = { data: null, error: null, count: 0 }
+  replies.summary = {
+    data: { total: 0, overdue: 0, attention: 0, needs_station_mapping: 0,
+            needs_unit_mapping: 0, needs_equipment_mapping: 0, conflict: 0 },
+    error: null,
+  }
   replies.regions = { data: [], error: null }
 })
 afterEach(() => vi.clearAllMocks())
@@ -356,7 +368,7 @@ describe('States', () => {
 
   it('a failed summary count states the failure rather than showing zeros', async () => {
     replies.installed = { data: [installed()], error: null, count: 1 }
-    replies.headCount = { data: null, error: { message: 'boom' }, count: 0 }
+    replies.summary = { data: null, error: { message: 'boom' } }
     renderSrv()
     expect(await screen.findByText(/attention summary could not be loaded/i)).toBeDefined()
     expect(screen.queryByRole('heading', { name: /attention and mapping summary/i })).toBeNull()
@@ -437,5 +449,67 @@ describe('Warehouse isolation', () => {
     await screen.findByText('WRV-500001')
     // The schema models no quantity, so no stock level is claimed.
     expect(screen.queryByText(/in stock|quantity|qty/i)).toBeNull()
+  })
+})
+
+/**
+ * Prompt 25J-B. The attention strip failed in production AFTER the 1,054-row
+ * Station-only batch, because it fired SEVEN parallel count queries and those
+ * statements reached 7.9s against the `authenticated` 8s statement_timeout.
+ * These assert the shape that fixed it: ONE round trip, and the real mixed
+ * state rendering correctly.
+ */
+describe('Installed SRV attention summary (25J-B)', () => {
+  const mixed = {
+    total: 2662,
+    overdue: 302,
+    attention: 598,
+    needs_station_mapping: 1608,
+    needs_unit_mapping: 1054,
+    needs_equipment_mapping: 0,
+    conflict: 0,
+  }
+
+  it('loads the whole strip from ONE query, not a seven-way count fan-out', async () => {
+    replies.installed = { data: [installed()], error: null, count: 1 }
+    replies.summary = { data: mixed, error: null }
+    renderSrv()
+    expect(await screen.findByRole('heading', { name: /attention and mapping summary/i })).toBeDefined()
+
+    // Exactly one summary round trip...
+    const summaryCalls = calls.list.filter((c) => c.startsWith('v_installed_srv_summary.'))
+    expect(summaryCalls.filter((c) => c.endsWith('.maybeSingle'))).toHaveLength(1)
+    // ...and NOT a single count query against the row view for the strip.
+    expect(calls.list).not.toContain('v_installed_srv_management.eq:mapping_status=conflict')
+    expect(calls.list).not.toContain('v_installed_srv_management.eq:mapping_status=needs_equipment_mapping')
+  })
+
+  it('renders the real post-batch mixed state, both statuses at once', async () => {
+    replies.installed = { data: [installed()], error: null, count: 1 }
+    replies.summary = { data: mixed, error: null }
+    renderSrv()
+    const strip = await screen.findByRole('region', { name: /attention and mapping summary/i })
+    // The two coexisting mapping states are the whole point of the regression.
+    expect(within(strip).getByText('1,608')).toBeDefined()
+    expect(within(strip).getByText('1,054')).toBeDefined()
+    expect(within(strip).getByText('2,662')).toBeDefined()
+    expect(within(strip).getByText('302')).toBeDefined()
+    expect(within(strip).getByText('598')).toBeDefined()
+  })
+
+  it('a summary row that never arrives is stated, never rendered as zeros', async () => {
+    replies.installed = { data: [installed()], error: null, count: 1 }
+    replies.summary = { data: null, error: null }
+    renderSrv()
+    expect(await screen.findByText(/attention summary could not be loaded/i)).toBeDefined()
+    expect(screen.queryByRole('heading', { name: /attention and mapping summary/i })).toBeNull()
+  })
+
+  it('a failed summary never blanks the table', async () => {
+    replies.installed = { data: [installed()], error: null, count: 1 }
+    replies.summary = { data: null, error: { message: 'canceling statement due to statement timeout' } }
+    renderSrv()
+    expect(await screen.findByText(/attention summary could not be loaded/i)).toBeDefined()
+    expect(calls.list.some((c) => c.startsWith('v_installed_srv_management.range:'))).toBe(true)
   })
 })

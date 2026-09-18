@@ -2485,4 +2485,101 @@ SELECT pg_temp.assert(
   'VDUP-13: duplicate metadata is derived in the view and stored on no table');
 
 
+-- ===========================================================================
+-- Prompt 25J-B: the Installed SRV attention summary, as ONE row.
+-- The strip previously fired seven parallel counts at v_installed_srv_management
+-- and reached the authenticated role's 8s statement_timeout in production. These
+-- assert the replacement's CONTRACT and its security, and above all that its
+-- seven numbers equal what the seven separate queries returned -- the fix must
+-- change the number of scans, never a count.
+-- ===========================================================================
+SELECT pg_temp.assert(
+  (SELECT reloptions::text FROM pg_class WHERE relname = 'v_installed_srv_summary')
+    LIKE '%security_invoker=true%',
+  'SRVSUM-1: the summary view runs with the CALLER''s rights, so counts stay Region-bounded');
+
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM information_schema.role_table_grants
+    WHERE table_name = 'v_installed_srv_summary' AND grantee = 'anon') = 0,
+  'SRVSUM-2: anon holds nothing on the summary view');
+
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM information_schema.role_table_grants
+    WHERE table_name = 'v_installed_srv_summary' AND grantee = 'authenticated'
+      AND privilege_type <> 'SELECT') = 0,
+  'SRVSUM-3: authenticated holds SELECT and no write grant on the summary view');
+
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM v_installed_srv_summary) = 1,
+  'SRVSUM-4: the summary is exactly ONE row, so the screen makes one round trip');
+
+-- A mixed dataset, deliberately shaped like production after the Prompt 25J
+-- batch: Station-confirmed rows and Station-unconfirmed rows COEXISTING, which
+-- is the state the production failure was first observed in.
+INSERT INTO installed_relief_valves
+  (region_id, station_id, mapping_status, source_station_name_raw,
+   next_calibration_date, next_calibration_precision)
+SELECT r.id, s.id, 'needs_unit_mapping', 'SRVSUM confirmed',
+       current_date - 10, 'exact_date'
+  FROM regions r JOIN stations s ON s.region_id = r.id LIMIT 1;
+INSERT INTO installed_relief_valves
+  (region_id, mapping_status, source_station_name_raw,
+   next_calibration_date, next_calibration_precision)
+SELECT r.id, 'needs_station_mapping', 'SRVSUM unconfirmed',
+       current_date + 3, 'exact_date'
+  FROM regions r LIMIT 1;
+INSERT INTO installed_relief_valves
+  (region_id, mapping_status, source_station_name_raw, next_calibration_raw, next_calibration_precision)
+SELECT r.id, 'needs_station_mapping', 'SRVSUM undated', '2024', 'year_only'
+  FROM regions r LIMIT 1;
+
+SELECT pg_temp.assert(
+  (SELECT total FROM v_installed_srv_summary)
+    = (SELECT count(*) FROM v_installed_srv_management),
+  'SRVSUM-5: total equals the row view, with both mapping states present');
+
+SELECT pg_temp.assert(
+  (SELECT needs_station_mapping FROM v_installed_srv_summary)
+    = (SELECT count(*) FROM v_installed_srv_management WHERE mapping_status = 'needs_station_mapping')
+  AND (SELECT needs_unit_mapping FROM v_installed_srv_summary)
+    = (SELECT count(*) FROM v_installed_srv_management WHERE mapping_status = 'needs_unit_mapping')
+  AND (SELECT needs_equipment_mapping FROM v_installed_srv_summary)
+    = (SELECT count(*) FROM v_installed_srv_management WHERE mapping_status = 'needs_equipment_mapping')
+  AND (SELECT conflict FROM v_installed_srv_summary)
+    = (SELECT count(*) FROM v_installed_srv_management WHERE mapping_status = 'conflict'),
+  'SRVSUM-6: every mapping count equals the separate query it replaced');
+
+SELECT pg_temp.assert(
+  (SELECT needs_station_mapping + needs_unit_mapping + needs_equipment_mapping + conflict
+     FROM v_installed_srv_summary) <= (SELECT total FROM v_installed_srv_summary),
+  'SRVSUM-7: the mapping buckets never exceed the total');
+
+SELECT pg_temp.assert(
+  (SELECT overdue FROM v_installed_srv_summary)
+    = (SELECT count(*) FROM v_installed_srv_management WHERE due_status = 'overdue')
+  AND (SELECT attention FROM v_installed_srv_summary)
+    = (SELECT count(*) FROM v_installed_srv_management
+        WHERE due_status IN ('overdue','due_today','due_7','due_15','due_30','due_60')),
+  'SRVSUM-8: overdue and attention equal the separate queries they replaced');
+
+SELECT pg_temp.assert(
+  (SELECT attention FROM v_installed_srv_summary) >= (SELECT overdue FROM v_installed_srv_summary),
+  'SRVSUM-9: attention INCLUDES overdue, exactly as the screen states');
+
+-- Date precision is not re-derived here: the summary reads due_status from the
+-- row view, which reads cng_due_status(). A year_only date must therefore be
+-- counted by neither bucket, exactly as principle 17 requires.
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM v_installed_srv_management
+    WHERE next_calibration_precision <> 'exact_date'
+      AND due_status IN ('overdue','due_today','due_7','due_15','due_30','due_60')) = 0,
+  'SRVSUM-10: a non-exact date enters no due bucket, so it cannot reach the summary');
+
+SELECT pg_temp.assert(
+  (SELECT count(*) FROM pg_class WHERE relname = 'v_installed_srv_summary' AND relkind = 'v') = 1
+  AND (SELECT count(*) FROM information_schema.columns
+        WHERE table_name = 'v_installed_srv_summary') = 7,
+  'SRVSUM-11: the summary exposes exactly the seven counts the strip renders');
+
+
 ROLLBACK;

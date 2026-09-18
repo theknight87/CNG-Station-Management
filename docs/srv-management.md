@@ -221,3 +221,67 @@ green**, and NGV yellow never marks Warehouse.
 - Back/Forward could not be exercised in the dev harness, which mounts `MemoryRouter`
   and has no browser history by design; the routes and hrefs that give the production
   router its history integration are verified instead.
+
+## Prompt 25J-B — the attention summary failed in production; root cause was a seven-way count fan-out
+
+After the Prompt 25J batch, `/manage/srvs/installed` rendered *"The attention summary could not be
+loaded, so no counts are shown. The table below is unaffected."* The table itself stayed healthy.
+
+**DIAGNOSED FROM `pg_stat_statements`, NOT FROM THE BANNER.** The strip fired **SEVEN parallel count
+queries** at `v_installed_srv_management` (total, overdue, attention, and one per mapping status).
+The real browser traffic recorded against that view peaks at **7910.5 ms, 7855.2 ms, 7581.0 ms and
+7327.1 ms** — against the `authenticated` role's **`statement_timeout = 8s`**. Whichever query
+crossed the line was cancelled (57014), supabase-js returned `.error`, and `useInstalledSummary`
+fails the WHOLE strip if ANY of the seven errors — deliberately, because seven metrics where one
+silently reads 0 is the same lie in a smaller box. **The table survived because it is one query, not
+seven.**
+
+**RULED OUT BY MEASUREMENT, not assumption**: all seven statements were executed READ-ONLY in
+production under the owner's real Admin RLS and every one SUCCEEDED — 547 / 1017 / 1047 / 334 / 540
+/ 513 / 519 ms, returning 2662 / 302 / 598 / 1608 / 1054 / 0 / 0. So it is not a schema or view
+contract fault, not an RPC fault, not an RLS denial, not NULL handling, not due-date logic, not
+aggregate logic and not frontend parsing. It is the COST and COUNT of the round trips.
+
+**THE BATCH EXPOSED A LATENT DEFECT; IT DID NOT CREATE ONE.** `irv_select` reads
+`CASE WHEN station_id IS NOT NULL THEN cng_can_read_region(region_id) ELSE cng_can_access_unmapped_srv() END`.
+Before the batch all 2,662 rows took the second branch — a bare role check with no argument, which
+the planner can fold. The 1,054 Station-confirmed rows now take the first, which takes a per-row
+argument and is evaluated per row. Measured in production: **0.21 ms/row** on the unconfirmed branch
+versus **0.51 ms/row** on the confirmed one, ~2.4x. The fan-out was already marginal at ~7.3-7.9 s;
+that shift pushed it over. **Nothing about the 1,054 mapped rows is wrong** — the defect is the
+seven-scan pattern, which would have bitten on volume growth alone.
+
+**THE FIX: ONE MIGRATION, 0053, ADDING EXACTLY ONE VIEW** (SHA-256 `18abe4a3…`).
+`v_installed_srv_summary` returns all seven counts in a single row, so the screen makes ONE round
+trip and the database performs ONE RLS-evaluated scan instead of seven — six fewer chances to trip
+the timeout and roughly a seventh of the work. **A migration is genuinely required**: PostgREST
+cannot express conditional aggregates, and tallying rows in the browser would risk PostgREST
+silently truncating at its row limit, producing counts that are WRONG rather than absent — worse
+than a stated failure (§11.5). **Raising `statement_timeout` was deliberately NOT the fix**: a
+2,662-row summary has no business taking 8 seconds, and a longer timeout would only let the same
+fan-out bite a larger dataset later.
+
+**SECURITY IS UNCHANGED**: `security_invoker = true` is stated explicitly (a replaced view silently
+running with owner rights was the Prompt 19B defect), so every count is still the caller's own and a
+Region-scoped user can never learn the size of a Region they cannot read. `authenticated` gets
+SELECT and nothing else; `anon` gets nothing. No policy, grant, RLS boundary or existing view was
+touched, and **no mapping data was changed**.
+
+**REGRESSION TESTS, PROVED TO FAIL AGAINST THE OLD CODE FIRST** (5 of them did). Frontend: the strip
+loads from ONE query and fires no per-status count at the row view; the real post-batch mixed state
+(1,608 + 1,054 = 2,662, overdue 302, attention 598) renders with BOTH statuses at once; a missing
+row and a timeout error are each stated rather than rendered as zeros; and a failed summary never
+blanks the table. SQL (SRVSUM-1..11) asserts the view is `security_invoker`, anon-free, write-free,
+exactly one row and exactly seven columns, and — the point of the exercise — that **every one of its
+seven counts equals the separate query it replaced**, over a dataset deliberately shaped like
+production with Station-confirmed and Station-unconfirmed rows coexisting. Due semantics are
+re-asserted, not re-derived: attention still INCLUDES overdue, and a `year_only` date enters no
+bucket so it can never reach the summary.
+
+**Gate exit 0**: frontend **627 -> 631**, schema **274 -> 285**, authorization 624 unchanged
+(correctly — no policy or grant changed), 53 migrations from zero, upgrade replay 52 -> 53.
+
+**MIGRATION 0053 IS NOT DEPLOYED** and production is unchanged: 52 migrations, 0 summary views
+deployed, 2,662 SRVs (1,054 `needs_unit_mapping` / 1,608 `needs_station_mapping`), unit and
+equipment FKs 0, decisions 281, `asset_mapping_audit` 1,054, `audit_logs` 285, aliases 0, staging
+7,163 — and ONE distinct `updated_at` in each of the mapped and unmapped groups, so no row moved.
