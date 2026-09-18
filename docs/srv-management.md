@@ -285,3 +285,52 @@ bucket so it can never reach the summary.
 deployed, 2,662 SRVs (1,054 `needs_unit_mapping` / 1,608 `needs_station_mapping`), unit and
 equipment FKs 0, decisions 281, `asset_mapping_audit` 1,054, `audit_logs` 285, aliases 0, staging
 7,163 — and ONE distinct `updated_at` in each of the mapped and unmapped groups, so no row moved.
+
+## Prompt 25J-C — migration 0053 deployed, frontend shipped to `main`
+
+Production went **52 -> 53**, recorded once (`20260918092519 installed_srv_summary`), file SHA-256
+`18abe4a3a308cf51f65ae0a26161c7b18727f203551a223d1a5180fdb3aa1a49` matching approved commit
+`4d3548a` byte for byte. Migrations 0044-0052 were verified byte-identical first.
+
+**DEPLOYED CONTRACT**: `v_installed_srv_summary` exists with `security_invoker=true`, exactly
+**7 columns** and exactly **1 row**; `authenticated` holds SELECT and **`anon` has none**
+(`has_table_privilege` false). The `postgres: TRIGGER` entry is the view owner's implicit privilege,
+present on every view in the schema — not a browser write grant (the Prompt 20 lesson). Nothing else
+moved: `v_installed_srv_management` definition hash `322050bb…`, 70 policies, 33 tables, 241
+constraints, **0 views running with owner rights**, 0 tables without RLS. The migration executes no
+DML.
+
+**EVERY METRIC INDEPENDENTLY RECOMPUTED AND PROVED EQUAL** — not compared to hard-coded
+expectations. Read under the owner's real Admin RLS, the view returns
+**total 2,662 · overdue 302 · attention 598 · needs_station_mapping 1,608 · needs_unit_mapping
+1,054 · needs_equipment_mapping 0 · conflict 0**, and each was re-derived straight from
+`installed_relief_valves` and from the alert engine's own `cng_due_status()` rather than from the
+view the summary reads. All seven equality checks returned true; `resolved` is 0 independently.
+
+**TIMING, REPORTED HONESTLY IN BOTH DIRECTIONS.** The single summary statement measures
+**1513-1600 ms** over five runs. That is SLOWER than any individual count in the old fan-out
+(334-1047 ms) because it computes all seven aggregates in one pass — but it is **ONE** statement
+instead of seven concurrent ones, and it sits at **~19% of the 8s `authenticated` budget** where the
+fan-out's real production statements peaked at **7910 / 7855 / 7581 / 7327 ms**, i.e. at the cliff
+edge. The win is margin and round trips, not per-statement speed, and the timeout was not raised.
+
+**DATA FIREWALL — NOTHING WROTE.** 2,662 SRVs, station FK 1,054, unit FK 0, equipment FK 0,
+decisions 281, `asset_mapping_audit` 1,054 with all 1,054 still on batch
+`2fb604cf-fdc6-47c4-933f-d0e052ae2fa3`, `audit_logs` 285, aliases 0, stations 157, units 188,
+staging 7,163 — and the mapped rows still share ONE `updated_at` of `2026-09-18 08:46:45.502608+00`,
+the 25J batch timestamp, so no row moved and the historical audit row is untouched.
+
+**`main` FAST-FORWARDED `998c5e3 -> 4d3548a`**, and the approved commit is confirmed an ANCESTOR of
+`main` (the 24D lesson: pushed somewhere is not deployed). The merge carried 11 commits, and across
+all of them the ONLY `src/` changes are the two 25J-B files — `useSrvManagement.ts` and its test —
+so no unrelated frontend change rode along. Migrations 0051, 0052 and 0053 were all already applied
+to production, and a Pages build applies no migrations. The built bundle was grepped directly and
+contains `v_installed_srv_summary`.
+
+**CLOUDFLARE IS NOT OBSERVED**: `cng-station-management.pages.dev` and `api.cloudflare.com` both
+answer 000/blocked at CONNECT from this environment (re-tested, not assumed). The push to `main` is
+confirmed at the GitHub remote; the Pages build is **not** verified here.
+
+**Gate exit 0**: frontend 631, schema 285, authorization 624, 53 migrations from zero, upgrade
+replay 52 -> 53, report contract PASS, batch matrix 64/64, installed-SRV import 39/39, single-SRV
+mapping 15/15.

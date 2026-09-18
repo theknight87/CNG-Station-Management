@@ -87,12 +87,12 @@ done
 UDB="${VERIFY_UPGRADE_DB:-cng_upgrade}"
 sudo -n -u postgres psql -q -c "DROP DATABASE IF EXISTS $UDB" -c "CREATE DATABASE $UDB" >/dev/null 2>&1
 up_fail=0
-for f in $(ls supabase/migrations/*.sql | head -52); do
+for f in $(ls supabase/migrations/*.sql | head -53); do
   sudo -n -u postgres psql -d "$UDB" -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null 2>&1 \
     || { echo "BASE MIGRATION FAILED: $f"; up_fail=1; break; }
 done
 if [ $up_fail -eq 0 ]; then
-  line "production-equivalent base" "PASS (52 applied)"
+  line "production-equivalent base" "PASS (53 applied)"
   # The upgrade path from the CURRENT production migration count. Everything in
   # the repository is deployed, so there is nothing newer to replay. An unmatched
   # glob must report "nothing pending", never run psql on the literal pattern.
