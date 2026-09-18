@@ -391,3 +391,73 @@ modified.
 live (`107b62f5…`, two preview calls), 2,662 SRVs (1,054 / 1,608), unit and equipment FKs 0,
 decisions 281, `asset_mapping_audit` 1,054, `audit_logs` 285, aliases 0, and the mapped rows still
 on the single 25J timestamp. No DML, no mapping, no audit correction.
+
+## Prompt 27 — Warehouse SRV canonical import (0055 built and locally verified; NOT deployed)
+
+**One additive migration, `0055_warehouse_srv_import.sql`** (SHA-256 `4223c55c…`), adding three
+`service_role`-only functions and NO table, column, enum, constraint or index. It mirrors the 0051
+installed-SRV import rather than inventing a second architecture.
+
+**A PROMPT 26 STATEMENT WAS WRONG AND IS CORRECTED HERE.** I reported warehouse SRVs as having
+"zero hierarchy dependency, 0 rows with a target region or station". That came from querying key
+names that do not exist in the payload. The real keys are `assigned_region` (**1,775 rows**) and
+`assigned_station_raw` (**1,774 rows, 303 distinct names**). The conclusion — that the import needs
+no mapping decision — still holds, but for a more precise reason, stated below.
+
+**TARGET REGION IS RESOLVED; TARGET STATION IS NOT.** All 1,775 `assigned_region` values are among
+the six canonical Region names (**0 non-canonical**, verified), so resolving them is a lookup against
+a closed set, not an inference — 1,775 rows get `target_region_id`. `assigned_station_raw` is the
+SAME evidence question the installed-SRV batches answer, and that is an owner-approved, content-bound,
+audited decision, so **`target_station_id` is NULL on all 2,188**. For the record, 581 of those rows
+would match a canonical Station under the approved rule — offered as a separate step, not taken here.
+
+**ONE FIELD HAS NO CANONICAL DESTINATION, REPORTED NOT DROPPED**: `assigned_station_raw` has no
+`target_station_name_raw` column. Its text survives inside `source_raw` (WRV-24 asserts all 1,774),
+but it is not queryable as a field. Adding that column is a follow-up decision, deliberately not taken.
+
+**FIELD MAPPING — every staged key has a home**: warehouse_code, serial_number(+raw, +status),
+part_number, manufacturer(+raw), size_type, port_in→inlet_size, port_out→outlet_size, set_pressure
+{raw,min,max,unit}, calibration_location, availability_status_raw→availability_status(+raw), notes,
+and three date triples (issue / last_calibration / next_due_date) each as raw+date+precision. Dates
+map only at `exact_date`; `wrv_*_prec_ck` enforce it.
+
+**PRE-FLIGHT AGAINST REAL PRODUCTION DATA — 0 type hazards**: pressure units are `BAR` 1,360 /
+`PSI` 828 with **0 outside the enum**; **0** date precisions and **0** serial statuses outside their
+enums; **0** non-numeric pressures; **0** rows with min > max. The five availability phrasings map
+1:1 onto the five enum labels, and anything else would fail the cast and abort the transaction
+rather than be guessed. (My first local fixture used `bar` and correctly blew up — the fixture was
+wrong, not the migration.)
+
+**PRODUCTION PREVIEW (ANALYTICAL — 0055 is not deployed)**: run `cdad1e5e…`, manifest `764d3c0f…`,
+**eligible 2,188 · excluded 0 · already imported 0 · invalid evidence 0 · 2,188 distinct keys and
+2,188 distinct hashes · 0 duplicate keys · serial 2,187 · warehouse_code 2,187 · part_number 2,167 ·
+0 duplicate-serial groups · target Region 1,775 · target Station 0 · assigned Station name 1,774 ·
+exact next 1,854 / last 1,854 / issue 1,480 · canonical now 0.**
+ANALYTICAL fingerprint `9354a9c77ab22c92ee206eba34605c619d24b33207350c6f0be80b03a4de7f69` — **NOT an
+executable approval token**, because the 22B rule requires one from the DEPLOYED function.
+
+**FOCUSED SUITE: 36/36 PASS, exit 0** (`supabase/tests/warehouse_srv_import.sql`) at full 2,188-row
+scale — import completeness and lineage, every supported field equal to source, NULL staying NULL,
+no fabricated Station (and Unit/equipment/mapping_status columns do not exist on this table at all),
+Region resolved only from the canonical set, replay refused, rollback atomic, wrong fingerprint /
+manifest / row count each refused, installed SRVs and all four families untouched, security
+service_role-only with no dynamic SQL, and the management view returning all 2,188 with due status.
+
+**UI CONTRACT READY**: all **33** columns `/manage/srvs/warehouse` selects exist in
+`v_warehouse_srv_management` (**0 missing**); sorts resolve; the view computes `days_left` only at
+exact precision. **One honest UX consequence**: `is_unassigned_stock` is `target_station_id IS NULL`,
+so all 2,188 will read as unassigned stock even though 1,774 carry an assigned Station NAME. That is
+truthful about the canonical state and is the cost of not fabricating the FK.
+
+**MIGRATION SEQUENCING — NO RENUMBERING NEEDED.** Production is at 53; the repository holds
+undeployed 0054 (the IRV batch audit fix) and now 0055. The two are **independent** — 0054 replaces
+the IRV batch commit function, 0055 creates warehouse import functions, disjoint objects — so 0055
+may be deployed alone. That leaves a numbering gap in `schema_migrations` until 0054 is deployed,
+which is bookkeeping, not a hazard, and the from-zero replay applies 0054 then 0055 cleanly.
+
+**Gate exit 0**: frontend 631, schema 285, authorization 624, 55 migrations from zero, upgrade replay
+53 → 54 → 55. **0052/0053/0054 byte-identical and unmodified.**
+
+**NOT DEPLOYED, NOTHING WRITTEN**: production stays at 53 migrations, 0 `cng_wrv_import*` functions,
+`warehouse_relief_valves` **0**, installed SRVs 2,662 (1,054/1,608), four families 100/91/62/26,
+decisions 281, audit 285, aliases 0.
