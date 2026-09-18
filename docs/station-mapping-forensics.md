@@ -966,3 +966,94 @@ reviewed bytes.
 rows modified since creation · decisions 281 · `audit_logs` **284** · `asset_mapping_audit` **0** ·
 aliases 0 · staging 7,163 · the 268 quarantine intact · 0 tables without RLS.
 **`cng_irv_station_batch_commit` was NOT invoked in any execution context.**
+
+## Prompt 25J — the 1,054-row Station-only batch is committed and independently verified
+
+The owner executed the approved batch from the live authenticated Admin session; this was a
+READ-ONLY reconciliation that created and modified nothing. Batch
+**`2fb604cf-fdc6-47c4-933f-d0e052ae2fa3`**, fingerprint
+`d5a60e87ea600e7e15f29b9cad95d2668f1c500c12b0bc118322616f964f9f8d`.
+
+**CANONICAL STATE RECONCILES EXACTLY**: 2,662 installed SRVs — **`needs_unit_mapping` 1,054 ·
+`needs_station_mapping` 1,608 · needs_equipment 0 · resolved 0**; `station_id` non-NULL **1,054** /
+NULL **1,608**; **`unit_id` non-NULL 0**; compressor, storage-vessel and dispenser FKs **0 / 0 / 0**.
+
+**THE BATCH IS EXACTLY THE APPROVED SET**: 1,054 audit rows over **1,054 distinct SRVs and 1,054
+distinct `source_row_key`s**, **127 identities**, **127 distinct target Stations**, evidence
+composition **839 byte-exact / 215 normalization-only**, Regions **Delta 558 / East 283 / West 213**.
+0 rows outside the rule, 0 cross-Region mappings, 0 alias-based mappings (the alias tables are still
+empty), 0 unsupported mechanisms.
+
+**STATION / REGION INTEGRITY — ALL INVARIANTS 0**: 0 mapped rows with a NULL Station, **0 Region
+mismatches** (no Region was changed to make a Station fit), 0 raw-Station drift, 0 raw-Region drift,
+0 `source_row_key` drift, 0 `source_row_hash` drift.
+
+**THE CRITICAL UNIT FIREWALL HELD**: `unit_id` non-NULL among the 1,054 is **0**, and among the
+**993** whose mapped Station has exactly one Unit it is **0**. Mapped rows by Station Unit count:
+**1 Unit 993 · 2 Units 41 · 3 Units 6 · 4 Units 5 · 0 Units 9 = 1,054.** The forbidden one-Unit
+inference was available on 993 rows and was taken on none.
+
+**EQUIPMENT FIREWALL**: all three parent FKs NULL on all 1,054; `compressors` and `dispensers`
+remain 0.
+
+**STATUS TRANSITION**: every one of the 1,054 moved `needs_station_mapping -> needs_unit_mapping`;
+0 remain unmapped, 0 became needs_equipment, 0 became resolved, and **0 carry
+`resolved_by`/`resolved_at`** — correct, because this is an intermediate state, not a resolution.
+
+**HUMAN ATTRIBUTION IS GENUINE**: actor app-user `31d59e99…`, Clerk subject `user_3JKe…`, role
+**admin**, active, one actor and ONE timestamp (`2026-09-18 08:46:45.502608+00`) across all 1,054 —
+the signature of one transaction. `asset_mapping_audit` went **0 -> 1,054**, all `is_bulk = true`
+sharing the one `bulk_batch_id`, every row with before-Station NULL, after-Station equal to the
+row's actual Station (0 mismatches), before/after Unit NULL and before/after equipment NULL.
+`audit_logs` **284 -> 285**, the new row `mapping_changed` on the batch id, `actor_id` set to the
+Admin. **The only `service_role` audit rows in the database are the two prior IMPORTS** (23C asset
+import, 25F installed-SRV import) — neither is this batch, which is human-attributed as §9 and §10
+require.
+
+**NO SRV WAS TOUCHED OUTSIDE THE BATCH**: all 1,054 mapped rows share ONE `updated_at` equal to the
+batch timestamp, 0 mapped rows lack a batch audit row, and the 1,608 unmapped rows still have
+`updated_at = created_at`.
+
+**A REAL DEFECT IN MY 0052 AUDIT PAYLOAD, REPORTED NOT REPAIRED.** The `audit_logs` row records
+`byte_exact_rows: 0`; the truth is **839** (with 215 normalization-only), independently verified
+from the canonical rows. **Root cause**: the commit builds that one informational JSON field by
+calling `cng_irv_station_batch_preview()` a second time, and by then the UPDATE has already run
+inside the same transaction, so the eligible set is empty and the count reads 0. It is **cosmetic
+and confined to that single field** — the mapping itself, the row and identity counts, the
+fingerprint, the per-row `asset_mapping_audit` and every firewall are correct, and the true
+composition is recoverable from the data at any time. **No corrective write was made** (none is
+authorized, and the audit tables are append-only); the fix is a one-line change to 0052 to capture
+the value BEFORE the UPDATE, deferred to owner approval.
+
+**REPLAY IS CLOSED, PROVED READ-ONLY WITHOUT A SECOND COMMIT**: the deployed preview now reports
+**eligible 0, identities 0**, with 1,054 classified `X_NOT_UNMAPPED`, and the fingerprint has moved
+`d5a60e87… -> 71bec20cc19feb4cb717d6411d0553a007cfdf2bba8d6a195d4a0b916d838108`, so the approved
+constant fails closed.
+
+**THE REMAINING 1,608 ARE UNTOUCHED AND CORRECTLY CLASSIFIED**: **1,596** with no same-Region
+candidate + **12** cross-Region-only — one identity, source Region **Alex**, the same-named Station
+existing only in **West** — and **0 of the 1,608 would qualify under the approved rule**, so nothing
+was left behind that should have been mapped. All 1,608 keep `station_id`, `unit_id` and every
+equipment FK NULL. None was mapped.
+
+**RLS AFTER THE REAL MAPPING** (policy capability, unchanged): `irv_select` is
+`CASE WHEN station_id IS NOT NULL THEN cng_can_read_region(region_id) ELSE cng_can_access_unmapped_srv() END`.
+The 1,054 now take the FIRST branch — Admin yes, Manager yes, Engineer/Viewer **yes with a matching
+Region grant, no without**. The 1,608 stay on the second branch — Admin and Manager only, Engineer
+and Viewer never. **Current state, stated separately from capability: 1 active Admin and 0 Region
+grants**, so today that Admin is the only reader either way. No grant was created and no policy
+changed.
+
+**FIREWALLS**: decisions **281** unchanged; the four-family quarantine unchanged (SV 116, RT 76,
+GD 54, hoses 22 = 268); regions 6, stations 157, units 188, warehouse 0, storage vessels 100,
+recovery tanks 91, gas detectors 62, hoses 26, compressors 0, dispensers 0, staging 7,163, aliases
+0/0, 0 tables without RLS. No Station, Unit, equipment, alias or Stage-B decision was created.
+
+**Gate exit 0**: frontend 627, schema 274, authorization 624, 52 migrations from zero, upgrade
+replay "nothing pending", report contract PASS; batch matrix 64/64, installed-SRV import suite
+39/39, single-SRV mapping suite 15/15.
+
+**PRODUCTION**: 52 migrations · 2,662 installed SRVs (1,054 Station-confirmed / 1,608 unconfirmed) ·
+unit FK 0 · equipment FK 0 · decisions 281 · `asset_mapping_audit` 1,054 · `audit_logs` 285 ·
+aliases 0. **Browser E2E remains OWNER-PENDING** — `cng-station-management.pages.dev` is still 403
+at CONNECT from this environment.
