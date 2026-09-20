@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 
 import { App } from '@/App'
 import { AuthProvider } from '@/features/auth/AuthProvider'
+import { AppUserProvider } from '@/hooks/useAppUser'
 import { readSupabaseConfig } from '@/lib/supabase/config'
 import '@/index.css'
 
@@ -17,7 +18,9 @@ createRoot(rootElement).render(
   <StrictMode>
     {supabaseConfig ? (
       <AuthProvider>
-        <App />
+        <AppUserProvider>
+          <App />
+        </AppUserProvider>
       </AuthProvider>
     ) : (
       <div style={{ padding: 24, fontFamily: 'system-ui', maxWidth: 640 }}>

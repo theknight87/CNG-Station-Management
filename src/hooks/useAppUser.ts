@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { createContext, createElement, useContext, useEffect, useState, type ReactNode } from 'react'
 
 import { useAuth } from '@/features/auth/AuthProvider'
 import { useSupabaseClient } from '@/lib/supabase/client'
@@ -21,6 +21,8 @@ export type AppUserState =
   | { status: 'active'; user: AppUser }
   | { status: 'error'; message: string }
 
+const AppUserContext = createContext<AppUserState | null>(null)
+
 /**
  * Resolves the caller's application profile from the database.
  *
@@ -32,7 +34,7 @@ export type AppUserState =
  * app_users self-select policy does not require activation), which is what lets
  * the UI say "awaiting approval" instead of showing an unexplained empty app.
  */
-export function useAppUser(): AppUserState {
+export function AppUserProvider({ children }: { children: ReactNode }) {
   const { session, loading } = useAuth()
   const supabase = useSupabaseClient()
   const [state, setState] = useState<AppUserState>({ status: 'loading' })
@@ -76,5 +78,11 @@ export function useAppUser(): AppUserState {
     }
   }, [loading, session, supabase])
 
+  return createElement(AppUserContext.Provider, { value: state }, children)
+}
+
+export function useAppUser(): AppUserState {
+  const state = useContext(AppUserContext)
+  if (!state) throw new Error('useAppUser must be used inside AppUserProvider')
   return state
 }
