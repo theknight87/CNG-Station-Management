@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react'
-import { SignedIn, SignedOut, SignInButton, UserButton, useAuth } from '@clerk/clerk-react'
+import { Link } from 'react-router-dom'
 
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useAuth } from '@/features/auth/AuthProvider'
 import { useAppUser } from '@/hooks/useAppUser'
 
 /**
@@ -45,10 +46,10 @@ function StatusCard({
 }
 
 export function AuthGate({ children }: { children: ReactNode }) {
-  const { isLoaded } = useAuth()
+  const { session, loading, signOut } = useAuth()
   const appUser = useAppUser()
 
-  if (!isLoaded) {
+  if (loading) {
     return (
       <Centered>
         <StatusCard title="Loading" description="Checking your session…" />
@@ -56,60 +57,35 @@ export function AuthGate({ children }: { children: ReactNode }) {
     )
   }
 
-  return (
-    <>
-      <SignedOut>
-        <Centered>
-          <StatusCard
-            title="CNG Station Management"
-            description="Sign in to continue. Access is granted by an administrator."
-          >
-            <SignInButton mode="modal">
-              <Button className="w-full">Sign in</Button>
-            </SignInButton>
-          </StatusCard>
-        </Centered>
-      </SignedOut>
+  if (!session) {
+    return (
+      <Centered>
+        <StatusCard
+          title="CNG Station Management"
+          description="Sign in to continue. Access is granted by an administrator."
+        >
+          <Link className={buttonVariants({ className: 'w-full' })} to="/sign-in">Sign in</Link>
+        </StatusCard>
+      </Centered>
+    )
+  }
 
-      <SignedIn>
-        {appUser.status === 'loading' && (
-          <Centered>
-            <StatusCard title="Loading" description="Resolving your access…" />
-          </Centered>
-        )}
-
-        {appUser.status === 'not_provisioned' && (
-          <Centered>
-            <StatusCard
-              title="Account not yet provisioned"
-              description="Your sign-in succeeded, but no application profile exists yet. This is created automatically; if it persists, contact an administrator."
-            >
-              <UserButton />
-            </StatusCard>
-          </Centered>
-        )}
-
-        {appUser.status === 'pending_approval' && (
-          <Centered>
-            <StatusCard
-              title="Awaiting approval"
-              description="Your account exists but has not been activated. An administrator must approve it and grant region access before you can see any data."
-            >
-              <UserButton />
-            </StatusCard>
-          </Centered>
-        )}
-
-        {appUser.status === 'error' && (
-          <Centered>
-            <StatusCard title="Authentication error" description={appUser.message}>
-              <UserButton />
-            </StatusCard>
-          </Centered>
-        )}
-
-        {appUser.status === 'active' && children}
-      </SignedIn>
-    </>
+  const signOutButton = (
+    <Button variant="outline" className="w-full" onClick={() => void signOut()}>
+      Sign out
+    </Button>
   )
+
+  if (appUser.status === 'loading') return <Centered><StatusCard title="Loading" description="Resolving your access…" /></Centered>
+  if (appUser.status === 'not_provisioned') {
+    return <Centered><StatusCard title="Account not yet provisioned" description="Your sign-in succeeded, but no application profile exists yet. If this persists, contact an administrator.">{signOutButton}</StatusCard></Centered>
+  }
+  if (appUser.status === 'pending_approval') {
+    return <Centered><StatusCard title="Awaiting approval" description="Your account exists but has not been activated. An administrator must approve it and grant region access before you can see any data.">{signOutButton}</StatusCard></Centered>
+  }
+  if (appUser.status === 'error') {
+    return <Centered><StatusCard title="Authentication error" description={appUser.message}>{signOutButton}</StatusCard></Centered>
+  }
+  if (appUser.status === 'unauthenticated') return null
+  return children
 }

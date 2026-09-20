@@ -6,12 +6,11 @@ import { describe, expect, it } from 'vitest'
 import { TableScroll } from '@/components/data/DataTable'
 
 describe('production hardening', () => {
-  it('keeps the diagnostic authentication route development-only', () => {
+  it('removes the obsolete Clerk authentication diagnostic', () => {
     const routes = readFileSync(resolve(process.cwd(), 'src/routes.tsx'), 'utf8')
 
-    expect(routes).toContain("const developmentOnlyRoutes: RouteObject[] = import.meta.env.DEV")
-    expect(routes).toContain("path: '/auth-test'")
-    expect(routes).not.toMatch(/\{\s*path:\s*['"]\/auth-test['"],\s*element:/)
+    expect(routes).not.toContain("path: '/auth-test'")
+    expect(routes).not.toContain('AuthTestPage')
   })
 
   it('ships immutable caching and browser security policy for Cloudflare Pages', () => {

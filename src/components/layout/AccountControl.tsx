@@ -1,13 +1,13 @@
-import { SignOutButton, useUser } from '@clerk/clerk-react'
 import { LogOut } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { useAuth } from '@/features/auth/AuthProvider'
 import type { AppRole } from '@/types/domain'
 
 /**
  * The real account control.
  *
- * Identity comes from Clerk; the ROLE comes from `app_users`. Nothing here is
+ * Identity comes from Supabase Auth; the ROLE comes from `app_users`. Nothing here is
  * fabricated — no placeholder avatar, no invented display name. When Clerk has
  * no name the control simply shows less.
  */
@@ -44,20 +44,21 @@ export function AccountControl({
   )
 }
 
-export function ClerkAccountControl({ role }: { role: AppRole | null }) {
-  const { user } = useUser()
-  const displayName = user?.fullName ?? user?.primaryEmailAddress?.emailAddress ?? null
+export function SupabaseAccountControl({ role }: { role: AppRole | null }) {
+  const { user, signOut } = useAuth()
+  const metadataName = typeof user?.user_metadata?.full_name === 'string'
+    ? user.user_metadata.full_name
+    : null
+  const displayName = metadataName ?? user?.email ?? null
 
   return (
     <AccountControl
       displayName={displayName}
       role={role}
       signOut={
-        <SignOutButton>
-          <Button variant="ghost" size="icon" aria-label="Sign out">
-            <LogOut className="h-4 w-4" aria-hidden="true" />
-          </Button>
-        </SignOutButton>
+        <Button variant="ghost" size="icon" aria-label="Sign out" onClick={() => void signOut()}>
+          <LogOut className="h-4 w-4" aria-hidden="true" />
+        </Button>
       }
     />
   )

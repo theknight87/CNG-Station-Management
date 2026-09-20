@@ -1,4 +1,7 @@
 /**
+ * RETIRED 2026-09-20. Kept only as rollback evidence; do not deploy for new
+ * environments. Supabase Auth now provisions app_users through migration 0056.
+ *
  * Clerk -> Supabase user synchronization webhook.
  *
  * verify_jwt is deliberately FALSE: Clerk sends a Svix-signed request, not a

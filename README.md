@@ -15,7 +15,7 @@ its safety-critical components — notably Safety Relief Valves (SRVs).
 | Routing | React Router |
 | UI | Tailwind CSS + shadcn/ui |
 | Linting | ESLint (typescript-eslint, react-hooks, react-refresh) |
-| Authentication | Clerk — app `CNG Station Management`, integrated through Supabase Third-Party Auth |
+| Authentication | Supabase Auth with database-enforced roles and Region-scoped RLS |
 | Database | Supabase PostgreSQL — project `cng-station-management`, with RLS-protected operational data |
 | Authorization | Supabase Row Level Security |
 | Hosting | Cloudflare Pages — project `cng-station-management` at `cng-station-management.pages.dev` |

@@ -104,7 +104,7 @@ function UserRow({
 }) {
   const [region, setRegion] = useState('')
   const [canMap, setCanMap] = useState(true)
-  const who = user.full_name ?? user.clerk_user_id
+  const who = user.full_name ?? user.email ?? user.auth_user_id ?? user.clerk_user_id ?? 'user'
 
   return (
     <TableRow>

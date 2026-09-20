@@ -18,25 +18,3 @@ project_id = "ypkggegquetvpsflkaxg"
 # Matches the hosted instance (Postgres 17) so local `supabase start` behaves
 # the same way. The migration baseline was additionally verified on PG16.
 major_version = 17
-
-# ---------------------------------------------------------------------------
-# Clerk third-party authentication.
-#
-# This is Supabase's CURRENT integration: Supabase verifies Clerk-signed session
-# tokens directly. The deprecated Clerk "Supabase JWT template" (deprecated
-# 2025-04-01) is NOT used, and this project's JWT secret is never shared with
-# Clerk.
-#
-# `domain` is the Clerk instance domain (for example
-# "your-app-123.clerk.accounts.dev", or your production Clerk domain). It is a
-# NON-SECRET identifier. Fill it in once the Clerk application exists, and
-# register the same domain in the Supabase dashboard under
-# Authentication -> Third-Party Auth.
-#
-# The domain is recorded WITHOUT a scheme, which is the form Supabase expects.
-# The Clerk instance is a Development instance; a production instance will have
-# a different domain and must be registered separately before going live.
-# ---------------------------------------------------------------------------
-[auth.third_party.clerk]
-enabled = true
-domain = "joint-lion-2271.clerk.accounts.dev"

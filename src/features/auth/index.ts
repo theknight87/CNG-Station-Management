@@ -1,4 +1,4 @@
 export { AuthGate } from './AuthGate'
-export { AuthTestPage } from './AuthTestPage'
+export { AuthProvider, useAuth } from './AuthProvider'
 export { SignInPage } from './SignInPage'
 export { SignUpPage } from './SignUpPage'

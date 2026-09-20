@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components -- route modules intentionally declare lazy route components */
 import { lazy } from 'react'
-import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-dom'
+import { createBrowserRouter, Navigate } from 'react-router-dom'
 
 import { AppLayout } from '@/components/layout/AppLayout'
 import { AuthGate } from '@/features/auth/AuthGate'
@@ -48,16 +48,6 @@ const StationPage = lazy(() => import('@/pages/StationPage').then((m) => ({ defa
 const UnitPage = lazy(() => import('@/pages/UnitPage').then((m) => ({ default: m.UnitPage })))
 const VesselsManagementPage = lazy(() => import('@/pages/VesselsManagementPage').then((m) => ({ default: m.VesselsManagementPage })))
 
-const developmentOnlyRoutes: RouteObject[] = import.meta.env.DEV
-  ? [{
-      path: '/auth-test',
-      lazy: async () => {
-        const { AuthTestPage } = await import('@/features/auth/AuthTestPage')
-        return { Component: AuthTestPage }
-      },
-    }]
-  : []
-
 /**
  * Routes mirror the authoritative structure:
  *
@@ -65,13 +55,12 @@ const developmentOnlyRoutes: RouteObject[] = import.meta.env.DEV
  *  - the global management modules, which are aggregate views over the same
  *    records and introduce no ownership of their own
  *
- * `/auth-test` is compiled into development only. Production retains the real
- * Clerk sign-in and sign-up routes, but does not expose the diagnostic screen.
+ * Authentication routes stay eager so signed-out users download only the
+ * small Supabase sign-in shell, not the authenticated workspace.
  */
 export const router = createBrowserRouter([
   { path: '/sign-in/*', element: <SignInPage /> },
   { path: '/sign-up/*', element: <SignUpPage /> },
-  ...developmentOnlyRoutes,
   {
     path: '/',
     element: (

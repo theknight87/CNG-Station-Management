@@ -26,7 +26,8 @@ export interface RegionGrant {
 
 export interface AdminUserRow {
   id: string
-  clerk_user_id: string
+  auth_user_id: string | null
+  clerk_user_id: string | null
   email: string | null
   full_name: string | null
   role: AppRole

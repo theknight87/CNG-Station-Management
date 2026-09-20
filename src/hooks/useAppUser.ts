@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
-import { useSession } from '@clerk/clerk-react'
 
+import { useAuth } from '@/features/auth/AuthProvider'
 import { useSupabaseClient } from '@/lib/supabase/client'
 import type { AppRole } from '@/types/domain'
 
 export interface AppUser {
   id: string
-  clerk_user_id: string
+  auth_user_id: string | null
+  clerk_user_id: string | null
   role: AppRole
   is_active: boolean
   full_name: string | null
@@ -32,7 +33,7 @@ export type AppUserState =
  * the UI say "awaiting approval" instead of showing an unexplained empty app.
  */
 export function useAppUser(): AppUserState {
-  const { session, isLoaded } = useSession()
+  const { session, loading } = useAuth()
   const supabase = useSupabaseClient()
   const [state, setState] = useState<AppUserState>({ status: 'loading' })
 
@@ -40,7 +41,7 @@ export function useAppUser(): AppUserState {
     let cancelled = false
 
     async function load() {
-      if (!isLoaded) return
+      if (loading) return
       if (!session) {
         if (!cancelled) setState({ status: 'unauthenticated' })
         return
@@ -52,7 +53,7 @@ export function useAppUser(): AppUserState {
 
       const { data, error } = await supabase
         .from('app_users')
-        .select('id, clerk_user_id, role, is_active, full_name')
+        .select('id, auth_user_id, clerk_user_id, role, is_active, full_name')
         .maybeSingle()
 
       if (cancelled) return
@@ -72,7 +73,7 @@ export function useAppUser(): AppUserState {
     return () => {
       cancelled = true
     }
-  }, [isLoaded, session, supabase])
+  }, [loading, session, supabase])
 
   return state
 }
