@@ -1,41 +1,62 @@
-import { createBrowserRouter, Navigate } from 'react-router-dom'
+/* eslint-disable react-refresh/only-export-components -- route modules intentionally declare lazy route components */
+import { lazy } from 'react'
+import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-dom'
 
 import { AppLayout } from '@/components/layout/AppLayout'
-import { AuthGate, AuthTestPage, SignInPage, SignUpPage } from '@/features/auth'
-import { CompressorSection } from '@/features/units/sections/CompressorSection'
-import { DetectorSection } from '@/features/units/sections/DetectorSection'
-import { DispenserSection } from '@/features/units/sections/DispenserSection'
-import { HoseSection } from '@/features/units/sections/HoseSection'
-import { OverviewSection } from '@/features/units/sections/OverviewSection'
-import { SrvSection } from '@/features/units/sections/SrvSection'
-import { VesselSection } from '@/features/units/sections/VesselSection'
-import { InstalledSrvSection } from '@/features/relief-valves/sections/InstalledSrvSection'
-import { WarehouseSrvSection } from '@/features/relief-valves/sections/WarehouseSrvSection'
-import { VesselRegistrySection } from '@/features/vessels/sections/VesselRegistrySection'
-import {
-  AdminAlertSettingsSection, AdminAuditLogSection, AdminDataQualitySection,
-  AdminStationBatchSection, AdminUsersSection,
-} from '@/features/admin'
-import { AdminPage } from '@/pages/AdminPage'
-import { AlertsPage } from '@/pages/AlertsPage'
-import { DashboardPage } from '@/pages/DashboardPage'
-import { GasDetectorsPage } from '@/pages/GasDetectorsPage'
-import { HosesManagementPage } from '@/pages/HosesManagementPage'
-import { NotFoundPage } from '@/pages/NotFoundPage'
-import { RegionDetailPage } from '@/pages/RegionDetailPage'
-import { RegionsPage } from '@/pages/RegionsPage'
-import {
-  ActivityReportSection, DataQualityReportSection, DueReportSection,
-  GasDetectorsReportSection, HosesReportSection, SrvReportSection,
-  VesselsReportSection,
-} from '@/features/reports'
-import { ReportsPage } from '@/pages/ReportsPage'
-import { SettingsPage } from '@/pages/SettingsPage'
-import { SrvManagementPage } from '@/pages/SrvManagementPage'
-import { StationsPage } from '@/pages/StationsPage'
-import { StationPage } from '@/pages/StationPage'
-import { UnitPage } from '@/pages/UnitPage'
-import { VesselsManagementPage } from '@/pages/VesselsManagementPage'
+import { AuthGate } from '@/features/auth/AuthGate'
+import { SignInPage } from '@/features/auth/SignInPage'
+import { SignUpPage } from '@/features/auth/SignUpPage'
+
+// Keep the authentication shell eager, then split every authenticated workspace
+// by route. A signed-out visit no longer downloads admin, reports, registry,
+// and data-import UI before it can display the small sign-in screen.
+const CompressorSection = lazy(() => import('@/features/units/sections/CompressorSection').then((m) => ({ default: m.CompressorSection })))
+const DetectorSection = lazy(() => import('@/features/units/sections/DetectorSection').then((m) => ({ default: m.DetectorSection })))
+const DispenserSection = lazy(() => import('@/features/units/sections/DispenserSection').then((m) => ({ default: m.DispenserSection })))
+const HoseSection = lazy(() => import('@/features/units/sections/HoseSection').then((m) => ({ default: m.HoseSection })))
+const OverviewSection = lazy(() => import('@/features/units/sections/OverviewSection').then((m) => ({ default: m.OverviewSection })))
+const SrvSection = lazy(() => import('@/features/units/sections/SrvSection').then((m) => ({ default: m.SrvSection })))
+const VesselSection = lazy(() => import('@/features/units/sections/VesselSection').then((m) => ({ default: m.VesselSection })))
+const InstalledSrvSection = lazy(() => import('@/features/relief-valves/sections/InstalledSrvSection').then((m) => ({ default: m.InstalledSrvSection })))
+const WarehouseSrvSection = lazy(() => import('@/features/relief-valves/sections/WarehouseSrvSection').then((m) => ({ default: m.WarehouseSrvSection })))
+const VesselRegistrySection = lazy(() => import('@/features/vessels/sections/VesselRegistrySection').then((m) => ({ default: m.VesselRegistrySection })))
+const AdminAlertSettingsSection = lazy(() => import('@/features/admin/sections/AdminAlertSettingsSection').then((m) => ({ default: m.AdminAlertSettingsSection })))
+const AdminAuditLogSection = lazy(() => import('@/features/admin/sections/AdminAuditLogSection').then((m) => ({ default: m.AdminAuditLogSection })))
+const AdminDataQualitySection = lazy(() => import('@/features/admin/sections/AdminDataQualitySection').then((m) => ({ default: m.AdminDataQualitySection })))
+const AdminStationBatchSection = lazy(() => import('@/features/admin/sections/AdminStationBatchSection').then((m) => ({ default: m.AdminStationBatchSection })))
+const AdminUsersSection = lazy(() => import('@/features/admin/sections/AdminUsersSection').then((m) => ({ default: m.AdminUsersSection })))
+const ActivityReportSection = lazy(() => import('@/features/reports/sections/ReportSections').then((m) => ({ default: m.ActivityReportSection })))
+const DataQualityReportSection = lazy(() => import('@/features/reports/sections/ReportSections').then((m) => ({ default: m.DataQualityReportSection })))
+const DueReportSection = lazy(() => import('@/features/reports/sections/ReportSections').then((m) => ({ default: m.DueReportSection })))
+const GasDetectorsReportSection = lazy(() => import('@/features/reports/sections/ReportSections').then((m) => ({ default: m.GasDetectorsReportSection })))
+const HosesReportSection = lazy(() => import('@/features/reports/sections/ReportSections').then((m) => ({ default: m.HosesReportSection })))
+const SrvReportSection = lazy(() => import('@/features/reports/sections/ReportSections').then((m) => ({ default: m.SrvReportSection })))
+const VesselsReportSection = lazy(() => import('@/features/reports/sections/ReportSections').then((m) => ({ default: m.VesselsReportSection })))
+const AdminPage = lazy(() => import('@/pages/AdminPage').then((m) => ({ default: m.AdminPage })))
+const AlertsPage = lazy(() => import('@/pages/AlertsPage').then((m) => ({ default: m.AlertsPage })))
+const DashboardPage = lazy(() => import('@/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })))
+const GasDetectorsPage = lazy(() => import('@/pages/GasDetectorsPage').then((m) => ({ default: m.GasDetectorsPage })))
+const HosesManagementPage = lazy(() => import('@/pages/HosesManagementPage').then((m) => ({ default: m.HosesManagementPage })))
+const NotFoundPage = lazy(() => import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })))
+const RegionDetailPage = lazy(() => import('@/pages/RegionDetailPage').then((m) => ({ default: m.RegionDetailPage })))
+const RegionsPage = lazy(() => import('@/pages/RegionsPage').then((m) => ({ default: m.RegionsPage })))
+const ReportsPage = lazy(() => import('@/pages/ReportsPage').then((m) => ({ default: m.ReportsPage })))
+const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
+const SrvManagementPage = lazy(() => import('@/pages/SrvManagementPage').then((m) => ({ default: m.SrvManagementPage })))
+const StationsPage = lazy(() => import('@/pages/StationsPage').then((m) => ({ default: m.StationsPage })))
+const StationPage = lazy(() => import('@/pages/StationPage').then((m) => ({ default: m.StationPage })))
+const UnitPage = lazy(() => import('@/pages/UnitPage').then((m) => ({ default: m.UnitPage })))
+const VesselsManagementPage = lazy(() => import('@/pages/VesselsManagementPage').then((m) => ({ default: m.VesselsManagementPage })))
+
+const developmentOnlyRoutes: RouteObject[] = import.meta.env.DEV
+  ? [{
+      path: '/auth-test',
+      lazy: async () => {
+        const { AuthTestPage } = await import('@/features/auth/AuthTestPage')
+        return { Component: AuthTestPage }
+      },
+    }]
+  : []
 
 /**
  * Routes mirror the authoritative structure:
@@ -44,23 +65,13 @@ import { VesselsManagementPage } from '@/pages/VesselsManagementPage'
  *  - the global management modules, which are aggregate views over the same
  *    records and introduce no ownership of their own
  *
- * The Unit SRVs tab and /manage/srvs read the same source records; they differ
- * only by filter.
+ * `/auth-test` is compiled into development only. Production retains the real
+ * Clerk sign-in and sign-up routes, but does not expose the diagnostic screen.
  */
 export const router = createBrowserRouter([
-  // ===================================================================
-  // TEMPORARY — Prompt 5 authentication test routes. REMOVE BEFORE PRODUCTION.
-  // Kept deliberately for acceptance testing; removal checklist in
-  // docs/authentication.md §11.
-  // ===================================================================
-  // They sit OUTSIDE AuthGate:
-  // sign-in must be reachable while signed out, and the test page must be
-  // reachable while the account is still inactive — which is exactly the state
-  // a first sign-in produces. Neither grants anything; the database decides.
   { path: '/sign-in/*', element: <SignInPage /> },
   { path: '/sign-up/*', element: <SignUpPage /> },
-  { path: '/auth-test', element: <AuthTestPage /> },
-
+  ...developmentOnlyRoutes,
   {
     path: '/',
     element: (
@@ -69,21 +80,12 @@ export const router = createBrowserRouter([
       </AuthGate>
     ),
     children: [
-      // `/` is not a page of its own: the shell's home IS the dashboard, and a
-      // named route keeps breadcrumbs and active navigation honest.
       { index: true, element: <Navigate to="/dashboard" replace /> },
       { path: 'dashboard', element: <DashboardPage /> },
-
-      // Physical hierarchy
       { path: 'regions', element: <RegionsPage /> },
       { path: 'regions/:regionId', element: <RegionDetailPage /> },
       { path: 'stations', element: <StationsPage /> },
       { path: 'stations/:stationId', element: <StationPage /> },
-      // The Unit workspace. Sections are NESTED ROUTES, not local tab state, so
-      // every one is deep-linkable and the Back button works. The pre-existing
-      // child paths are preserved exactly, so links minted before Prompt 10
-      // still resolve - `/units/:unitId/srvs` now opens the workspace with the
-      // SRVs section selected rather than the global SRV module.
       {
         path: 'units/:unitId',
         element: <UnitPage />,
@@ -98,11 +100,6 @@ export const router = createBrowserRouter([
           { path: 'srvs', element: <SrvSection /> },
         ],
       },
-
-      // Global management modules (aggregate views)
-      // Global SRV Management. `/manage/srvs` stays the canonical entry point
-      // and lands on Installed; both datasets are deep-linkable sub-routes.
-      // `/units/:unitId/srvs` is untouched and keeps its narrower Unit rule.
       {
         path: 'manage/srvs',
         element: <SrvManagementPage />,
@@ -112,9 +109,6 @@ export const router = createBrowserRouter([
           { path: 'warehouse', element: <WarehouseSrvSection /> },
         ],
       },
-      // Vessels Management. `/manage/vessels` stays the canonical entry and
-      // lands on Storage Vessels; both asset types are deep-linkable routes.
-      // The Prompt-10 Unit tabs are untouched and keep their Unit scoping.
       {
         path: 'manage/vessels',
         element: <VesselsManagementPage />,
@@ -126,10 +120,7 @@ export const router = createBrowserRouter([
       },
       { path: 'manage/gas-detectors', element: <GasDetectorsPage /> },
       { path: 'manage/hoses', element: <HosesManagementPage /> },
-
       { path: 'alerts', element: <AlertsPage /> },
-      // Reports. One workspace, report categories as nested routes so each is
-      // deep-linkable. Every report is read-only and RLS-bounded.
       {
         path: 'reports',
         element: <ReportsPage />,
@@ -145,10 +136,6 @@ export const router = createBrowserRouter([
         ],
       },
       { path: 'settings', element: <SettingsPage /> },
-
-      // Admin. The landing route is a page, not a redirect: an engineer or
-      // viewer who reaches it must see the permission state, and a redirect
-      // would bounce them somewhere that says nothing.
       {
         path: 'admin',
         element: <AdminPage />,
@@ -161,7 +148,6 @@ export const router = createBrowserRouter([
           { path: 'audit-log', element: <AdminAuditLogSection /> },
         ],
       },
-
       { path: '*', element: <NotFoundPage /> },
     ],
   },
