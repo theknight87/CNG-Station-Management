@@ -29,19 +29,22 @@ const stubClient = vi.hoisted(() => ({ value: null as unknown }))
 
 vi.mock('@/lib/supabase/client', () => {
   const client = {
-    rpc() {
-      const failure = Object.values(queryResult).find((result) => result.error)?.error ?? null
-      return Promise.resolve({
-        data: failure ? null : {
-          assets: queryResult.assets.data,
-          due: queryResult.due.data,
-          regions: queryResult.regions.data,
-          mapping: queryResult.mapping.data,
-          warehouse: queryResult.warehouse.data ?? { total: 0, overdue: 0, approaching_due: 0 },
-        },
-        error: failure,
-      })
+    from(table: string) {
+      const key =
+        table === 'v_dashboard_asset_counts' ? 'assets'
+        : table === 'v_dashboard_due_summary' ? 'due'
+        : table === 'v_dashboard_region_summary' ? 'regions'
+        : table === 'v_dashboard_mapping_summary' ? 'mapping'
+        : 'warehouse'
+      const result = queryResult[key as keyof typeof queryResult]
+      const chain = {
+        select: () => chain,
+        order: () => Promise.resolve(result),
+        maybeSingle: () => Promise.resolve(result),
+        then: (resolve: (v: unknown) => unknown) => Promise.resolve(result).then(resolve),
       }
+      return chain
+    },
   }
   stubClient.value = client
   return { useSupabaseClient: () => client }
