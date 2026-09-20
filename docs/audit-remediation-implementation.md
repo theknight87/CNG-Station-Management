@@ -6,6 +6,8 @@
 
 **Branch:** `codex/audit-remediation-20260920`
 
+**Draft pull request:** `#2` — audit remediation against `claude/stoic-noether-tu4jpm`
+
 **Production mutations:** none
 
 ## Implemented in this branch
