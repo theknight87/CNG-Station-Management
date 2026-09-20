@@ -35,6 +35,11 @@
 - Responsive inspection at 390×844: no page-level horizontal overflow; search is 333×44 px;
   tested selects are at least 44 px high; the 1,222 px technical table stays inside its 349 px
   scroll region and displays the overflow cue.
+- Automated browser verification after installing the repository-matched Playwright Chromium:
+  `verify:ui` passed **32/32** checks and `verify:dashboard` passed **19/19** checks across
+  1440×900, 1024×768, and 390×844. The checks reported no console errors or page-level horizontal
+  overflow, and covered keyboard focus, navigation, Arabic text, drawer behavior, table density,
+  dashboard arithmetic, and mobile metric sizing.
 - `npm audit`: two moderate findings, zero high or critical findings; both remaining findings are
   in the ExcelJS-to-UUID dependency chain.
 
