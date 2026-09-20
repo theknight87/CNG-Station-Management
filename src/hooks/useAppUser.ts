@@ -54,6 +54,7 @@ export function useAppUser(): AppUserState {
       const { data, error } = await supabase
         .from('app_users')
         .select('id, auth_user_id, clerk_user_id, role, is_active, full_name')
+        .eq('auth_user_id', session.user.id)
         .maybeSingle()
 
       if (cancelled) return
