@@ -1,28 +1,27 @@
 # Cloudflare Pages deployment — CNG Station Management
 
-**Status: DEPLOYED.** The isolated project now exists and serves
-`https://cng-station-management.pages.dev`. Written in Prompt 15.2A while it did not yet exist
-(see `docs/alerts-notifications.md` §22 for how the earlier, incorrect claim arose) and updated in
-Prompt 15.2B. The settings below are what the project is built with; keep them.
+**Status: DEPLOYED AND LIVE-VERIFIED.** The isolated project serves
+`https://cng-station-management.pages.dev`. On 20 September 2026, PR #3 merged the verified
+remediation to `main` at `75c1111`; Cloudflare deployed it with the production environment.
 
 ---
 
-## 1. The account currently holds one Pages project, and it is not this one
+## 1. Isolation boundary
 
 | Project | Domain | Repository | Relationship to this project |
 | --- | --- | --- | --- |
+| `cng-station-management` | `cng-station-management.pages.dev` | `theknight87/CNG-Station-Management` | **THIS PROJECT.** |
 | `cargas-coding-system` | `coding-system-new.pages.dev` | `theknight87/coding-system-new` | **NONE.** Separate application. Do not modify, redeploy, inspect, copy from, or attach anything to it. |
 
-CNG Station Management gets a **completely separate** Pages project. Nothing is reused from the
+CNG Station Management uses a **completely separate** Pages project. Nothing is reused from the
 Coding System: not environment variables, not secrets, not build settings, not domains, not VAPID
 keys. This is the isolation rule in CLAUDE.md §2, and it is not negotiable for convenience.
 
-## 2. Why this was not done automatically
+## 2. Deployment path
 
-`api.cloudflare.com` is answered **403 at CONNECT** by this environment's network policy
-(re-checked once for this prompt, not retried in a loop), and no authorized Cloudflare tooling is
-connected to this session. Creating the project therefore requires the dashboard. **Nothing was
-changed, and nothing was guessed.**
+The Pages project uses GitHub integration. A pull-request branch receives a preview deployment;
+merging to `main` triggers production. This was observed directly during PRs #2 and #3. Do not use
+a manual Direct Upload as a second release path unless the Git integration is deliberately retired.
 
 ## 3. Settings — read from the repository, not assumed
 
@@ -32,7 +31,7 @@ A clean production build was run to confirm them (`rm -rf dist && npm run build`
 | --- | --- |
 | Project name | `cng-station-management` |
 | Repository | `theknight87/CNG-Station-Management` |
-| Production branch | `claude/stoic-noether-tu4jpm` |
+| Production branch | `main` |
 | Framework preset | **None** (or "Vite" — it only prefills the two fields below) |
 | Build command | `npm run build` |
 | Build output directory | `dist` |
@@ -73,11 +72,12 @@ duplicate a repository-managed one, and the two would drift.
 - a Content Security Policy covering only the Clerk, Supabase, Cloudflare challenge, and local
   origins required by the application.
 
-The policy is implemented and locally build-verified, but it does not protect the public site
-until this branch is deployed. After deployment, inspect the responses for `/`, one hashed JS
-asset, `/sw.js`, and a direct SPA deep link. Exercise Clerk sign-in, Supabase queries, and Web Push
-while watching for CSP violations. Tighten Clerk wildcards to the production Frontend API origins
-after the production instance and custom domain are final.
+The policy is live-verified on the public site. The root sends the CSP and supporting browser
+headers; the deployed hashed JavaScript sends `public, max-age=31536000, immutable`; and `sw.js`
+sends `no-store, must-revalidate, no-cache`. Clerk sign-in renders without a browser error. Full
+authenticated Supabase and Web Push verification still needs approved credentials. Tighten Clerk
+wildcards to the production Frontend API origins after the production instance and custom domain
+are final.
 
 ## 5. Environment variables
 

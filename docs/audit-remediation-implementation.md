@@ -4,11 +4,13 @@
 
 **Implementation baseline:** `a93b027fa8d1dbab0e3472ce31230c15b9fe9a48`
 
-**Branch:** `codex/audit-remediation-20260920`
+**Implementation branch:** `codex/audit-remediation-20260920`
 
-**Draft pull request:** `#2` — audit remediation against `claude/stoic-noether-tu4jpm`
+**Merged pull requests:** `#2` into `claude/stoic-noether-tu4jpm`; `#3` into `main`
 
-**Production mutations:** none
+**Production release:** `main` merge `75c1111b48bfa2b4df60c95c32949f06e4eae8ca`, deployed by Cloudflare Pages
+
+**Database mutations:** none
 
 ## Implemented in this branch
 
@@ -43,15 +45,17 @@
 - `npm audit`: two moderate findings, zero high or critical findings; both remaining findings are
   in the ExcelJS-to-UUID dependency chain.
 
-These are local results, not proof that the public Cloudflare deployment contains this branch.
+The public Cloudflare deployment was independently verified after the `main` merge. It serves
+`assets/index-2qGHPcuY.js`, loads the Clerk sign-in surface without browser errors, applies the new
+security headers, caches the hashed JavaScript as `public, max-age=31536000, immutable`, and serves
+`sw.js` with `no-store, must-revalidate, no-cache`.
 
 ## Claude/operator handoff
 
 Perform these steps in order and preserve every approval gate:
 
-1. Review and merge this branch. Deploy the frontend to a preview first, then verify direct deep
-   links, response headers, asset caching, Clerk sign-in, Supabase calls, Web Push, and all major
-   route chunks before promoting it.
+1. Frontend merge and Cloudflare deployment are complete. Finish authenticated live verification
+   for Supabase calls, Web Push, and role-specific major routes using approved test accounts.
 2. Create the next forward-only migration with the official Supabase CLI. Audit every current RPC
    caller, revoke default function execution from `PUBLIC`, `anon`, `authenticated`, and
    `service_role` where appropriate, then explicitly regrant only the functions each role needs.
@@ -75,7 +79,8 @@ Perform these steps in order and preserve every approval gate:
 
 ## Non-goals and safeguards
 
-- No production migration, import, mapping decision, Cloudflare deployment, Clerk change, or
-  secret rotation was performed by this implementation.
-- The changes do not claim live performance improvement until the deployed site is measured again.
+- No production migration, import, mapping decision, Clerk change, or secret rotation was
+  performed. The only production mutation was the requested Cloudflare frontend deployment.
+- Bundle reduction is build-verified; a fresh live Lighthouse/RUM comparison is still required
+  before claiming a field-performance improvement.
 - Migration 0055 remains a preview-and-approval workflow, not permission to import automatically.
