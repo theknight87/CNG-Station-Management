@@ -86,41 +86,19 @@ export function useDashboard(): { state: DashboardState; reload: () => void } {
       }
       if (!cancelled) setState({ status: 'loading' })
 
-      const [assets, due, regions, mapping, warehouse] = await Promise.all([
-        supabase.from('v_dashboard_asset_counts').select('asset_kind, total'),
-        supabase.from('v_dashboard_due_summary').select('asset_kind, due_status, total'),
-        supabase
-          .from('v_dashboard_region_summary')
-          .select(
-            'region_id, region_code, region_name, sort_order, stations, units, assets, overdue, approaching_due, unresolved_mapping',
-          )
-          .order('sort_order'),
-        supabase.from('v_dashboard_mapping_summary').select('asset_kind, mapping_status, total'),
-        supabase.from('v_dashboard_warehouse_summary').select('total, overdue, approaching_due').maybeSingle(),
-      ])
+      const { data, error } = await supabase.rpc('cng_dashboard_snapshot')
 
       if (cancelled) return
 
-      // ANY failure fails the whole dashboard. Rendering four working panels
-      // beside one silently-empty panel would be the same lie in a smaller box.
-      const failure = [assets, due, regions, mapping, warehouse].find((r) => r.error)
-      if (failure?.error) {
-        setState({ status: 'error', message: failure.error.message })
+      if (error) {
+        setState({ status: 'error', message: error.message })
         return
       }
 
+      const snapshot = data as DashboardData
       setState({
         status: 'ready',
-        data: {
-          assets: (assets.data ?? []) as AssetCount[],
-          due: (due.data ?? []) as DueRow[],
-          regions: (regions.data ?? []) as RegionRow[],
-          mapping: (mapping.data ?? []) as MappingRow[],
-          // An empty warehouse table yields no row at all from an aggregate
-          // with no GROUP BY; zero is the correct reading THERE, because the
-          // query succeeded.
-          warehouse: (warehouse.data as WarehouseRow | null) ?? { total: 0, overdue: 0, approaching_due: 0 },
-        },
+        data: snapshot,
       })
     }
 
