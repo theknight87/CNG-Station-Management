@@ -15,10 +15,10 @@ its safety-critical components — notably Safety Relief Valves (SRVs).
 | Routing | React Router |
 | UI | Tailwind CSS + shadcn/ui |
 | Linting | ESLint (typescript-eslint, react-hooks, react-refresh) |
-| Authentication | Clerk — app `CNG Station Management` *(wired in a later phase)* |
-| Database | Supabase PostgreSQL — project `cng-station-management` *(no tables yet)* |
+| Authentication | Clerk — app `CNG Station Management`, integrated through Supabase Third-Party Auth |
+| Database | Supabase PostgreSQL — project `cng-station-management`, with RLS-protected operational data |
 | Authorization | Supabase Row Level Security |
-| Hosting | Cloudflare Pages — project `cng-station-management` *(**NOT YET CREATED** — no CNG Pages project exists; see `docs/deployment-cloudflare.md`)* |
+| Hosting | Cloudflare Pages — project `cng-station-management` at `cng-station-management.pages.dev` |
 | Email | Resend |
 | Web Push | standard Web Push with this project's own VAPID keys |
 | Scheduling | Supabase Cron + Edge Functions |
@@ -48,7 +48,6 @@ src/
 ├── pages/          thin route entry points that render a feature view
 ├── hooks/          shared React hooks
 ├── lib/            clerk/ and supabase/ configuration and clients
-├── services/       data access, one module per domain
 ├── types/          domain vocabulary; generated DB types land here later
 └── utils/          pure helpers (date arithmetic, deterministic normalization)
 
@@ -79,5 +78,9 @@ Days Left is always **derived** from the next due date, never read from a source
 
 ## Current status
 
-Project scaffold. No database tables, no authentication wiring, and no data access yet —
-screens render deliberately empty placeholders rather than sample data.
+The application includes authentication, role- and Region-scoped authorization, asset-management
+departments, alerts, reports, administration, audited imports, and Cloudflare Pages deployment.
+The repository contains migrations through `0055`; latest recorded production evidence is through
+`0053`, while `0054` and `0055` remain intentionally undeployed pending their documented approval
+gates. See [`docs/audit-remediation-implementation.md`](./docs/audit-remediation-implementation.md)
+for the current hardening branch, verification evidence, and deployment handoff.

@@ -62,6 +62,23 @@ SPA rather than 404.
 **Do not add a Cloudflare-side redirect or rewrite rule.** A second, dashboard-managed rule would
 duplicate a repository-managed one, and the two would drift.
 
+## 4A. Browser security and cache policy
+
+`public/_headers` is the repository-owned Cloudflare Pages response policy. Vite copies it to
+`dist/_headers` during the production build. It currently provides:
+
+- immutable one-year browser caching for fingerprinted `/assets/*` files;
+- revalidation/no-store behavior for HTML and `sw.js`;
+- clickjacking, MIME-sniffing, referrer, feature, opener, and transport controls; and
+- a Content Security Policy covering only the Clerk, Supabase, Cloudflare challenge, and local
+  origins required by the application.
+
+The policy is implemented and locally build-verified, but it does not protect the public site
+until this branch is deployed. After deployment, inspect the responses for `/`, one hashed JS
+asset, `/sw.js`, and a direct SPA deep link. Exercise Clerk sign-in, Supabase queries, and Web Push
+while watching for CSP violations. Tighten Clerk wildcards to the production Frontend API origins
+after the production instance and custom domain are final.
+
 ## 5. Environment variables
 
 Pages → the new project → **Settings → Environment variables → Production** (and Preview, if you
@@ -112,6 +129,8 @@ not configured for this deployment"* — which is the code being honest, not a b
    System resource. The repository contains no reference to it.
 6. **Web Push:** `/alerts` → **Enable notifications** → accept the browser prompt. The subscription
    is saved by `cng_save_push_subscription`, which derives the owning user from the session.
+7. **Headers and caching:** verify the root has the browser security policy, hashed `/assets/*`
+   responses are `public, max-age=31536000, immutable`, and `/sw.js` is not cached persistently.
 
 Record each result. Until they pass, Cloudflare deployment is **not** LIVE VERIFIED.
 

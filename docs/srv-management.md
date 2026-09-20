@@ -285,3 +285,179 @@ bucket so it can never reach the summary.
 deployed, 2,662 SRVs (1,054 `needs_unit_mapping` / 1,608 `needs_station_mapping`), unit and
 equipment FKs 0, decisions 281, `asset_mapping_audit` 1,054, `audit_logs` 285, aliases 0, staging
 7,163 — and ONE distinct `updated_at` in each of the mapped and unmapped groups, so no row moved.
+
+## Prompt 25J-C — migration 0053 deployed, frontend shipped to `main`
+
+Production went **52 -> 53**, recorded once (`20260918092519 installed_srv_summary`), file SHA-256
+`18abe4a3a308cf51f65ae0a26161c7b18727f203551a223d1a5180fdb3aa1a49` matching approved commit
+`4d3548a` byte for byte. Migrations 0044-0052 were verified byte-identical first.
+
+**DEPLOYED CONTRACT**: `v_installed_srv_summary` exists with `security_invoker=true`, exactly
+**7 columns** and exactly **1 row**; `authenticated` holds SELECT and **`anon` has none**
+(`has_table_privilege` false). The `postgres: TRIGGER` entry is the view owner's implicit privilege,
+present on every view in the schema — not a browser write grant (the Prompt 20 lesson). Nothing else
+moved: `v_installed_srv_management` definition hash `322050bb…`, 70 policies, 33 tables, 241
+constraints, **0 views running with owner rights**, 0 tables without RLS. The migration executes no
+DML.
+
+**EVERY METRIC INDEPENDENTLY RECOMPUTED AND PROVED EQUAL** — not compared to hard-coded
+expectations. Read under the owner's real Admin RLS, the view returns
+**total 2,662 · overdue 302 · attention 598 · needs_station_mapping 1,608 · needs_unit_mapping
+1,054 · needs_equipment_mapping 0 · conflict 0**, and each was re-derived straight from
+`installed_relief_valves` and from the alert engine's own `cng_due_status()` rather than from the
+view the summary reads. All seven equality checks returned true; `resolved` is 0 independently.
+
+**TIMING, REPORTED HONESTLY IN BOTH DIRECTIONS.** The single summary statement measures
+**1513-1600 ms** over five runs. That is SLOWER than any individual count in the old fan-out
+(334-1047 ms) because it computes all seven aggregates in one pass — but it is **ONE** statement
+instead of seven concurrent ones, and it sits at **~19% of the 8s `authenticated` budget** where the
+fan-out's real production statements peaked at **7910 / 7855 / 7581 / 7327 ms**, i.e. at the cliff
+edge. The win is margin and round trips, not per-statement speed, and the timeout was not raised.
+
+**DATA FIREWALL — NOTHING WROTE.** 2,662 SRVs, station FK 1,054, unit FK 0, equipment FK 0,
+decisions 281, `asset_mapping_audit` 1,054 with all 1,054 still on batch
+`2fb604cf-fdc6-47c4-933f-d0e052ae2fa3`, `audit_logs` 285, aliases 0, stations 157, units 188,
+staging 7,163 — and the mapped rows still share ONE `updated_at` of `2026-09-18 08:46:45.502608+00`,
+the 25J batch timestamp, so no row moved and the historical audit row is untouched.
+
+**`main` FAST-FORWARDED `998c5e3 -> 4d3548a`**, and the approved commit is confirmed an ANCESTOR of
+`main` (the 24D lesson: pushed somewhere is not deployed). The merge carried 11 commits, and across
+all of them the ONLY `src/` changes are the two 25J-B files — `useSrvManagement.ts` and its test —
+so no unrelated frontend change rode along. Migrations 0051, 0052 and 0053 were all already applied
+to production, and a Pages build applies no migrations. The built bundle was grepped directly and
+contains `v_installed_srv_summary`.
+
+**CLOUDFLARE IS NOT OBSERVED**: `cng-station-management.pages.dev` and `api.cloudflare.com` both
+answer 000/blocked at CONNECT from this environment (re-tested, not assumed). The push to `main` is
+confirmed at the GitHub remote; the Pages build is **not** verified here.
+
+**Gate exit 0**: frontend 631, schema 285, authorization 624, 53 migrations from zero, upgrade
+replay 52 -> 53, report contract PASS, batch matrix 64/64, installed-SRV import 39/39, single-SRV
+mapping 15/15.
+
+## Prompt 25K — the batch audit summary read the world AFTER changing it (0054, not deployed)
+
+**THE DEFECT, CONFIRMED IN THE DEPLOYED BODY.** The Prompt 25J batch mapped 1,054 SRVs correctly,
+but its `audit_logs` row recorded `byte_exact_rows: 0` where the truth was **839** (with **215** by
+normalization). Root cause re-derived from `pg_proc.prosrc` in production rather than from memory:
+the deployed `cng_irv_station_batch_commit` calls `cng_irv_station_batch_preview()` **TWICE** — once
+at Gate 2, correctly, before any mutation, and once more INLINE in the audit payload. That second
+call runs AFTER the UPDATE in the same transaction, when the mapped rows are no longer
+`needs_station_mapping`, so the eligible set is EMPTY and every eligibility-derived count reads 0.
+
+**IT WAS A REPORTING DEFECT ONLY.** The mapping, the row and identity counts, the fingerprint, the
+per-row `asset_mapping_audit` and every guard were already taken from the PRE-UPDATE preview. Only
+the one informational field re-read the world after changing it.
+
+**THE FIX — ONE MIGRATION, 0054** (SHA-256 `b9b199ae…`), replacing exactly ONE function body and
+adding no table, column, enum, constraint, index, policy, grant, view or new function. Gate 2 now
+captures every preview-derived value the audit needs — both mechanism counts at row AND identity
+level, distinct target Stations, the per-Region breakdown and the one-Unit population — from the
+SAME single preview whose fingerprint is compared against the approval. **The body now calls the
+preview EXACTLY ONCE, and that is machine-checked** (IRVAUD-2 re-derives the count from
+`pg_proc.prosrc`; IRVAUD-2b proves the detector would catch a second call). The payload also now
+records `units_assigned: 0` and `equipment_assigned: 0` beside `rows_under_one_unit_station`, so the
+refusal of the forbidden inference is legible in the history rather than merely true.
+
+**NOTHING ELSE CHANGED**, carried over verbatim: candidate eligibility, the same-Region requirement,
+both evidence mechanisms, fingerprint construction, the row-count / identity-count / stale-state /
+lineage / hash guards, Admin-only authorization with a server-derived actor, atomicity, the
+Station-only UPDATE, the `needs_station_mapping -> needs_unit_mapping` transition, per-row audit,
+`bulk_batch_id` semantics, replay refusal, RLS and permissions. The UPDATE still names `station_id`
+and `mapping_status` ONLY (IRVAUD-33 asserts no unit or equipment column appears in it).
+
+**THE REGRESSION WAS PROVED TO FAIL AGAINST 0052 FIRST.** A disposable batch carrying BOTH
+mechanisms (839 byte-exact + 215 normalization-only, 1,054 rows / 127 identities) gives
+**36/36 PASS against 0054 and 9 FAILURES against the 0052 body** — and, tellingly, the 27 that pass
+under BOTH are the mapping-semantics and guard assertions, which is precisely the point: the mapping
+was never wrong. The suite proves the recorded figures equal the pre-commit preview row AND that the
+recorded fingerprint IS the approved one (IRVAUD-9/10), while the post-commit preview is empty
+(IRVAUD-11) — so the values demonstrably come from before the UPDATE, not after.
+
+**THE HISTORICAL AUDIT ROW IS UNTOUCHED AND WILL STAY THAT WAY.** Batch
+`2fb604cf-fdc6-47c4-933f-d0e052ae2fa3` still records `byte_exact_rows: 0` at
+`2026-09-18 08:46:45.502608+00`, with all 1,054 per-row audit rows intact. `audit_logs` is
+append-only evidence; a batch that really did record 0 is part of the record, and no corrective row
+was inserted or backfilled. **The true composition of that batch is 839 byte-exact + 215
+normalization-only**, independently verified from the canonical rows in Prompt 25J and recorded here
+instead.
+
+**Gate exit 0**: frontend 631, schema 285, authorization 624, 54 migrations from zero, upgrade
+replay 53 -> 54; audit suite **36/36**, batch matrix 64/64, installed-SRV import 39/39, single-SRV
+mapping 15/15. Migrations 0052 (`828dd03a…`) and 0053 (`18abe4a3…`) are byte-identical and were not
+modified.
+
+**0054 IS NOT DEPLOYED.** Production remains at **53 migrations** with the 0052 commit body still
+live (`107b62f5…`, two preview calls), 2,662 SRVs (1,054 / 1,608), unit and equipment FKs 0,
+decisions 281, `asset_mapping_audit` 1,054, `audit_logs` 285, aliases 0, and the mapped rows still
+on the single 25J timestamp. No DML, no mapping, no audit correction.
+
+## Prompt 27 — Warehouse SRV canonical import (0055 built and locally verified; NOT deployed)
+
+**One additive migration, `0055_warehouse_srv_import.sql`** (SHA-256 `4223c55c…`), adding three
+`service_role`-only functions and NO table, column, enum, constraint or index. It mirrors the 0051
+installed-SRV import rather than inventing a second architecture.
+
+**A PROMPT 26 STATEMENT WAS WRONG AND IS CORRECTED HERE.** I reported warehouse SRVs as having
+"zero hierarchy dependency, 0 rows with a target region or station". That came from querying key
+names that do not exist in the payload. The real keys are `assigned_region` (**1,775 rows**) and
+`assigned_station_raw` (**1,774 rows, 303 distinct names**). The conclusion — that the import needs
+no mapping decision — still holds, but for a more precise reason, stated below.
+
+**TARGET REGION IS RESOLVED; TARGET STATION IS NOT.** All 1,775 `assigned_region` values are among
+the six canonical Region names (**0 non-canonical**, verified), so resolving them is a lookup against
+a closed set, not an inference — 1,775 rows get `target_region_id`. `assigned_station_raw` is the
+SAME evidence question the installed-SRV batches answer, and that is an owner-approved, content-bound,
+audited decision, so **`target_station_id` is NULL on all 2,188**. For the record, 581 of those rows
+would match a canonical Station under the approved rule — offered as a separate step, not taken here.
+
+**ONE FIELD HAS NO CANONICAL DESTINATION, REPORTED NOT DROPPED**: `assigned_station_raw` has no
+`target_station_name_raw` column. Its text survives inside `source_raw` (WRV-24 asserts all 1,774),
+but it is not queryable as a field. Adding that column is a follow-up decision, deliberately not taken.
+
+**FIELD MAPPING — every staged key has a home**: warehouse_code, serial_number(+raw, +status),
+part_number, manufacturer(+raw), size_type, port_in→inlet_size, port_out→outlet_size, set_pressure
+{raw,min,max,unit}, calibration_location, availability_status_raw→availability_status(+raw), notes,
+and three date triples (issue / last_calibration / next_due_date) each as raw+date+precision. Dates
+map only at `exact_date`; `wrv_*_prec_ck` enforce it.
+
+**PRE-FLIGHT AGAINST REAL PRODUCTION DATA — 0 type hazards**: pressure units are `BAR` 1,360 /
+`PSI` 828 with **0 outside the enum**; **0** date precisions and **0** serial statuses outside their
+enums; **0** non-numeric pressures; **0** rows with min > max. The five availability phrasings map
+1:1 onto the five enum labels, and anything else would fail the cast and abort the transaction
+rather than be guessed. (My first local fixture used `bar` and correctly blew up — the fixture was
+wrong, not the migration.)
+
+**PRODUCTION PREVIEW (ANALYTICAL — 0055 is not deployed)**: run `cdad1e5e…`, manifest `764d3c0f…`,
+**eligible 2,188 · excluded 0 · already imported 0 · invalid evidence 0 · 2,188 distinct keys and
+2,188 distinct hashes · 0 duplicate keys · serial 2,187 · warehouse_code 2,187 · part_number 2,167 ·
+0 duplicate-serial groups · target Region 1,775 · target Station 0 · assigned Station name 1,774 ·
+exact next 1,854 / last 1,854 / issue 1,480 · canonical now 0.**
+ANALYTICAL fingerprint `9354a9c77ab22c92ee206eba34605c619d24b33207350c6f0be80b03a4de7f69` — **NOT an
+executable approval token**, because the 22B rule requires one from the DEPLOYED function.
+
+**FOCUSED SUITE: 36/36 PASS, exit 0** (`supabase/tests/warehouse_srv_import.sql`) at full 2,188-row
+scale — import completeness and lineage, every supported field equal to source, NULL staying NULL,
+no fabricated Station (and Unit/equipment/mapping_status columns do not exist on this table at all),
+Region resolved only from the canonical set, replay refused, rollback atomic, wrong fingerprint /
+manifest / row count each refused, installed SRVs and all four families untouched, security
+service_role-only with no dynamic SQL, and the management view returning all 2,188 with due status.
+
+**UI CONTRACT READY**: all **33** columns `/manage/srvs/warehouse` selects exist in
+`v_warehouse_srv_management` (**0 missing**); sorts resolve; the view computes `days_left` only at
+exact precision. **One honest UX consequence**: `is_unassigned_stock` is `target_station_id IS NULL`,
+so all 2,188 will read as unassigned stock even though 1,774 carry an assigned Station NAME. That is
+truthful about the canonical state and is the cost of not fabricating the FK.
+
+**MIGRATION SEQUENCING — NO RENUMBERING NEEDED.** Production is at 53; the repository holds
+undeployed 0054 (the IRV batch audit fix) and now 0055. The two are **independent** — 0054 replaces
+the IRV batch commit function, 0055 creates warehouse import functions, disjoint objects — so 0055
+may be deployed alone. That leaves a numbering gap in `schema_migrations` until 0054 is deployed,
+which is bookkeeping, not a hazard, and the from-zero replay applies 0054 then 0055 cleanly.
+
+**Gate exit 0**: frontend 631, schema 285, authorization 624, 55 migrations from zero, upgrade replay
+53 → 54 → 55. **0052/0053/0054 byte-identical and unmodified.**
+
+**NOT DEPLOYED, NOTHING WRITTEN**: production stays at 53 migrations, 0 `cng_wrv_import*` functions,
+`warehouse_relief_valves` **0**, installed SRVs 2,662 (1,054/1,608), four families 100/91/62/26,
+decisions 281, audit 285, aliases 0.
