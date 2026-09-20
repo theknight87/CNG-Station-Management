@@ -475,21 +475,20 @@ sign-out use Clerk's components.
 This is **UX only**. Hiding a screen is not security; the database refuses unauthorized reads and
 writes regardless of what is rendered. The professional interface begins in Prompt 7.
 
-### TEMPORARY routes — remove before production
+### Production routes and development-only diagnostics
 
-`/sign-in`, `/sign-up` and `/auth-test` exist only to perform and repeat the real authentication
-test. They are **kept on purpose** for later acceptance testing, and every one of their source
-files says TEMPORARY at the top.
+`/sign-in/*` and `/sign-up/*` are the application authentication routes and remain available in
+production. `/auth-test` is a diagnostic route compiled only when `import.meta.env.DEV` is true;
+the production route tree and production bundle do not contain it.
 
-They sit **outside `AuthGate`** by design: sign-in must work while signed out, and `/auth-test`
-must be reachable while an account is still inactive — the state a first sign-in produces.
-Reachability grants nothing. Every value the page shows is what RLS chose to return for that
-caller, and an inactive account sees only its own `app_users` row.
+The sign-in and sign-up routes sit outside `AuthGate` by design because they must work while signed
+out. The development diagnostic also sits outside the gate so an inactive first-time account can
+exercise the provisioning state locally. Reachability grants nothing: every value it shows is
+still constrained by RLS.
 
-Removal checklist for the production cut: delete `src/features/auth/SignInPage.tsx`,
-`SignUpPage.tsx`, `AuthTestPage.tsx`, their exports in `src/features/auth/index.ts`, and the three
-route entries at the top of `src/routes.tsx`. Nothing else depends on them. Keep
-`src/lib/auth/tokenTiming.ts` only if the diagnostic is still wanted.
+Regression coverage in `src/components/__tests__/productionHardening.test.tsx` protects this
+boundary. A future cleanup may delete `AuthTestPage.tsx` entirely, but production safety no longer
+depends on remembering a manual removal step.
 
 ---
 
@@ -498,7 +497,6 @@ route entries at the top of `src/routes.tsx`. Nothing else depends on them. Keep
 | Item | Phase | Why |
 | --- | --- | --- |
 | Moving authz helpers to a non-exposed schema | Prompt 22 | Supabase's linter WARNs that `cng_current_role()` and `cng_has_region_grant()` are callable by `authenticated` via `/rest/v1/rpc/`. Not exploitable: neither takes a user-supplied identity, both answer only about the caller — so a caller learns their own role and their own grant, which they may already read. Tracked, not blocking |
-| Removing `/sign-in`, `/sign-up` and `/auth-test` | before production | temporary Prompt-5 routes, kept deliberately for acceptance testing (§11) |
 | Manager access to the user directory | business decision | currently manager has none, per "limit to actual operational need"; re-confirmed and asserted in Prompt 19 (ADMSEC-8/9) |
 | Manager managing region access | business decision | currently admin only; asserted in Prompt 19 |
 | Engineer Region-scoped mapping (D8) | Prompt 20+ | the mapping path is admin-only in Prompt 19. A SECURITY DEFINER function bypasses the RLS that would otherwise bound an engineer to their Regions, so the scope must be enforced INSIDE the function and given its own hostile pass rather than added as a clause |

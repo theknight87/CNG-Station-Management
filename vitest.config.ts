@@ -8,9 +8,10 @@ export default defineConfig({
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
   test: {
-    // jsdom only where a component test needs it; the import-pipeline suites
-    // run in plain node and must not pay for a DOM.
-    environmentMatchGlobs: [['src/components/**', 'jsdom'], ['src/features/**', 'jsdom']],
+    // Vitest 4 removed environmentMatchGlobs. The suite is predominantly UI
+    // integration coverage, so jsdom is the safe default; individual pure-node
+    // files can opt out with an @vitest-environment annotation if needed.
+    environment: 'jsdom',
     globals: false,
     setupFiles: ['src/test/setup.ts'],
   },

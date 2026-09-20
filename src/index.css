@@ -168,6 +168,7 @@
 
   * {
     @apply border-border;
+    touch-action: manipulation;
   }
 
   body {
@@ -210,6 +211,42 @@
    * regression, so it is enforced here rather than per component. */
   :focus-visible {
     @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  /* Technical tables intentionally preserve their natural width. Make that
+   * behavior discoverable and comfortable without turning rows into cards. */
+  .table-scroll {
+    scrollbar-color: hsl(var(--muted-foreground) / 0.55) hsl(var(--muted));
+    scrollbar-width: thin;
+  }
+
+  @media (max-width: 639px) {
+    /* Search must own a complete row before the narrower filters wrap below it;
+     * this prevents a flexible label collapsing to an icon-sized field. */
+    [role='search'] label:has(input[type='search']) {
+      flex: 0 0 100%;
+      min-width: 100%;
+    }
+
+    [role='search'] input,
+    [role='search'] select,
+    [role='search'] button,
+    header button,
+    [role='dialog'] button,
+    nav[aria-label$='pagination'] button {
+      min-height: 2.75rem;
+    }
+
+    header button,
+    [role='dialog'] button {
+      min-width: 2.75rem;
+    }
+
+    .table-scroll {
+      /* The inner shadow remains visible until the user reaches the right edge,
+       * giving a second, non-text cue that columns continue off-screen. */
+      box-shadow: inset -12px 0 12px -12px hsl(var(--foreground) / 0.35);
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {

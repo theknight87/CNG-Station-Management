@@ -38,15 +38,20 @@ export function TableScroll({
   className?: string
 }) {
   return (
-    <div
-      className={cn('relative w-full overflow-auto rounded border bg-card', className)}
-      // A scrollable region must be reachable by keyboard, or its content is
-      // unreachable for anyone not using a mouse.
-      tabIndex={0}
-      role="region"
-      aria-label={`${label} — scrollable`}
-    >
-      {children}
+    <div className="min-w-0">
+      <p className="mb-1 text-right text-xs text-muted-foreground sm:hidden" aria-hidden="true">
+        Swipe for more columns →
+      </p>
+      <div
+        className={cn('table-scroll relative w-full overflow-auto rounded border bg-card', className)}
+        // A scrollable region must be reachable by keyboard, or its content is
+        // unreachable for anyone not using a mouse.
+        tabIndex={0}
+        role="region"
+        aria-label={`${label} — horizontally scrollable table`}
+      >
+        {children}
+      </div>
     </div>
   )
 }
