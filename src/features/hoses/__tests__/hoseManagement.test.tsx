@@ -46,6 +46,7 @@ vi.mock('@/lib/supabase/client', () => {
       const chain: Record<string, unknown> = {
         select: (_c?: string, opts?: { head?: boolean }) => {
           head = Boolean(opts?.head)
+          calls.list.push(`${table}.select`)
           return chain
         },
         eq: (col: string, value: unknown) => {
@@ -73,7 +74,16 @@ vi.mock('@/lib/supabase/client', () => {
           return Promise.resolve(table === 'v_station_summary' ? replies.stations : replies.hoses)
         },
         then: (resolve: (v: unknown) => unknown) => {
-          const reply =
+          const n = replies.headCount.count ?? 0
+          const reply = table === 'v_hose_summary'
+            ? {
+                data: replies.headCount.error ? null : [{
+                  total: n, overdue: n, attention: n, needs_unit_mapping: n,
+                  unknown_date: n, serial_missing: n, serial_duplicate: n,
+                }],
+                error: replies.headCount.error,
+              }
+            :
             table === 'v_dashboard_region_summary' ? replies.regions
             : table === 'v_station_summary' ? replies.stations
             : head ? replies.headCount

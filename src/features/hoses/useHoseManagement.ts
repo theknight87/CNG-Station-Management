@@ -278,37 +278,22 @@ export function useHoseSummary(): { state: Loadable<HoseSummary>; reload: () => 
       }
       if (!cancelled) setState({ status: 'loading' })
 
-      const view = () => supabase.from('v_hose_registry').select('id', { count: 'exact', head: true })
-
-      const [total, overdue, attention, needsUnit, unknownDate, missing, duplicate] = await Promise.all([
-        view(),
-        view().eq('due_status', 'overdue'),
-        view().in('due_status', ATTENTION_BUCKETS),
-        view().eq('mapping_status', 'needs_unit_mapping'),
-        view().eq('due_status', 'unknown'),
-        view().eq('serial_missing', true),
-        view().eq('serial_duplicate', true),
-      ])
+      const { data, error } = await supabase.from('v_hose_summary').select('*')
       if (cancelled) return
+      if (error) {
+        setState({ status: 'error', message: error.message })
+        return
+      }
 
-      const all = [total, overdue, attention, needsUnit, unknownDate, missing, duplicate]
-      const failure = all.find((r) => r.error)
-      if (failure?.error) {
-        setState({ status: 'error', message: failure.error.message })
+      const summary = (data?.[0] ?? null) as HoseSummary | null
+      if (!summary) {
+        setState({ status: 'error', message: 'Hose summary returned no row' })
         return
       }
 
       setState({
         status: 'ready',
-        data: {
-          total: total.count ?? 0,
-          overdue: overdue.count ?? 0,
-          attention: attention.count ?? 0,
-          needs_unit_mapping: needsUnit.count ?? 0,
-          unknown_date: unknownDate.count ?? 0,
-          serial_missing: missing.count ?? 0,
-          serial_duplicate: duplicate.count ?? 0,
-        },
+        data: summary,
       })
     }
 

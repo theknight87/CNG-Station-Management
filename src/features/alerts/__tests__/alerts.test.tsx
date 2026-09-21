@@ -45,6 +45,7 @@ vi.mock('@/lib/supabase/client', () => {
       const chain: Record<string, unknown> = {
         select: (_c?: string, opts?: { head?: boolean }) => {
           head = Boolean(opts?.head)
+          calls.list.push(`${table}.select`)
           return chain
         },
         eq: (col: string, value: unknown) => {
@@ -73,7 +74,16 @@ vi.mock('@/lib/supabase/client', () => {
           return Promise.resolve(table === 'v_station_summary' ? replies.stations : replies.alerts)
         },
         then: (resolve: (v: unknown) => unknown) => {
-          const reply =
+          const n = replies.headCount.count ?? 0
+          const reply = table === 'v_alert_summary'
+            ? {
+                data: replies.headCount.error ? null : [{
+                  total: n, overdue: n, due_today: n, due_7: n,
+                  unread: n, unacknowledged: n, delivery_failed: n,
+                }],
+                error: replies.headCount.error,
+              }
+            :
             table === 'v_dashboard_region_summary' ? replies.regions
             : table === 'v_station_summary' ? replies.stations
             : head ? replies.headCount
@@ -456,9 +466,8 @@ describe('Summary', () => {
     await screen.findByText('RV-880124')
     const strip = screen.getByRole('region', { name: /alert summary/i }) ?? document.body
     expect(strip).toBeDefined()
-    // Both metrics are requested, and they are different queries.
-    expect(calls.list).toContain('v_alert_inbox.eq:is_read=false')
-    expect(calls.list).toContain('v_alert_inbox.is:acknowledged_at=null')
+    // One RLS-bounded aggregate replaces seven independent count queries.
+    expect(calls.list).toContain('v_alert_summary.select')
   })
 
   it('never renders a failed count as zero', async () => {

@@ -239,37 +239,22 @@ export function useAlertSummary(nonce = 0): { state: Loadable<AlertSummary>; rel
       }
       if (!cancelled) setState({ status: 'loading' })
 
-      const view = () => supabase.from('v_alert_inbox').select('id', { count: 'exact', head: true })
-
-      const [total, overdue, dueToday, due7, unread, unack, failed] = await Promise.all([
-        view(),
-        view().eq('threshold', 'overdue'),
-        view().eq('threshold', 'due_today'),
-        view().eq('threshold', 'due_7'),
-        view().eq('is_read', false),
-        view().is('acknowledged_at', null),
-        view().eq('email_status', 'failed'),
-      ])
+      const { data, error } = await supabase.from('v_alert_summary').select('*')
       if (cancelled) return
+      if (error) {
+        setState({ status: 'error', message: error.message })
+        return
+      }
 
-      const all = [total, overdue, dueToday, due7, unread, unack, failed]
-      const failure = all.find((r) => r.error)
-      if (failure?.error) {
-        setState({ status: 'error', message: failure.error.message })
+      const summary = (data?.[0] ?? null) as AlertSummary | null
+      if (!summary) {
+        setState({ status: 'error', message: 'Alert summary returned no row' })
         return
       }
 
       setState({
         status: 'ready',
-        data: {
-          total: total.count ?? 0,
-          overdue: overdue.count ?? 0,
-          due_today: dueToday.count ?? 0,
-          due_7: due7.count ?? 0,
-          unread: unread.count ?? 0,
-          unacknowledged: unack.count ?? 0,
-          delivery_failed: failed.count ?? 0,
-        },
+        data: summary,
       })
     }
 
