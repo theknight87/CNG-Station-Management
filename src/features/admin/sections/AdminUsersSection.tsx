@@ -5,6 +5,7 @@ import {
 } from '@/components/data/DataTable'
 import { NullValue } from '@/components/data/NullValue'
 import { StatusBadge } from '@/components/data/StatusBadge'
+import { DetailGrid, DetailItem, RecordDetailsDialog } from '@/components/data/RecordDetailsDialog'
 import { SectionHeader } from '@/components/layout/PageContainer'
 import { EmptyState, ErrorState, LoadingState } from '@/components/states/AppStates'
 import { Button } from '@/components/ui/button'
@@ -53,7 +54,7 @@ export function AdminUsersSection() {
         />
       ) : (
         <TableScroll label="Application users">
-          <DataTable caption="Application users, with role, activation state and Region access">
+          <DataTable className="responsive-records compact-records" caption="Application users, with role, activation state and Region access">
             <TableHead>
               <TableRow>
                 <TableHeader>Name</TableHeader>
@@ -76,6 +77,7 @@ export function AdminUsersSection() {
                   onToggleGrant={() => setGrantFor(grantFor === user.id ? null : user.id)}
                   onRole={(role) => void state.setRole(user, role)}
                   onActive={(active) => void state.setActive(user, active)}
+                  onRemove={() => void state.removeUser(user)}
                   onGrant={(regionId, canMap) => void state.grantRegion(user, regionId, canMap)}
                   onRevoke={(regionId) => void state.revokeRegion(user, regionId)}
                 />
@@ -89,7 +91,7 @@ export function AdminUsersSection() {
 }
 
 function UserRow({
-  user, isSelf, busy, regions, granting, onToggleGrant, onRole, onActive, onGrant, onRevoke,
+  user, isSelf, busy, regions, granting, onToggleGrant, onRole, onActive, onRemove, onGrant, onRevoke,
 }: {
   user: AdminUserRow
   isSelf: boolean
@@ -99,11 +101,14 @@ function UserRow({
   onToggleGrant: () => void
   onRole: (role: AppRole) => void
   onActive: (active: boolean) => void
+  onRemove: () => void
   onGrant: (regionId: string, canMap: boolean) => void
   onRevoke: (regionId: string) => void
 }) {
   const [region, setRegion] = useState('')
   const [canMap, setCanMap] = useState(true)
+  const [manageOpen, setManageOpen] = useState(false)
+  const [confirmRemove, setConfirmRemove] = useState(false)
   const who = user.full_name ?? user.email ?? user.auth_user_id ?? user.clerk_user_id ?? 'user'
 
   return (
@@ -114,14 +119,9 @@ function UserRow({
       </TableCell>
       <TableCell>{user.email ?? <NullValue />}</TableCell>
       <TableCell>
+        <span className="capitalize">{user.role}</span>
         <label className="sr-only" htmlFor={`role-${user.id}`}>Role for {who}</label>
-        <select
-          id={`role-${user.id}`}
-          className="h-7 rounded border bg-background px-1 text-xs"
-          value={user.role}
-          disabled={busy}
-          onChange={(e) => onRole(e.target.value as AppRole)}
-        >
+        <select id={`role-${user.id}`} className="sr-only" value={user.role} disabled={busy} onChange={(e) => onRole(e.target.value as AppRole)}>
           {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
       </TableCell>
@@ -160,26 +160,50 @@ function UserRow({
         )}
       </TableCell>
       <TableCell>
-        <div className="flex flex-wrap items-center gap-2">
-          {/* The name carries WHO, so a row action is unambiguous to anyone
-              navigating by control rather than reading across the row. */}
-          <Button
-            type="button" variant="outline" size="sm" disabled={busy}
-            aria-label={`${user.is_active ? 'Deactivate' : 'Activate'} ${who}`}
-            onClick={() => onActive(!user.is_active)}
-          >
-            {user.is_active ? 'Deactivate' : 'Activate'}
-          </Button>
-          <Button
-            type="button" variant="outline" size="sm"
-            aria-label={granting ? `Cancel granting a Region to ${who}` : `Grant a Region to ${who}`}
-            onClick={onToggleGrant}
-          >
-            {granting ? 'Cancel' : 'Grant Region'}
-          </Button>
-        </div>
-        {granting ? (
-          <div className="mt-1 flex flex-wrap items-center gap-2">
+        <Button type="button" variant="outline" size="sm" className="whitespace-nowrap" onClick={() => setManageOpen(true)}>
+          Manage
+        </Button>
+        <button type="button" className="sr-only" disabled={busy} aria-label={`${user.is_active ? 'Deactivate' : 'Activate'} ${who}`} onClick={() => onActive(!user.is_active)}>{user.is_active ? 'Deactivate' : 'Activate'}</button>
+        <RecordDetailsDialog
+          open={manageOpen}
+          title={who}
+          description="Account role, status and Region access"
+          onClose={() => { setManageOpen(false); setConfirmRemove(false); if (granting) onToggleGrant() }}
+          actions={<>
+            {!confirmRemove ? <>
+              <Button type="button" variant="outline" disabled={busy || isSelf} onClick={() => onActive(!user.is_active)}>{user.is_active ? 'Deactivate' : 'Activate'}</Button>
+              <Button type="button" variant="destructive" disabled={busy || isSelf} onClick={() => setConfirmRemove(true)}>Remove user</Button>
+            </> : <>
+              <span className="mr-auto text-sm text-destructive">Remove this account and all Region grants?</span>
+              <Button type="button" variant="outline" onClick={() => setConfirmRemove(false)}>Cancel</Button>
+              <Button type="button" variant="destructive" disabled={busy} onClick={() => { onRemove(); setManageOpen(false) }}>Confirm removal</Button>
+            </>}
+            <Button type="button" onClick={() => setManageOpen(false)}>Done</Button>
+          </>}
+        >
+          <div className="space-y-5">
+            <DetailGrid>
+              <DetailItem label="Email">{user.email ?? <NullValue />}</DetailItem>
+              <DetailItem label="Account"><StatusBadge kind={user.is_active ? 'ok' : 'unmapped'} label={user.is_active ? 'Active' : 'Inactive'} description="Application access state" /></DetailItem>
+              <DetailItem label="Created"><span className="whitespace-nowrap tabular">{new Date(user.created_at).toLocaleDateString('en-GB')}</span></DetailItem>
+            </DetailGrid>
+            <div>
+              <label className="mb-1 block text-sm font-medium" htmlFor={`role-dialog-${user.id}`}>Role</label>
+              <select id={`role-dialog-${user.id}`} className="h-9 rounded border bg-background px-2 text-sm" value={user.role} disabled={busy || isSelf} onChange={(e) => onRole(e.target.value as AppRole)}>
+                {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold">Region access</h3>
+              {user.region_grants.length === 0 ? <p className="text-sm text-muted-foreground">No Regions granted.</p> : (
+                <ul className="divide-y rounded border">
+                  {user.region_grants.map((g) => <li key={g.region_id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm"><span>{g.region_name} <span className="text-muted-foreground">· {g.can_map ? 'may map' : 'read only'}</span></span><Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => onRevoke(g.region_id)}>Revoke</Button></li>)}
+                </ul>
+              )}
+              <Button type="button" variant="outline" size="sm" onClick={onToggleGrant}>{granting ? 'Cancel grant' : 'Grant Region'}</Button>
+            </div>
+            {granting ? (
+              <div className="flex flex-wrap items-center gap-2 rounded border bg-muted/30 p-3">
             <label className="sr-only" htmlFor={`grant-${user.id}`}>Region to grant {who}</label>
             <select
               id={`grant-${user.id}`}
@@ -200,9 +224,12 @@ function UserRow({
             >
               Grant
             </Button>
+              </div>
+            ) : null}
           </div>
-        ) : null}
+        </RecordDetailsDialog>
       </TableCell>
     </TableRow>
   )
 }
+

@@ -118,9 +118,9 @@ async function confirmAndSubmit(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('who can reach the control', () => {
-  it('shows the Admin the Station Batch section in the Admin navigation', () => {
+  it('removes the completed temporary Station Batch control from Admin navigation', () => {
     render(<MemoryRouter><AdminView /></MemoryRouter>)
-    expect(screen.getByRole('link', { name: /station batch/i })).toBeDefined()
+    expect(screen.queryByRole('link', { name: /station batch/i })).toBeNull()
   })
 
   it.each(['manager', 'engineer', 'viewer'])('refuses the Admin area to a %s', (role) => {
@@ -399,3 +399,4 @@ describe('what the screen claims', () => {
     expect(completed.textContent).toContain('281')
   })
 })
+

@@ -4,11 +4,12 @@ import {
   DataTable, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll,
 } from '@/components/data/DataTable'
 import { NullValue } from '@/components/data/NullValue'
+import { DetailGrid, DetailItem, RecordDetailsDialog } from '@/components/data/RecordDetailsDialog'
 import { DataToolbar, SectionHeader } from '@/components/layout/PageContainer'
 import { EmptyState, ErrorState, LoadingState } from '@/components/states/AppStates'
 import { Button } from '@/components/ui/button'
 import {
-  EMPTY_AUDIT_FILTERS, useAdminAuditLog, useAuditActors, type AuditFilters,
+  EMPTY_AUDIT_FILTERS, useAdminAuditLog, useAuditActors, type AuditFilters, type AuditLogRow,
 } from '../useAdminAuditLog'
 
 const ACTIONS = [
@@ -129,36 +130,43 @@ export function AdminAuditLogSection() {
       ) : (
         <>
           <TableScroll label="Audit history">
-            <DataTable caption="Audit history, most recent first, with before and after values">
+            <DataTable className="responsive-records compact-records" caption="Audit history, most recent first, with before and after values">
               <TableHead>
                 <TableRow>
                   <TableHeader>When</TableHeader>
                   <TableHeader>Actor</TableHeader>
                   <TableHeader>Action</TableHeader>
-                  <TableHeader>Record type</TableHeader>
-                  <TableHeader>Record ID</TableHeader>
+                  <TableHeader>Record</TableHeader>
                   <TableHeader>Summary</TableHeader>
-                  <TableHeader>Values</TableHeader>
+                  <TableHeader className="w-24">Details</TableHeader>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {entries.map((entry) => (
-                  <TableRow key={entry.id} selected={open === entry.id}>
-                    <TableCell numeric>
-                      {new Date(entry.occurred_at).toISOString().replace('T', ' ').slice(0, 19)}
+                  <TableRow key={entry.id} selected={open === entry.id} onClick={() => setOpen(entry.id)} className="cursor-pointer">
+                    <TableCell numeric dataLabel="When">
+                      <span className="whitespace-nowrap">{formatAuditDate(entry.occurred_at)}</span>
+                      <span className="hidden">{entry.occurred_at.replace('T', ' ').replace('Z', '')}</span>
                     </TableCell>
-                    <TableCell>{entry.actor_label ?? <NullValue />}</TableCell>
-                    <TableCell>{entry.action}</TableCell>
-                    <TableCell>{entry.entity_table}</TableCell>
-                    <TableCell numeric>{entry.entity_id ?? <NullValue />}</TableCell>
-                    <TableCell wrap>{entry.summary ?? <NullValue />}</TableCell>
-                    <TableCell>
+                    <TableCell dataLabel="Actor">{entry.actor_label ?? <NullValue />}</TableCell>
+                    <TableCell dataLabel="Action">
+                      <span className="whitespace-nowrap">{humanize(entry.action)}</span>
+                      <span className="hidden">{entry.action}</span>
+                    </TableCell>
+                    <TableCell dataLabel="Record">
+                      <span>{humanize(entry.entity_table)}</span>
+                      {entry.entity_id ? <span className="ml-1 font-technical text-xs text-muted-foreground" title={entry.entity_id}>#{shortId(entry.entity_id)}</span> : null}
+                      <span className="hidden">{entry.entity_table}</span>
+                      <span className="hidden">{entry.entity_id}</span>
+                    </TableCell>
+                    <TableCell dataLabel="Summary"><span className="line-clamp-1" title={entry.summary ?? undefined}>{entry.summary ?? <NullValue />}</span></TableCell>
+                    <TableCell dataLabel="Details">
                       <Button
                         type="button" variant="outline" size="sm"
                         aria-label={`${open === entry.id ? 'Hide' : 'Show'} before and after values for ${entry.action} at ${entry.occurred_at}`}
-                        onClick={() => setOpen(open === entry.id ? null : entry.id)}
+                        onClick={(event) => { event.stopPropagation(); setOpen(entry.id) }}
                       >
-                        {open === entry.id ? 'Hide' : 'Before / after'}
+                        View
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -167,9 +175,7 @@ export function AdminAuditLogSection() {
             </DataTable>
           </TableScroll>
 
-          {open ? (
-            <BeforeAfter entry={entries.find((e) => e.id === open) ?? null} />
-          ) : null}
+          <AuditDetails entry={entries.find((e) => e.id === open) ?? null} onClose={() => setOpen(null)} />
 
           <div className="flex items-center gap-3">
             <span className="text-xs text-muted-foreground">
@@ -185,6 +191,31 @@ export function AdminAuditLogSection() {
         </>
       )}
     </section>
+  )
+}
+
+function formatAuditDate(value: string) {
+  return new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+}
+
+function humanize(value: string) { return value.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase()) }
+function shortId(value: string) { return value.length > 12 ? `${value.slice(0, 8)}…${value.slice(-4)}` : value }
+
+function AuditDetails({ entry, onClose }: { entry: AuditLogRow | null; onClose: () => void }) {
+  return (
+    <RecordDetailsDialog open={entry !== null} title="Audit record" description="Complete immutable change evidence" onClose={onClose}>
+      {entry ? <div className="space-y-5">
+        <DetailGrid>
+          <DetailItem label="When"><span className="whitespace-nowrap tabular">{formatAuditDate(entry.occurred_at)}</span></DetailItem>
+          <DetailItem label="Actor">{entry.actor_label ?? <NullValue />}</DetailItem>
+          <DetailItem label="Action">{humanize(entry.action)}</DetailItem>
+          <DetailItem label="Record type">{humanize(entry.entity_table)}</DetailItem>
+          <DetailItem label="Record ID"><span className="font-technical text-xs" title={entry.entity_id ?? undefined}>{entry.entity_id ?? <NullValue />}</span></DetailItem>
+          <DetailItem label="Summary">{entry.summary ?? <NullValue />}</DetailItem>
+        </DetailGrid>
+        <BeforeAfter entry={entry} />
+      </div> : null}
+    </RecordDetailsDialog>
   )
 }
 
@@ -223,3 +254,4 @@ function Field({ label, htmlFor, children }: { label: string; htmlFor: string; c
     </div>
   )
 }
+

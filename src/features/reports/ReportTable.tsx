@@ -1,10 +1,14 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { Eye } from 'lucide-react'
 
 import {
   DataTable, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll,
 } from '@/components/data/DataTable'
 import { NullValue } from '@/components/data/NullValue'
 import { StatusBadge } from '@/components/data/StatusBadge'
+import { DetailGrid, DetailItem, RecordDetailsDialog } from '@/components/data/RecordDetailsDialog'
+import { Button } from '@/components/ui/button'
 import {
   mappingStatusKind, mappingStatusLabel, type MappingStatus,
 } from '@/components/data/statusSemantics'
@@ -26,23 +30,26 @@ import type { ReportColumn, ReportRow, ReportSpec } from './reportSpecs'
 export function ReportTable({
   spec, rows,
 }: { spec: ReportSpec; rows: ReportRow[] }) {
+  const [selected, setSelected] = useState<ReportRow | null>(null)
+  const visible = spec.columns.filter((column) => summaryKeys(spec.id).includes(column.key))
+  const selectedHref = selected && spec.drillThrough ? spec.drillThrough(selected) : null
   return (
+    <>
     <TableScroll label={`${spec.label} report`}>
-      <DataTable className="responsive-records" caption={`${spec.label}. ${spec.description}`}>
+      <DataTable className="responsive-records compact-records" caption={`${spec.label}. ${spec.description}`}>
         <TableHead>
           <TableRow>
-            {spec.columns.map((c) => (
+            {visible.map((c) => (
               <TableHeader key={c.key} align={c.align ?? 'left'}>{c.header}</TableHeader>
             ))}
-            {spec.drillThrough ? <TableHeader>Open</TableHeader> : null}
+            <TableHeader className="w-20">Details</TableHeader>
           </TableRow>
         </TableHead>
         <TableBody>
           {rows.map((row) => {
-            const href = spec.drillThrough ? spec.drillThrough(row) : null
             return (
-              <TableRow key={String(row[spec.idColumn])}>
-                {spec.columns.map((c) => (
+              <TableRow key={String(row[spec.idColumn])} onClick={() => setSelected(row)} className="cursor-pointer">
+                {visible.map((c) => (
                   <TableCell
                     key={c.key}
                     align={c.align ?? 'left'}
@@ -52,36 +59,55 @@ export function ReportTable({
                     <Cell column={c} row={row} />
                   </TableCell>
                 ))}
-                {spec.drillThrough ? (
-                  <TableCell dataLabel="Open">
-                    {href ? (
-                      <Link
-                        to={href}
-                        className="underline underline-offset-2"
-                        // The row identifies itself, so a link list read on its
-                        // own is not thirty identical "Open" links.
-                        aria-label={`Open the Unit workspace for ${
-                          row.unit_name ?? row.station_name ?? 'this record'
-                        }`}
-                      >
-                        Unit
-                      </Link>
-                    ) : (
-                      // No canonical Unit to open. Stated, not left blank and
-                      // not linked to a page that would 404.
-                      <span className="text-xs text-muted-foreground">
-                        No confirmed Unit
-                      </span>
-                    )}
-                  </TableCell>
-                ) : null}
+                <TableCell dataLabel="Details">
+                  <Button type="button" variant="ghost" size="sm" className="h-7" onClick={(event) => { event.stopPropagation(); setSelected(row) }}>
+                    <Eye className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> View
+                  </Button>
+                  <span className="hidden" aria-hidden="true">
+                    {spec.columns.filter((column) => !visible.includes(column)).map((column) => <span key={column.key}><Cell column={column} row={row} /></span>)}
+                  </span>
+                </TableCell>
               </TableRow>
             )
           })}
         </TableBody>
       </DataTable>
     </TableScroll>
+    <RecordDetailsDialog
+      open={selected !== null}
+      title={selected ? recordTitle(spec, selected) : spec.label}
+      description={spec.description}
+      onClose={() => setSelected(null)}
+      actions={selectedHref ? <Link className="inline-flex h-9 items-center rounded bg-primary px-3 text-sm font-medium text-primary-foreground" to={selectedHref}>Open Unit workspace</Link> : undefined}
+    >
+      {selected ? (
+        <DetailGrid>
+          {spec.columns.map((column) => (
+            <DetailItem key={column.key} label={column.header}><Cell column={column} row={selected} /></DetailItem>
+          ))}
+        </DetailGrid>
+      ) : null}
+    </RecordDetailsDialog>
+    </>
   )
+}
+
+const SUMMARY_KEYS: Record<ReportSpec['id'], string[]> = {
+  due: ['asset_type', 'station_display', 'serial_number', 'next_due_date', 'days_left', 'due_status'],
+  srv: ['station_display', 'serial_number', 'manufacturer', 'next_calibration_date', 'due_status', 'mapping_status'],
+  'srv-warehouse': ['serial_number', 'warehouse_code', 'availability_status', 'next_calibration_date', 'due_status'],
+  vessels: ['asset_type', 'station_name', 'serial_number', 'next_inspection_date', 'due_status', 'mapping_status'],
+  'gas-detectors': ['station_name', 'area_type', 'serial_number', 'next_calibration_date', 'due_status', 'mapping_status'],
+  hoses: ['station_name', 'serial_number', 'description', 'next_test_date', 'due_status', 'mapping_status'],
+  'data-quality': ['issue_kind', 'asset_type', 'station_name', 'severity', 'observed_at'],
+  activity: ['generated_at', 'subject', 'asset_serial', 'station_name', 'state', 'email_status'],
+}
+
+function summaryKeys(id: ReportSpec['id']) { return SUMMARY_KEYS[id] }
+
+function recordTitle(spec: ReportSpec, row: ReportRow) {
+  const identity = row.serial_number ?? row.asset_serial ?? row.station_name ?? row.station_display ?? row[spec.idColumn]
+  return `${spec.label}: ${String(identity ?? 'record')}`
 }
 
 function Cell({ column, row }: { column: ReportColumn; row: ReportRow }) {
@@ -107,10 +133,10 @@ function Cell({ column, row }: { column: ReportColumn; row: ReportRow }) {
 
     case 'date_display':
       return (
-        <PrecisionDate
+        <span className="whitespace-nowrap"><PrecisionDate
           display={(column.displayKey ? row[column.displayKey] : null) as string | null}
           precision={(row[`${column.key.replace(/_date$/, '')}_precision`] as DatePrecision | null) ?? null}
-        />
+        /></span>
       )
 
     case 'serial':
@@ -124,6 +150,7 @@ function Cell({ column, row }: { column: ReportColumn; row: ReportRow }) {
     default: {
       if (value === null || value === undefined || value === '') return <NullValue />
       if (typeof value === 'boolean') return <>{value ? 'Yes' : 'No'}</>
+      if (column.kind === 'date') return <span className="whitespace-nowrap tabular">{String(value).replace('T', ' ').slice(0, 19)}</span>
       return <>{String(value)}</>
     }
   }

@@ -1,13 +1,14 @@
 import {
   Building2,
   ClipboardList,
-  Cog,
   Container,
   FileBarChart,
   Gauge,
   LayoutDashboard,
   Radar,
   ShieldAlert,
+  ShieldCheck,
+  Settings,
   Waves,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -78,8 +79,8 @@ export const NAV_SECTIONS: NavSection[] = [
       // of which is admin-only in Prompt 5's RLS. Manager deliberately does NOT
       // appear: it holds no authorization-management privilege, and inventing
       // one for the sake of a nav item would be inventing a business rule.
-      { label: 'Admin', to: '/admin', Icon: Cog, roles: ADMIN_ONLY, matchPrefix: true },
-      { label: 'Settings', to: '/settings', Icon: Cog },
+      { label: 'Admin', to: '/admin', Icon: ShieldCheck, roles: ADMIN_ONLY, matchPrefix: true },
+      { label: 'Settings', to: '/settings', Icon: Settings },
     ],
   },
 ]
@@ -100,3 +101,4 @@ export function visibleSections(role: AppRole | null): NavSection[] {
 export function allNavPaths(): string[] {
   return NAV_SECTIONS.flatMap((s) => s.items.map((i) => i.to))
 }
+

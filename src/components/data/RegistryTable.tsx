@@ -1,5 +1,5 @@
-import { Fragment, useCallback, useState, type ReactNode } from 'react'
-import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import { ChevronLeft, ChevronRight, Eye } from 'lucide-react'
 
 import {
   DataTable, RowHeaderCell, SortableHeader, TableBody, TableCell, TableHead, TableRow, TableScroll,
@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { FactGrid } from '@/features/hierarchy/HierarchyPieces'
 import { pageCount } from '@/features/hierarchy/useHierarchy'
 import type { Loadable } from '@/features/hierarchy/useHierarchy'
+import { RecordDetailsDialog } from './RecordDetailsDialog'
 
 
 /**
@@ -79,15 +80,7 @@ export function RegistryTable<T>({
   errorTitle: string
   footnote?: ReactNode
 }) {
-  const [open, setOpen] = useState<Set<string>>(() => new Set())
-  const toggle = useCallback((key: string) => {
-    setOpen((prev) => {
-      const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
-  }, [])
+  const [selected, setSelected] = useState<T | null>(null)
 
   if (state.status === 'loading') return <LoadingState label={`Loading ${label}`} />
   if (state.status === 'unconfigured')
@@ -101,11 +94,15 @@ export function RegistryTable<T>({
 
   const pages = pageCount(total, pageSize)
   const first = page * pageSize + 1
+  // Registry rows are a scanning surface, not the entire record. Keep the
+  // identifying columns plus the final operational state; the dialog owns the
+  // complete technical record.
+  const visibleColumns = columns.slice(0, 7)
 
   return (
     <div className="flex min-w-0 flex-col gap-2">
       <TableScroll label={label}>
-        <DataTable className="responsive-records" caption={`${label}, with mapping state and calibration status`}>
+        <DataTable className="responsive-records compact-records" caption={`${label}, with mapping state and calibration status`}>
           <TableHead>
             <TableRow>
               <SortableHeader className="w-8">
@@ -114,6 +111,7 @@ export function RegistryTable<T>({
               {columns.map((c) => (
                 <SortableHeader
                   key={c.key}
+                  className={visibleColumns.includes(c) ? undefined : 'hidden'}
                   align={c.align}
                   sort={c.sort ? (sort === c.sort ? direction : null) : undefined}
                   onSort={c.sort ? () => onSort(c.sort!) : undefined}
@@ -126,46 +124,37 @@ export function RegistryTable<T>({
           <TableBody>
             {rows.map((row) => {
               const key = rowKey(row)
-              const isOpen = open.has(key)
               return (
-                <Fragment key={key}>
-                  <TableRow>
+                  <TableRow key={key} onClick={() => setSelected(row)} className="cursor-pointer">
                     <TableCell className="w-8" dataLabel="Details">
                       <button
                         type="button"
-                        onClick={() => toggle(key)}
-                        aria-expanded={isOpen}
-                        aria-controls={`srv-detail-${key}`}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          setSelected((current) => current && rowKey(current) === key ? null : row)
+                        }}
+                        aria-expanded={selected !== null && rowKey(selected) === key}
                         className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
                       >
-                        {isOpen ? (
-                          <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
-                        ) : (
-                          <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
-                        )}
+                        <Eye className="h-3.5 w-3.5" aria-hidden="true" />
                         <span className="sr-only">
-                          {isOpen ? 'Hide' : 'Show'} the full technical record
+                          {selected !== null && rowKey(selected) === key
+                            ? 'Hide the full technical record'
+                            : 'Show the full technical record'}
                         </span>
                       </button>
                     </TableCell>
-                    {columns.map((c) =>
-                      c.rowHeader ? (
-                        <RowHeaderCell key={c.key} dataLabel={c.header}>{c.render(row)}</RowHeaderCell>
+                    {columns.map((c) => {
+                      const hidden = !visibleColumns.includes(c)
+                      return c.rowHeader ? (
+                        <RowHeaderCell key={c.key} className={hidden ? 'hidden' : undefined} dataLabel={c.header}>{c.render(row)}</RowHeaderCell>
                       ) : (
-                        <TableCell key={c.key} align={c.align} numeric={c.numeric} dataLabel={c.header}>
+                        <TableCell key={c.key} className={hidden ? 'hidden' : undefined} align={c.align} numeric={c.numeric} dataLabel={c.header}>
                           {c.render(row)}
                         </TableCell>
-                      ),
-                    )}
+                      )
+                    })}
                   </TableRow>
-                  {isOpen ? (
-                    <tr id={`srv-detail-${key}`} className="border-b bg-muted/30">
-                      <td colSpan={columns.length + 1} className="px-[--table-cell-x] py-2.5">
-                        <FactGrid>{detail(row)}</FactGrid>
-                      </td>
-                    </tr>
-                  ) : null}
-                </Fragment>
               )
             })}
           </TableBody>
@@ -201,6 +190,14 @@ export function RegistryTable<T>({
         </div>
       </nav>
       {footnote ? <p className="text-sm text-muted-foreground">{footnote}</p> : null}
+      <RecordDetailsDialog
+        open={selected !== null}
+        title={`${label} record`}
+        description="Complete technical details"
+        onClose={() => setSelected(null)}
+      >
+        {selected ? <FactGrid>{detail(selected)}</FactGrid> : null}
+      </RecordDetailsDialog>
     </div>
   )
 }

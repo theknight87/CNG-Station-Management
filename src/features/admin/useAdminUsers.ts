@@ -52,6 +52,7 @@ export interface AdminUsersState {
   busy: boolean
   setRole: (user: AdminUserRow, role: AppRole) => Promise<void>
   setActive: (user: AdminUserRow, isActive: boolean) => Promise<void>
+  removeUser: (user: AdminUserRow) => Promise<void>
   grantRegion: (user: AdminUserRow, regionId: string, canMap: boolean) => Promise<void>
   revokeRegion: (user: AdminUserRow, regionId: string) => Promise<void>
   reload: () => void
@@ -148,6 +149,11 @@ export function useAdminUsers(): AdminUsersState {
         p_is_active: isActive,
         p_expected_updated_at: user.updated_at,
       }),
+    removeUser: (user) =>
+      call('cng_admin_remove_user', {
+        p_app_user_id: user.id,
+        p_expected_updated_at: user.updated_at,
+      }),
     grantRegion: (user, regionId, canMap) =>
       call('cng_admin_grant_region', {
         p_app_user_id: user.id,
@@ -158,3 +164,4 @@ export function useAdminUsers(): AdminUsersState {
       call('cng_admin_revoke_region', { p_app_user_id: user.id, p_region_id: regionId }),
   }
 }
+

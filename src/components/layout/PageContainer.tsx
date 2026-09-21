@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils'
  */
 
 export function PageContainer({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn('flex min-h-full flex-col gap-3 p-3 sm:p-4', className)}>{children}</div>
+  return <div className={cn('flex min-h-0 flex-col gap-3 p-3 sm:p-4', className)}>{children}</div>
 }
 
 /**

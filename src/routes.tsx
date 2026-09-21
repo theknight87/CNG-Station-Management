@@ -23,7 +23,6 @@ const VesselRegistrySection = lazy(() => import('@/features/vessels/sections/Ves
 const AdminAlertSettingsSection = lazy(() => import('@/features/admin/sections/AdminAlertSettingsSection').then((m) => ({ default: m.AdminAlertSettingsSection })))
 const AdminAuditLogSection = lazy(() => import('@/features/admin/sections/AdminAuditLogSection').then((m) => ({ default: m.AdminAuditLogSection })))
 const AdminDataQualitySection = lazy(() => import('@/features/admin/sections/AdminDataQualitySection').then((m) => ({ default: m.AdminDataQualitySection })))
-const AdminStationBatchSection = lazy(() => import('@/features/admin/sections/AdminStationBatchSection').then((m) => ({ default: m.AdminStationBatchSection })))
 const AdminUsersSection = lazy(() => import('@/features/admin/sections/AdminUsersSection').then((m) => ({ default: m.AdminUsersSection })))
 const ActivityReportSection = lazy(() => import('@/features/reports/sections/ReportSections').then((m) => ({ default: m.ActivityReportSection })))
 const DataQualityReportSection = lazy(() => import('@/features/reports/sections/ReportSections').then((m) => ({ default: m.DataQualityReportSection })))
@@ -133,7 +132,6 @@ export const router = createBrowserRouter([
           { path: 'users', element: <AdminUsersSection /> },
           { path: 'alert-settings', element: <AdminAlertSettingsSection /> },
           { path: 'data-quality', element: <AdminDataQualitySection /> },
-          { path: 'station-batch', element: <AdminStationBatchSection /> },
           { path: 'audit-log', element: <AdminAuditLogSection /> },
         ],
       },
@@ -141,3 +139,4 @@ export const router = createBrowserRouter([
     ],
   },
 ])
+
