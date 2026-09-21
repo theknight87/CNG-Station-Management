@@ -53,10 +53,12 @@ export function SignInPage() {
         <div className="absolute -bottom-36 -right-36 h-96 w-96 rounded-full border border-white/10" aria-hidden="true" />
         <div className="absolute -bottom-20 -right-20 h-64 w-64 rounded-full border border-brand-yellow/20" aria-hidden="true" />
 
-        <div className="relative flex items-center gap-4">
-          <BrandMark variant="mark" className="h-16 w-auto" />
+        <div className="relative flex items-center gap-5">
+          <div className="flex h-32 w-28 shrink-0 items-center justify-center bg-white p-2 shadow-xl shadow-black/15">
+            <BrandMark variant="full" className="h-28 w-auto" />
+          </div>
           <div>
-            <p className="text-lg font-semibold tracking-tight">CNG Station Management</p>
+            <p className="text-xl font-semibold tracking-tight">CNG Station Management</p>
             <p className="text-sm text-white/65">Cargas NGV Operations</p>
           </div>
         </div>
