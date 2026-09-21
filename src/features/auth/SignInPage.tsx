@@ -47,8 +47,8 @@ export function SignInPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 lg:grid lg:grid-cols-[minmax(21rem,0.9fr)_minmax(32rem,1.1fr)]">
-      <section className="relative hidden min-h-screen overflow-hidden bg-brand-deep px-12 py-10 text-brand-deep-fg lg:flex lg:flex-col" aria-label="CNG Station Management">
+    <main className="min-h-dvh overflow-x-hidden bg-slate-100 lg:grid lg:h-dvh lg:min-h-0 lg:grid-cols-[minmax(21rem,0.9fr)_minmax(32rem,1.1fr)] lg:overflow-hidden">
+      <section className="relative hidden min-h-0 overflow-hidden bg-brand-deep px-12 py-8 text-brand-deep-fg lg:flex lg:h-full lg:flex-col" aria-label="CNG Station Management">
         <div className="absolute inset-x-0 top-0 h-1 bg-brand-yellow" aria-hidden="true" />
         <div className="absolute -bottom-36 -right-36 h-96 w-96 rounded-full border border-white/10" aria-hidden="true" />
         <div className="absolute -bottom-20 -right-20 h-64 w-64 rounded-full border border-brand-yellow/20" aria-hidden="true" />
@@ -75,10 +75,9 @@ export function SignInPage() {
           </ul>
         </div>
 
-        <p className="relative text-xs text-white/45">Authorized personnel only</p>
       </section>
 
-      <section className="flex min-h-screen items-center justify-center px-5 py-10 sm:px-10 lg:px-16" aria-labelledby="sign-in-title">
+      <section className="flex min-h-dvh items-center justify-center px-5 py-8 sm:px-10 lg:h-full lg:min-h-0 lg:px-16 lg:py-6" aria-labelledby="sign-in-title">
         <div className="w-full max-w-md">
           <div className="mb-8 flex flex-col items-center text-center lg:hidden">
             <BrandMark variant="full" className="h-32 w-auto" />
@@ -86,7 +85,7 @@ export function SignInPage() {
             <p className="text-sm text-muted-foreground">Cargas NGV Operations</p>
           </div>
 
-          <div className="border border-slate-200 bg-white p-6 shadow-[0_18px_55px_-30px_rgba(15,23,42,0.35)] sm:p-9">
+          <div className="border border-slate-200 bg-white p-6 shadow-[0_18px_55px_-30px_rgba(15,23,42,0.35)] sm:p-8">
             <div className="mb-7">
               <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-brand-strong">Secure access</p>
               <h2 id="sign-in-title" className="text-3xl font-semibold tracking-tight text-slate-950">Welcome back</h2>
