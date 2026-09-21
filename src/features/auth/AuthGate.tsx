@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 
-import { Button, buttonVariants } from '@/components/ui/button'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { useAppUser } from '@/hooks/useAppUser'
@@ -48,6 +48,7 @@ function StatusCard({
 export function AuthGate({ children }: { children: ReactNode }) {
   const { session, loading, signOut } = useAuth()
   const appUser = useAppUser()
+  const location = useLocation()
 
   if (loading) {
     return (
@@ -58,16 +59,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }
 
   if (!session) {
-    return (
-      <Centered>
-        <StatusCard
-          title="CNG Station Management"
-          description="Sign in to continue. Access is granted by an administrator."
-        >
-          <Link className={buttonVariants({ className: 'w-full' })} to="/sign-in">Sign in</Link>
-        </StatusCard>
-      </Centered>
-    )
+    return <Navigate to="/sign-in" replace state={{ from: `${location.pathname}${location.search}${location.hash}` }} />
   }
 
   const signOutButton = (
