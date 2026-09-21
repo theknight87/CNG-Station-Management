@@ -97,7 +97,7 @@ export function RegistryTable<T>({
   // Registry rows are a scanning surface, not the entire record. Keep the
   // identifying columns plus the final operational state; the dialog owns the
   // complete technical record.
-  const visibleColumns = columns.slice(0, 7)
+  const visibleColumns = columns.slice(0, 8)
 
   return (
     <div className="flex min-w-0 flex-col gap-2">
@@ -174,9 +174,20 @@ export function RegistryTable<T>({
             <ChevronLeft className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
             Previous
           </Button>
-          <span className="tabular px-1 text-xs text-muted-foreground">
-            Page {page + 1} of {pages}
-          </span>
+          <label className="flex items-center gap-1 text-xs text-muted-foreground">
+            <span>Page</span>
+            <select
+              aria-label="Page number"
+              value={page}
+              onChange={(event) => onPage(Number(event.target.value))}
+              className="h-7 rounded border bg-background px-1.5 text-foreground"
+            >
+              {Array.from({ length: pages }, (_, index) => (
+                <option key={index} value={index}>{index + 1}</option>
+              ))}
+            </select>
+            <span>of {pages}</span>
+          </label>
           <Button
             variant="outline"
             size="sm"
@@ -201,4 +212,3 @@ export function RegistryTable<T>({
     </div>
   )
 }
-

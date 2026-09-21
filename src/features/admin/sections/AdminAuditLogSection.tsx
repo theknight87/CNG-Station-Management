@@ -39,8 +39,8 @@ const ENTITIES = [
  * by anyone. The actor on each row was derived server-side from the verified
  * Clerk subject at write time; it was never a value the client supplied.
  *
- * Before/after are rendered as raw JSON on purpose. This is evidence, and a
- * prettified diff invites an argument about whether the prettifier is honest.
+ * The immutable before/after evidence remains stored in the database, while
+ * this screen translates it into a compact, human-readable list of changes.
  */
 export function AdminAuditLogSection() {
   const [filters, setFilters] = useState<AuditFilters>(EMPTY_AUDIT_FILTERS)
@@ -56,21 +56,14 @@ export function AdminAuditLogSection() {
       <SectionHeader
         id="admin-audit-heading"
         title="Audit log"
-        description="Who changed what, and when, with the values before and after. Append-only: this record cannot be edited or deleted from the application by anyone, administrators included."
+        description="Who changed what and when, with readable change details. Append-only: this record cannot be edited or deleted from the application by anyone, administrators included."
       />
 
       <DataToolbar label="Filter the audit log">
-        <Field label="From" htmlFor="audit-from">
+        <Field label="Day" htmlFor="audit-day">
           <input
-            id="audit-from" type="date" value={filters.from}
-            onChange={(e) => set({ from: e.target.value })}
-            className="h-7 rounded border bg-background px-1 text-xs"
-          />
-        </Field>
-        <Field label="To" htmlFor="audit-to">
-          <input
-            id="audit-to" type="date" value={filters.to}
-            onChange={(e) => set({ to: e.target.value })}
+            id="audit-day" type="date" value={filters.from === filters.to ? filters.from : ''}
+            onChange={(e) => set({ from: e.target.value, to: e.target.value })}
             className="h-7 rounded border bg-background px-1 text-xs"
           />
         </Field>
@@ -130,7 +123,7 @@ export function AdminAuditLogSection() {
       ) : (
         <>
           <TableScroll label="Audit history">
-            <DataTable className="responsive-records compact-records" caption="Audit history, most recent first, with before and after values">
+            <DataTable className="responsive-records compact-records" caption="Audit history, most recent first">
               <TableHead>
                 <TableRow>
                   <TableHeader>When</TableHeader>
@@ -163,7 +156,7 @@ export function AdminAuditLogSection() {
                     <TableCell dataLabel="Details">
                       <Button
                         type="button" variant="outline" size="sm"
-                        aria-label={`${open === entry.id ? 'Hide' : 'Show'} before and after values for ${entry.action} at ${entry.occurred_at}`}
+                        aria-label={`${open === entry.id ? 'Hide' : 'Show'} change details for ${entry.action} at ${entry.occurred_at}`}
                         onClick={(event) => { event.stopPropagation(); setOpen(entry.id) }}
                       >
                         View
@@ -210,40 +203,54 @@ function AuditDetails({ entry, onClose }: { entry: AuditLogRow | null; onClose: 
           <DetailItem label="Actor">{entry.actor_label ?? <NullValue />}</DetailItem>
           <DetailItem label="Action">{humanize(entry.action)}</DetailItem>
           <DetailItem label="Record type">{humanize(entry.entity_table)}</DetailItem>
-          <DetailItem label="Record ID"><span className="font-technical text-xs" title={entry.entity_id ?? undefined}>{entry.entity_id ?? <NullValue />}</span></DetailItem>
+          <DetailItem label="Record ID"><span className="font-technical text-xs" title={entry.entity_id ?? undefined}>{entry.entity_id ? shortId(entry.entity_id) : <NullValue />}</span></DetailItem>
           <DetailItem label="Summary">{entry.summary ?? <NullValue />}</DetailItem>
         </DetailGrid>
-        <BeforeAfter entry={entry} />
+        <ChangeDetails entry={entry} />
       </div> : null}
     </RecordDetailsDialog>
   )
 }
 
-function BeforeAfter({ entry }: { entry: { before_data: unknown; after_data: unknown } | null }) {
+function ChangeDetails({ entry }: { entry: { before_data: unknown; after_data: unknown } | null }) {
   if (!entry) return null
+  const before = asRecord(entry.before_data)
+  const after = asRecord(entry.after_data)
+  const keys = Array.from(new Set([...Object.keys(before), ...Object.keys(after)]))
   return (
-    <div className="grid gap-2 rounded border bg-muted/40 p-2 md:grid-cols-2">
-      <Side title="Before" value={entry.before_data} absent="No previous value — this record was created." />
-      <Side title="After" value={entry.after_data} absent="No resulting value — this record was removed." />
-    </div>
+    <section aria-labelledby="recorded-change-title" className="space-y-2">
+      <div>
+        <h3 id="recorded-change-title" className="text-sm font-semibold">Recorded change</h3>
+        <p className="text-xs text-muted-foreground">Stored audit evidence, presented as readable field changes.</p>
+      </div>
+      {keys.length ? (
+        <DetailGrid>
+          {keys.map((key) => (
+            <DetailItem key={key} label={humanize(key)}>
+              <ChangeValue before={before[key]} after={after[key]} hasBefore={key in before} hasAfter={key in after} />
+            </DetailItem>
+          ))}
+        </DetailGrid>
+      ) : <p className="rounded border bg-muted/30 p-3 text-sm text-muted-foreground">No field-level values were recorded for this event.</p>}
+    </section>
   )
 }
 
-function Side({ title, value, absent }: { title: string; value: unknown; absent: string }) {
-  return (
-    <div className="min-w-0">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h3>
-      {value === null || value === undefined ? (
-        // NULL here is a fact about the change, not a missing value, so it is
-        // stated rather than rendered as a placeholder.
-        <p className="text-xs text-muted-foreground">{absent}</p>
-      ) : (
-        <pre className="overflow-auto whitespace-pre-wrap break-all text-xs">
-          {JSON.stringify(value, null, 2)}
-        </pre>
-      )}
-    </div>
-  )
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
+
+function displayValue(value: unknown) {
+  if (value === null || value === undefined || value === '') return 'Not recorded'
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
+function ChangeValue({ before, after, hasBefore, hasAfter }: { before: unknown; after: unknown; hasBefore: boolean; hasAfter: boolean }) {
+  if (!hasBefore) return <span>{displayValue(after)}</span>
+  if (!hasAfter) return <span className="text-muted-foreground">Removed (was {displayValue(before)})</span>
+  if (JSON.stringify(before) === JSON.stringify(after)) return <span>{displayValue(after)}</span>
+  return <span><span className="text-muted-foreground line-through">{displayValue(before)}</span><span aria-hidden="true"> → </span>{displayValue(after)}</span>
 }
 
 function Field({ label, htmlFor, children }: { label: string; htmlFor: string; children: React.ReactNode }) {
@@ -254,4 +261,3 @@ function Field({ label, htmlFor, children }: { label: string; htmlFor: string; c
     </div>
   )
 }
-

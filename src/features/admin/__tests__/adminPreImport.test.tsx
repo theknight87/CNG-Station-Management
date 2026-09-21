@@ -315,29 +315,27 @@ describe('the audit log', () => {
     expect(screen.getByText('u2')).toBeDefined()
   })
 
-  it('shows the before and after values on request', async () => {
+  it('shows a readable field change on request', async () => {
     db.audit = [ENTRY]
     render(withRouter(<AdminAuditLogSection />))
-    await userEvent.click(await screen.findByRole('button', { name: /show before and after/i }))
-    expect(screen.getByText('Before')).toBeDefined()
-    expect(screen.getByText('After')).toBeDefined()
-    expect(screen.getByText(/"role": "engineer"/)).toBeDefined()
-    expect(screen.getByText(/"role": "manager"/)).toBeDefined()
+    await userEvent.click(await screen.findByRole('button', { name: /show change details/i }))
+    expect(screen.getByText('Recorded change')).toBeDefined()
+    expect(screen.getByText('engineer')).toBeDefined()
+    expect(screen.getByText('manager')).toBeDefined()
   })
 
-  it('states an absent before value as a fact rather than a placeholder', async () => {
+  it('shows the recorded value when the event created a record', async () => {
     db.audit = [{ ...ENTRY, before_data: null }]
     render(withRouter(<AdminAuditLogSection />))
-    await userEvent.click(await screen.findByRole('button', { name: /show before and after/i }))
-    expect(screen.getByText(/this record was created/i)).toBeDefined()
+    await userEvent.click(await screen.findByRole('button', { name: /show change details/i }))
+    expect(screen.getByText('manager')).toBeDefined()
   })
 
-  it('applies the date range, actor, action and entity filters to the query', async () => {
+  it('applies the selected day, actor, action and entity filters to the query', async () => {
     db.audit = [ENTRY]
     render(withRouter(<AdminAuditLogSection />))
     await screen.findByRole('table')
-    await userEvent.type(screen.getByLabelText(/^from$/i), '2026-03-01')
-    await userEvent.type(screen.getByLabelText(/^to$/i), '2026-03-31')
+    await userEvent.type(screen.getByLabelText(/^day$/i), '2026-03-03')
     await userEvent.selectOptions(screen.getByLabelText(/^actor$/i), 'me')
     await userEvent.selectOptions(screen.getByLabelText(/^action$/i), 'user_role_changed')
     await userEvent.selectOptions(screen.getByLabelText(/record type/i), 'app_users')

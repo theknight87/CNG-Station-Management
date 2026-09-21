@@ -60,15 +60,15 @@ export function AttentionBadge({
 /** A labelled fact in a detail panel. Children render their own NULL state. */
 export function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="min-w-0">
-      <dt className="text-xs uppercase tracking-wide text-muted-foreground">{label}</dt>
-      <dd className="mt-0.5 truncate text-sm">{children}</dd>
+    <div className="min-w-0 border-b p-3 sm:border-r">
+      <dt className="text-xs font-bold leading-5 text-muted-foreground">{label}</dt>
+      <dd className="mt-1 break-words text-sm leading-5">{children}</dd>
     </div>
   )
 }
 
 export function FactGrid({ children }: { children: ReactNode }) {
-  return <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 sm:grid-cols-3 lg:grid-cols-4">{children}</dl>
+  return <dl className="grid overflow-hidden rounded-lg border bg-card sm:grid-cols-2 lg:grid-cols-3">{children}</dl>
 }
 
 /**

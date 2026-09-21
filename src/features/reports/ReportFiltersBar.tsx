@@ -160,22 +160,13 @@ export function ReportFiltersBar({
         ) : null}
 
         {has('dateRange') ? (
-          <>
-            <Field label="From" htmlFor="rf-from">
-              <input
-                id="rf-from" type="date" value={draft.from}
-                onChange={(e) => set({ from: e.target.value })}
-                className="h-7 rounded border bg-background px-1 text-xs"
-              />
-            </Field>
-            <Field label="To" htmlFor="rf-to">
-              <input
-                id="rf-to" type="date" value={draft.to}
-                onChange={(e) => set({ to: e.target.value })}
-                className="h-7 rounded border bg-background px-1 text-xs"
-              />
-            </Field>
-          </>
+          <Field label="Day" htmlFor="rf-day">
+            <input
+              id="rf-day" type="date" value={draft.from === draft.to ? draft.from : ''}
+              onChange={(e) => set({ from: e.target.value, to: e.target.value })}
+              className="h-7 rounded border bg-background px-1 text-xs"
+            />
+          </Field>
         ) : null}
 
         {has('search') ? (

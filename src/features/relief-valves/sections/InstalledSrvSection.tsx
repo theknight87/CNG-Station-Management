@@ -36,6 +36,15 @@ import {
 
 const COLUMNS: RegistryColumn<InstalledSrvRow>[] = [
   {
+    key: 'pressure', header: 'Set pressure', align: 'right',
+    render: (r) => (
+      <PressureRange min={r.pressure_min} max={r.pressure_max} unit={r.pressure_unit} raw={r.set_pressure_raw} />
+    ),
+  },
+  { key: 'due', header: 'Status', render: (r) => <DueBadge status={r.due_status} /> },
+  { key: 'manufacturer', header: 'Manufacturer', render: (r) => <Text value={r.manufacturer} /> },
+  { key: 'size', header: 'Size', render: (r) => <ValveSize type={r.size_type} inlet={r.inlet_size} outlet={r.outlet_size} /> },
+  {
     key: 'serial', header: 'Serial', rowHeader: true, sort: 'serial',
     render: (r) => <Serial value={r.serial_number} status={r.serial_status} />,
   },
@@ -45,13 +54,11 @@ const COLUMNS: RegistryColumn<InstalledSrvRow>[] = [
     key: 'part_number', header: 'Part number',
     render: (r) => (r.part_number ? <Identifier value={r.part_number} /> : <NullValue />),
   },
-  { key: 'manufacturer', header: 'Manufacturer', render: (r) => <Text value={r.manufacturer} /> },
   {
-    key: 'pressure', header: 'Set pressure', align: 'right',
-    render: (r) => (
-      <PressureRange min={r.pressure_min} max={r.pressure_max} unit={r.pressure_unit} raw={r.set_pressure_raw} />
-    ),
+    key: 'last_calibration', header: 'Last calibration',
+    render: (r) => <PrecisionDate display={r.last_calibration_display} precision={r.last_calibration_precision} />,
   },
+  { key: 'warehouse', header: 'Warehouse code', render: () => <span className="text-muted-foreground">Not applicable</span> },
   { key: 'station', header: 'Station', sort: 'station', render: (r) => <HierarchyCell row={r} /> },
   {
     key: 'unit', header: 'Unit', sort: 'unit',
@@ -77,8 +84,13 @@ const COLUMNS: RegistryColumn<InstalledSrvRow>[] = [
     key: 'days_left', header: 'Days left', align: 'right', numeric: true,
     render: (r) => (r.days_left === null ? <NullValue /> : <span>{r.days_left.toLocaleString()}</span>),
   },
-  { key: 'due', header: 'Status', render: (r) => <DueBadge status={r.due_status} /> },
 ]
+
+function ValveSize({ type, inlet, outlet }: { type: string | null; inlet: string | null; outlet: string | null }) {
+  const prefix = type?.toLowerCase() === 'male' ? 'M' : type?.toLowerCase() === 'female' ? 'F' : type
+  const value = [prefix, inlet].filter(Boolean).join(' ') + (outlet ? ` X ${outlet}` : '')
+  return value.trim() ? <span className="whitespace-nowrap font-technical">{value}</span> : <NullValue />
+}
 
 export function InstalledSrvSection() {
   const [query, setQuery] = useState<InstalledQuery>(DEFAULT_INSTALLED_QUERY)

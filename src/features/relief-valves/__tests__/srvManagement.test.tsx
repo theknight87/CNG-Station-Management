@@ -311,9 +311,8 @@ describe('Identifiers and technical values', () => {
     }
     renderSrv()
     const row = (await screen.findByText('SS-4R3A')).closest('tr')!
-    const cells = [...row.querySelectorAll('th,td')].map((c) => c.textContent ?? '')
-    expect(cells[1]).toMatch(/not recorded/i)
-    expect(cells[2]).toContain('SS-4R3A')
+    expect(within(row).getAllByText(/not recorded/i).length).toBeGreaterThan(0)
+    expect(within(row).getByText('SS-4R3A')).toBeDefined()
   })
 
   it('preserves an identifier exactly, including leading zeros', async () => {
