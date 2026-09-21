@@ -47,15 +47,15 @@ export function SignInPage() {
   }
 
   return (
-    <main className="min-h-dvh overflow-x-hidden bg-slate-100 lg:grid lg:h-dvh lg:min-h-0 lg:grid-cols-[minmax(21rem,0.9fr)_minmax(32rem,1.1fr)] lg:overflow-hidden">
-      <section className="relative hidden min-h-0 overflow-hidden bg-brand-deep px-12 py-8 text-brand-deep-fg lg:flex lg:h-full lg:flex-col" aria-label="CNG Station Management">
+    <main className="min-h-dvh overflow-x-hidden bg-slate-100 lg:fixed lg:inset-0 lg:grid lg:min-h-0 lg:grid-cols-[minmax(21rem,0.9fr)_minmax(32rem,1.1fr)] lg:overflow-hidden">
+      <section className="relative hidden min-h-0 overflow-hidden bg-brand-deep px-12 py-6 text-brand-deep-fg lg:flex lg:h-full lg:flex-col" aria-label="CNG Station Management">
         <div className="absolute inset-x-0 top-0 h-1 bg-brand-yellow" aria-hidden="true" />
         <div className="absolute -bottom-36 -right-36 h-96 w-96 rounded-full border border-white/10" aria-hidden="true" />
         <div className="absolute -bottom-20 -right-20 h-64 w-64 rounded-full border border-brand-yellow/20" aria-hidden="true" />
 
         <div className="relative flex items-center gap-5">
-          <div className="flex h-32 w-28 shrink-0 items-center justify-center bg-white p-2 shadow-xl shadow-black/15">
-            <BrandMark variant="full" className="h-28 w-auto" />
+          <div className="flex h-28 w-24 shrink-0 items-center justify-center bg-white p-2 shadow-xl shadow-black/15">
+            <BrandMark variant="full" className="h-24 w-auto" />
           </div>
           <div>
             <p className="text-xl font-semibold tracking-tight">CNG Station Management</p>
@@ -65,10 +65,10 @@ export function SignInPage() {
 
         <div className="relative my-auto max-w-lg py-12">
           <p className="mb-4 text-xs font-semibold uppercase tracking-[0.2em] text-brand-yellow">Operations portal</p>
-          <h1 className="text-4xl font-semibold leading-tight tracking-tight xl:text-5xl">One secure view of every station and asset.</h1>
+          <h1 className="text-4xl font-semibold leading-tight tracking-tight">One secure view of every station and asset.</h1>
           <p className="mt-5 max-w-md text-base leading-7 text-white/70">Monitor inspections, calibration dates and operational readiness across the Regions assigned to you.</p>
 
-          <ul className="mt-9 space-y-4 text-sm text-white/85">
+          <ul className="mt-7 space-y-3 text-sm text-white/85">
             <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-brand-yellow" aria-hidden="true" />Live operational records</li>
             <li className="flex items-center gap-3"><ShieldCheck className="h-5 w-5 text-brand-yellow" aria-hidden="true" />Role and Region controlled access</li>
             <li className="flex items-center gap-3"><LockKeyhole className="h-5 w-5 text-brand-yellow" aria-hidden="true" />Protected company information</li>
