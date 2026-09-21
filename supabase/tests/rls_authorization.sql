@@ -908,6 +908,25 @@ BEGIN
     + (SELECT count(*) FROM hoses WHERE region_id = east_id AND mapping_status <> 'resolved')
   ), 'DASH-4C region unresolved total equals the caller-visible source rows');
 
+  SELECT approaching_due INTO n FROM v_dashboard_region_summary WHERE region_id = east_id;
+  PERFORM pg_temp.ok(n = (
+      (SELECT count(*) FROM installed_relief_valves WHERE region_id = east_id
+        AND cng_due_status(next_calibration_date, next_calibration_precision)
+            IN ('due_today', 'due_7', 'due_15', 'due_30', 'due_60'))
+    + (SELECT count(*) FROM storage_vessels WHERE region_id = east_id
+        AND cng_due_status(next_inspection_date, next_inspection_precision)
+            IN ('due_today', 'due_7', 'due_15', 'due_30', 'due_60'))
+    + (SELECT count(*) FROM recovery_tanks WHERE region_id = east_id
+        AND cng_due_status(next_inspection_date, next_inspection_precision)
+            IN ('due_today', 'due_7', 'due_15', 'due_30', 'due_60'))
+    + (SELECT count(*) FROM gas_detectors WHERE region_id = east_id
+        AND cng_due_status(next_calibration_date, next_calibration_precision)
+            IN ('due_today', 'due_7', 'due_15', 'due_30', 'due_60'))
+    + (SELECT count(*) FROM hoses WHERE region_id = east_id
+        AND cng_due_status(next_test_date, next_test_precision)
+            IN ('due_today', 'due_7', 'due_15', 'due_30', 'due_60'))
+  ), 'DASH-4E region approaching-due total equals the caller-visible source rows');
+
   RESET ROLE;
 
   -- An admin sees every region.
