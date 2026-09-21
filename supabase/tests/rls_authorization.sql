@@ -849,6 +849,33 @@ BEGIN
   PERFORM pg_temp.ok(n = (SELECT count(*) FROM installed_relief_valves),
     'DASH-4 due buckets partition the caller''s rows: they sum to the visible total, no double counting');
 
+  SELECT count(*) INTO n
+  FROM (
+    (
+      SELECT cng_due_status(next_calibration_date, next_calibration_precision) AS due_status,
+             count(*)::bigint AS total
+      FROM installed_relief_valves
+      GROUP BY 1
+      EXCEPT
+      SELECT due_status, total
+      FROM v_dashboard_due_summary
+      WHERE asset_kind = 'installed_relief_valve'
+    )
+    UNION ALL
+    (
+      SELECT due_status, total
+      FROM v_dashboard_due_summary
+      WHERE asset_kind = 'installed_relief_valve'
+      EXCEPT
+      SELECT cng_due_status(next_calibration_date, next_calibration_precision),
+             count(*)::bigint
+      FROM installed_relief_valves
+      GROUP BY 1
+    )
+  ) bucket_difference;
+  PERFORM pg_temp.ok(n = 0,
+    'DASH-4D optimized due buckets exactly match cng_due_status for every visible SRV');
+
   SELECT assets INTO n FROM v_dashboard_region_summary WHERE region_id = east_id;
   PERFORM pg_temp.ok(n = (
       (SELECT count(*) FROM installed_relief_valves WHERE region_id = east_id)
