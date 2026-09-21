@@ -23,10 +23,11 @@ describe('production hardening', () => {
     expect(headers).toContain('X-Content-Type-Options: nosniff')
   })
 
-  it('makes horizontal table overflow explicit to mobile and assistive users', () => {
+  it('presents tables without instructions for horizontal scrolling', () => {
     render(<TableScroll label="Installed SRVs"><table><tbody><tr><td>SRV</td></tr></tbody></table></TableScroll>)
 
-    expect(screen.getByText('Swipe for more columns →')).toBeTruthy()
-    expect(screen.getByRole('region', { name: 'Installed SRVs — horizontally scrollable table' }).getAttribute('tabindex')).toBe('0')
+    expect(screen.queryByText('Swipe for more columns →')).toBeNull()
+    expect(screen.getByRole('region', { name: 'Installed SRVs data table' })).toBeTruthy()
   })
 })
+

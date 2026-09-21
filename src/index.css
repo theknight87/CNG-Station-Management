@@ -105,7 +105,7 @@
      * A truncated navigation label is a worse trade than 16px of chrome. */
     --sidebar-width: 16rem;
     --sidebar-width-collapsed: 3.25rem;
-    --header-height: 3rem;
+    --header-height: 3.5rem;
 
     /* --- Table density (§13) -------------------------------------------- */
     --table-row-height: 2.125rem;
@@ -213,11 +213,21 @@
     @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
   }
 
-  /* Technical tables intentionally preserve their natural width. Make that
-   * behavior discoverable and comfortable without turning rows into cards. */
+  /* Tables fit the working canvas. Wide registries switch to vertical records
+   * on narrow screens rather than creating a second horizontal viewport. */
   .table-scroll {
-    scrollbar-color: hsl(var(--muted-foreground) / 0.55) hsl(var(--muted));
-    scrollbar-width: thin;
+    overflow-x: hidden;
+  }
+
+  /* Fixed-layout tables only remain legible if cell content is also allowed to
+   * wrap. Several status and identity primitives intentionally stay on one line
+   * elsewhere in the product; inside a dense registry, override that preference
+   * so neighbouring columns never overlap and no value is clipped. */
+  .table-scroll :is(td, th) > * {
+    min-width: 0;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   @media (max-width: 639px) {
@@ -242,10 +252,75 @@
       min-width: 2.75rem;
     }
 
-    .table-scroll {
-      /* The inner shadow remains visible until the user reaches the right edge,
-       * giving a second, non-text cue that columns continue off-screen. */
-      box-shadow: inset -12px 0 12px -12px hsl(var(--foreground) / 0.35);
+    .responsive-records,
+    .responsive-records tbody,
+    .responsive-records tr,
+    .responsive-records td,
+    .responsive-records th[scope='row'] {
+      display: block;
+      width: 100%;
+    }
+
+    .responsive-records thead {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+    }
+
+    .responsive-records tbody {
+      display: grid;
+      gap: 0.75rem;
+      padding: 0.75rem;
+    }
+
+    .responsive-records tbody tr {
+      overflow: hidden;
+      border: 1px solid hsl(var(--border));
+      border-radius: var(--radius);
+      background: hsl(var(--card));
+    }
+
+    .responsive-records tbody td,
+    .responsive-records tbody th[scope='row'] {
+      min-height: 2.5rem;
+      height: auto;
+      padding: 0.55rem 0.75rem;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      border-bottom: 1px solid hsl(var(--border));
+      text-align: left;
+    }
+
+    .responsive-records tbody td[data-label],
+    .responsive-records tbody th[data-label] {
+      display: grid;
+      grid-template-columns: minmax(7rem, 40%) minmax(0, 1fr);
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .responsive-records tbody td[data-label]::before,
+    .responsive-records tbody th[data-label]::before {
+      content: attr(data-label);
+      color: hsl(var(--muted-foreground));
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .responsive-records tbody tr > :last-child {
+      border-bottom: 0;
+    }
+  }
+
+  @media (min-width: 640px) and (max-width: 1023px) {
+    [role='search'] input,
+    [role='search'] select,
+    [role='search'] button {
+      min-height: 2.5rem;
     }
   }
 
@@ -260,3 +335,4 @@
     }
   }
 }
+

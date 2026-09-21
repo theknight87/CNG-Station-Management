@@ -105,7 +105,7 @@ export function RegistryTable<T>({
   return (
     <div className="flex min-w-0 flex-col gap-2">
       <TableScroll label={label}>
-        <DataTable caption={`${label}, with mapping state and calibration status`}>
+        <DataTable className="responsive-records" caption={`${label}, with mapping state and calibration status`}>
           <TableHead>
             <TableRow>
               <SortableHeader className="w-8">
@@ -130,7 +130,7 @@ export function RegistryTable<T>({
               return (
                 <Fragment key={key}>
                   <TableRow>
-                    <TableCell className="w-8">
+                    <TableCell className="w-8" dataLabel="Details">
                       <button
                         type="button"
                         onClick={() => toggle(key)}
@@ -150,9 +150,9 @@ export function RegistryTable<T>({
                     </TableCell>
                     {columns.map((c) =>
                       c.rowHeader ? (
-                        <RowHeaderCell key={c.key}>{c.render(row)}</RowHeaderCell>
+                        <RowHeaderCell key={c.key} dataLabel={c.header}>{c.render(row)}</RowHeaderCell>
                       ) : (
-                        <TableCell key={c.key} align={c.align} numeric={c.numeric}>
+                        <TableCell key={c.key} align={c.align} numeric={c.numeric} dataLabel={c.header}>
                           {c.render(row)}
                         </TableCell>
                       ),
@@ -204,3 +204,4 @@ export function RegistryTable<T>({
     </div>
   )
 }
+

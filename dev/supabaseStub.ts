@@ -1056,6 +1056,10 @@ const stubClient = {
   },
 }
 
+export function getSupabaseClient() {
+  return stubClient as never
+}
+
 export function useSupabaseClient() {
   return stubClient as never
 }
@@ -1063,3 +1067,4 @@ export function useSupabaseClient() {
 export function setSupabaseSession() {
   /* no-op in the harness */
 }
+

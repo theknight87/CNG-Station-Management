@@ -12,9 +12,8 @@ import { cn } from '@/lib/utils'
  *
  * Deliberate decisions:
  *
- * - **Rows do not become cards on mobile.** An engineering table compared across
- *   columns loses its meaning as a stack of cards. It scrolls horizontally
- *   instead, inside its own container, so the PAGE never scrolls sideways.
+ * - **Rows become labelled records on mobile.** Every value remains visible,
+ *   but the page needs vertical scrolling only.
  * - **34px rows.** Dense enough to scan a station's worth of valves without
  *   scrolling; tall enough to hit with a mouse.
  * - **A real `<table>`.** Semantics carry the row/column relationship to screen
@@ -39,16 +38,10 @@ export function TableScroll({
 }) {
   return (
     <div className="min-w-0">
-      <p className="mb-1 text-right text-xs text-muted-foreground sm:hidden" aria-hidden="true">
-        Swipe for more columns →
-      </p>
       <div
-        className={cn('table-scroll relative w-full overflow-auto rounded border bg-card', className)}
-        // A scrollable region must be reachable by keyboard, or its content is
-        // unreachable for anyone not using a mouse.
-        tabIndex={0}
+        className={cn('table-scroll relative w-full overflow-y-visible rounded border bg-card', className)}
         role="region"
-        aria-label={`${label} — horizontally scrollable table`}
+        aria-label={`${label} data table`}
       >
         {children}
       </div>
@@ -67,11 +60,7 @@ export function DataTable({
   className?: string
 }) {
   return (
-    // `w-max min-w-full` is what keeps rows dense: the table takes its NATURAL
-    // width and overflows into TableScroll, instead of compressing columns
-    // until cells wrap and a 34px row becomes a 137px one. Browser-verified at
-    // 1024px and 390px, where the squeezed version measured 137px.
-    <table className={cn('w-max min-w-full border-collapse text-sm', className)}>
+    <table className={cn('w-full table-fixed border-collapse text-sm', className)}>
       <caption className="sr-only">{caption}</caption>
       {children}
     </table>
@@ -119,7 +108,7 @@ export function SortableHeader({
       scope="col"
       aria-sort={onSort ? ariaSort : undefined}
       className={cn(
-        'whitespace-nowrap border-b px-[--table-cell-x] py-[--table-cell-y] text-xs font-semibold uppercase tracking-wide text-muted-foreground',
+        'break-words border-b px-[--table-cell-x] py-[--table-cell-y] text-xs font-semibold uppercase leading-tight tracking-wide text-muted-foreground',
         align === 'right' ? 'text-right' : 'text-left',
         className,
       )}
@@ -192,6 +181,7 @@ export function TableCell({
   numeric = false,
   wrap = false,
   className,
+  dataLabel,
 }: {
   children: ReactNode
   align?: 'left' | 'right'
@@ -199,11 +189,13 @@ export function TableCell({
   /** Opt in to wrapping, for a genuinely long free-text column such as notes. */
   wrap?: boolean
   className?: string
+  dataLabel?: string
 }) {
   return (
     <td
+      data-label={dataLabel}
       className={cn(
-        'h-[--table-row-height] whitespace-nowrap px-[--table-cell-x] py-[--table-cell-y] align-middle',
+        'min-w-0 break-words px-[--table-cell-x] py-[--table-cell-y] align-middle',
         align === 'right' ? 'text-right' : 'text-left',
         numeric && 'tabular',
         wrap && 'whitespace-normal',
@@ -216,12 +208,13 @@ export function TableCell({
 }
 
 /** A row header — the identifying cell of a row, for screen-reader navigation. */
-export function RowHeaderCell({ children, className }: { children: ReactNode; className?: string }) {
+export function RowHeaderCell({ children, className, dataLabel }: { children: ReactNode; className?: string; dataLabel?: string }) {
   return (
     <th
       scope="row"
+      data-label={dataLabel}
       className={cn(
-        'h-[--table-row-height] whitespace-nowrap px-[--table-cell-x] py-[--table-cell-y] text-left align-middle font-normal',
+        'min-w-0 break-words px-[--table-cell-x] py-[--table-cell-y] text-left align-middle font-medium text-foreground',
         className,
       )}
     >
@@ -229,3 +222,4 @@ export function RowHeaderCell({ children, className }: { children: ReactNode; cl
     </th>
   )
 }
+

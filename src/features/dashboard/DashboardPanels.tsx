@@ -50,7 +50,7 @@ function Metric({
     <>
       <span
         className={cn(
-          'tabular text-xl font-semibold leading-none',
+          'tabular text-2xl font-semibold leading-none tracking-tight',
           emphasis === 'critical' && value > 0 && 'text-status-overdue',
           emphasis === 'attention' && value > 0 && 'text-status-due-soon',
         )}
@@ -418,3 +418,4 @@ export function WarehousePanel({ warehouse }: { warehouse: WarehouseRow }) {
 }
 
 export { Metric }
+

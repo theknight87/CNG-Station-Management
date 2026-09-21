@@ -96,7 +96,7 @@ export function MobileNav({
       >
         <div className="flex h-header shrink-0 items-center justify-between border-b border-b-brand-strong/25 px-3">
           <span className="flex min-w-0 items-center gap-2">
-            <BrandMark variant="mark" className="h-6 w-auto shrink-0" />
+            <BrandMark variant="mark" className="h-8 w-auto shrink-0" />
             <span className="truncate text-sm font-semibold tracking-tight">CNG Station Management</span>
           </span>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close navigation">
@@ -120,3 +120,4 @@ export function MobileNav({
     </div>
   )
 }
+

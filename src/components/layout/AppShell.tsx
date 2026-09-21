@@ -1,4 +1,5 @@
 import { useCallback, useState, type ReactNode } from 'react'
+import { useLocation } from 'react-router-dom'
 
 import { AppHeader } from '@/components/layout/AppHeader'
 import { BrandMark } from '@/components/layout/BrandMark'
@@ -9,6 +10,7 @@ import { cn } from '@/lib/utils'
 import type { AppRole } from '@/types/domain'
 
 const COLLAPSE_KEY = 'cng.sidebar.collapsed'
+const TABLE_WORKSPACE = /^\/(alerts|reports|regions|stations|manage|admin(?:\/audit-log|\/data-quality|\/station-batch)?)(?:\/|$)/
 
 /** Storage can throw (private mode, blocked site data); the default is expanded. */
 function readCollapsed(): boolean {
@@ -53,13 +55,24 @@ export function AppShell({
   account?: ReactNode
   children: ReactNode
 }) {
+  const location = useLocation()
   // A per-browser convenience, so localStorage — nobody should need a database
   // row to remember a sidebar width. Read in the initializer rather than an
   // effect, so the sidebar never renders expanded and then snaps shut.
   const [collapsed, setCollapsed] = useState(readCollapsed)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [expandedTablePath, setExpandedTablePath] = useState<string | null>(null)
+  // Table-led routes start collapsed without overwriting the user's global
+  // preference. A deliberate expansion lasts for the current route only.
+  const autoCollapsed = TABLE_WORKSPACE.test(location.pathname) && expandedTablePath !== location.pathname
+  const sidebarCollapsed = collapsed || autoCollapsed
 
   const toggleSidebar = useCallback(() => {
+    if (autoCollapsed) {
+      setExpandedTablePath(location.pathname)
+      setCollapsed(false)
+      return
+    }
     setCollapsed((prev) => {
       const next = !prev
       try {
@@ -69,7 +82,7 @@ export function AppShell({
       }
       return next
     })
-  }, [])
+  }, [autoCollapsed, location.pathname])
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -83,7 +96,7 @@ export function AppShell({
       <aside
         className={cn(
           'hidden shrink-0 flex-col border-r bg-card lg:flex',
-          collapsed ? 'w-sidebar-collapsed' : 'w-sidebar',
+          sidebarCollapsed ? 'w-sidebar-collapsed' : 'w-sidebar',
         )}
       >
         {/* Brand block. The logo sits on the card ground, not on a green panel:
@@ -94,14 +107,14 @@ export function AppShell({
         <div
           className={cn(
             'flex h-header shrink-0 items-center gap-2 border-b border-b-brand-strong/25',
-            collapsed ? 'justify-center px-0' : 'px-3',
+            sidebarCollapsed ? 'justify-center px-0' : 'px-3',
           )}
         >
-          {collapsed ? (
-            <BrandMark variant="mark" className="h-6 w-auto" />
+          {sidebarCollapsed ? (
+            <BrandMark variant="mark" className="h-8 w-auto" />
           ) : (
             <>
-              <BrandMark variant="full" className="h-7 w-auto shrink-0" />
+              <BrandMark variant="mark" className="h-8 w-auto shrink-0" />
               <span className="truncate text-sm font-semibold tracking-tight">
                 CNG Station Management
               </span>
@@ -116,7 +129,7 @@ export function AppShell({
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          <SidebarNav role={role} collapsed={collapsed} />
+          <SidebarNav role={role} collapsed={sidebarCollapsed} />
         </div>
       </aside>
 
@@ -125,7 +138,7 @@ export function AppShell({
       <div className="flex min-w-0 flex-1 flex-col">
         <AppHeader
           crumbs={crumbs}
-          sidebarCollapsed={collapsed}
+          sidebarCollapsed={sidebarCollapsed}
           onToggleSidebar={toggleSidebar}
           onOpenMobileNav={() => setMobileOpen(true)}
           notifications={notifications}
@@ -139,3 +152,4 @@ export function AppShell({
     </div>
   )
 }
+

@@ -28,7 +28,7 @@ export function ReportTable({
 }: { spec: ReportSpec; rows: ReportRow[] }) {
   return (
     <TableScroll label={`${spec.label} report`}>
-      <DataTable caption={`${spec.label}. ${spec.description}`}>
+      <DataTable className="responsive-records" caption={`${spec.label}. ${spec.description}`}>
         <TableHead>
           <TableRow>
             {spec.columns.map((c) => (
@@ -47,12 +47,13 @@ export function ReportTable({
                     key={c.key}
                     align={c.align ?? 'left'}
                     numeric={c.kind === 'number'}
+                    dataLabel={c.header}
                   >
                     <Cell column={c} row={row} />
                   </TableCell>
                 ))}
                 {spec.drillThrough ? (
-                  <TableCell>
+                  <TableCell dataLabel="Open">
                     {href ? (
                       <Link
                         to={href}
@@ -127,3 +128,4 @@ function Cell({ column, row }: { column: ReportColumn; row: ReportRow }) {
     }
   }
 }
+

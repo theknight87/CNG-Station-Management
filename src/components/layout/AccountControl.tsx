@@ -32,7 +32,7 @@ export function AccountControl({
     <div className="flex shrink-0 items-center gap-2">
       {displayName ? (
         <div className="hidden text-right sm:block">
-          <p className="max-w-[16rem] truncate text-xs font-medium leading-tight" dir="auto">
+          <p className="max-w-[16rem] truncate text-sm font-medium leading-tight" dir="auto">
             {displayName}
           </p>
           {/* 12px floor applies here too — this is the only place the role is shown. */}
@@ -63,3 +63,4 @@ export function SupabaseAccountControl({ role }: { role: AppRole | null }) {
     />
   )
 }
+
