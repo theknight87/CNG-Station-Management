@@ -219,15 +219,13 @@
     overflow-x: hidden;
   }
 
-  /* Fixed-layout tables only remain legible if cell content is also allowed to
-   * wrap. Several status and identity primitives intentionally stay on one line
-   * elsewhere in the product; inside a dense registry, override that preference
-   * so neighbouring columns never overlap and no value is clipped. */
-  .table-scroll :is(td, th) > * {
+  .compact-records :is(td, th) {
+    overflow: hidden;
+  }
+
+  .compact-records :is(td, th) > * {
     min-width: 0;
     max-width: 100%;
-    white-space: normal;
-    overflow-wrap: anywhere;
   }
 
   @media (max-width: 639px) {
