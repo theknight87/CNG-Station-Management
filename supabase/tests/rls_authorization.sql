@@ -849,6 +849,38 @@ BEGIN
   PERFORM pg_temp.ok(n = (SELECT count(*) FROM installed_relief_valves),
     'DASH-4 due buckets partition the caller''s rows: they sum to the visible total, no double counting');
 
+  SELECT assets INTO n FROM v_dashboard_region_summary WHERE region_id = east_id;
+  PERFORM pg_temp.ok(n = (
+      (SELECT count(*) FROM installed_relief_valves WHERE region_id = east_id)
+    + (SELECT count(*) FROM storage_vessels WHERE region_id = east_id)
+    + (SELECT count(*) FROM recovery_tanks WHERE region_id = east_id)
+    + (SELECT count(*) FROM gas_detectors WHERE region_id = east_id)
+    + (SELECT count(*) FROM hoses WHERE region_id = east_id)
+  ), 'DASH-4A region asset total equals the caller-visible source rows');
+
+  SELECT overdue INTO n FROM v_dashboard_region_summary WHERE region_id = east_id;
+  PERFORM pg_temp.ok(n = (
+      (SELECT count(*) FROM installed_relief_valves WHERE region_id = east_id
+        AND cng_due_status(next_calibration_date, next_calibration_precision) = 'overdue')
+    + (SELECT count(*) FROM storage_vessels WHERE region_id = east_id
+        AND cng_due_status(next_inspection_date, next_inspection_precision) = 'overdue')
+    + (SELECT count(*) FROM recovery_tanks WHERE region_id = east_id
+        AND cng_due_status(next_inspection_date, next_inspection_precision) = 'overdue')
+    + (SELECT count(*) FROM gas_detectors WHERE region_id = east_id
+        AND cng_due_status(next_calibration_date, next_calibration_precision) = 'overdue')
+    + (SELECT count(*) FROM hoses WHERE region_id = east_id
+        AND cng_due_status(next_test_date, next_test_precision) = 'overdue')
+  ), 'DASH-4B region overdue total equals the caller-visible source rows');
+
+  SELECT unresolved_mapping INTO n FROM v_dashboard_region_summary WHERE region_id = east_id;
+  PERFORM pg_temp.ok(n = (
+      (SELECT count(*) FROM installed_relief_valves WHERE region_id = east_id AND mapping_status <> 'resolved')
+    + (SELECT count(*) FROM storage_vessels WHERE region_id = east_id AND mapping_status <> 'resolved')
+    + (SELECT count(*) FROM recovery_tanks WHERE region_id = east_id AND mapping_status <> 'resolved')
+    + (SELECT count(*) FROM gas_detectors WHERE region_id = east_id AND mapping_status <> 'resolved')
+    + (SELECT count(*) FROM hoses WHERE region_id = east_id AND mapping_status <> 'resolved')
+  ), 'DASH-4C region unresolved total equals the caller-visible source rows');
+
   RESET ROLE;
 
   -- An admin sees every region.
