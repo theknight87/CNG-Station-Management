@@ -93,7 +93,7 @@ export function SignInPage() {
 
             <form className="space-y-5" onSubmit={submit}>
               <label className="block text-sm font-semibold text-slate-800" htmlFor="sign-in-email">Email address</label>
-              <input id="sign-in-email" className="-mt-3 h-12 w-full rounded-md border border-slate-300 bg-white px-3.5 text-base shadow-sm transition-colors placeholder:text-slate-400 hover:border-slate-400 focus:border-brand-strong" type="email" inputMode="email" autoComplete="email" placeholder="name@company.com" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} />
+              <input id="sign-in-email" className="-mt-3 h-12 w-full rounded-md border border-slate-300 bg-white px-3.5 text-base shadow-sm transition-colors placeholder:text-slate-400 hover:border-slate-400 focus:border-brand-strong" type="email" inputMode="email" autoComplete="email" placeholder="name@company.com" required value={email} onChange={(e) => setEmail(e.target.value)} />
 
               <label className="block text-sm font-semibold text-slate-800" htmlFor="sign-in-password">Password</label>
               <input id="sign-in-password" className="-mt-3 h-12 w-full rounded-md border border-slate-300 bg-white px-3.5 text-base shadow-sm transition-colors hover:border-slate-400 focus:border-brand-strong" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
