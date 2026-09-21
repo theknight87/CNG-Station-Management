@@ -50,6 +50,26 @@ export function useReportSummary(
       if (!supabase) return
       setLoading(true)
 
+      const isUnfiltered = Object.values(filters).every((value) => !value)
+      if (spec.id === 'due' && isUnfiltered) {
+        const { data, error } = await supabase.from('v_report_due_summary').select('*')
+        if (cancelled) return
+        const row = error ? null : data?.[0]
+        setLoading(false)
+        setMetrics(row ? [
+          { key: 'total', label: 'Total Records', value: row.total, description: 'Records within your authorized Regions' },
+          ...DUE_BUCKETS.map((bucket) => ({
+            ...bucket,
+            value: row[bucket.key] as number,
+          })),
+          {
+            key: 'unresolved', label: 'Unresolved Mapping', value: row.unresolved,
+            description: 'Records whose hierarchy the source did not fully prove',
+          },
+        ] : null)
+        return
+      }
+
       const count = async (extra?: { column: string; value: string }) => {
         let q = supabase.from(spec.view).select(spec.idColumn, { count: 'exact', head: true })
         q = applyReportFilters(q as never, spec, filters) as never
@@ -58,10 +78,9 @@ export function useReportSummary(
         return error ? null : (n ?? null)
       }
 
-      const requests: { key: string; label: string; description: string; load: () => Promise<number | null> }[] = [{
-        key: 'total', label: 'Total Records',
+      const results: SummaryMetric[] = [{
+        key: 'total', label: 'Total Records', value: await count(),
         description: 'Records matching the current filters, within your authorized Regions',
-        load: () => count(),
       }]
 
       const dueColumn = spec.filterColumns.dueState
@@ -70,9 +89,9 @@ export function useReportSummary(
           // A bucket the user has already filtered to would just restate the
           // total, so it is skipped rather than shown twice.
           if (filters.dueState && filters.dueState !== bucket.key) continue
-          requests.push({
+          results.push({
             key: bucket.key, label: bucket.label, description: bucket.description,
-            load: () => count({ column: dueColumn, value: bucket.key }),
+            value: await count({ column: dueColumn, value: bucket.key }),
           })
         }
       }
@@ -82,22 +101,10 @@ export function useReportSummary(
       // same RLS, so a zero is a real zero for that caller.
       if (spec.summaryBreakdown) {
         for (const b of spec.summaryBreakdown.values) {
-          requests.push({
-            key: b.value, label: b.label, description: b.description,
-            load: () => count({ column: spec.summaryBreakdown!.column, value: b.value }),
-          })
+          const n = await count({ column: spec.summaryBreakdown.column, value: b.value })
+          if (n) results.push({ key: b.value, label: b.label, value: n, description: b.description })
         }
       }
-
-      // Counts are independent. Running them concurrently keeps the summary's
-      // wall time near the slowest filtered aggregate instead of their sum.
-      const loaded = await Promise.all(requests.map(async (request) => ({
-        ...request,
-        value: await request.load(),
-      })))
-      const results: SummaryMetric[] = loaded
-        .filter((metric) => !spec.summaryBreakdown || metric.key === 'total' || Boolean(metric.value))
-        .map(({ key, label, description, value }) => ({ key, label, description, value }))
 
       const mappingColumn = spec.filterColumns.mappingStatus
       if (mappingColumn && !filters.mappingStatus) {

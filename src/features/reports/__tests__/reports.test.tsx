@@ -125,6 +125,10 @@ const DUE_ROW = {
 beforeEach(() => {
   db.rows = {
     v_report_due_compliance: [DUE_ROW],
+    v_report_due_summary: [{
+      total: 1, overdue: 0, due_today: 0, due_7: 0,
+      due_30: 0, unknown: 0, unresolved: 0,
+    }],
     regions: [{ id: 'r1', name: 'East' }, { id: 'r2', name: 'West' }],
     stations: [{ id: 'st1', station_name: 'Abnub' }],
     units: [{ id: 'un1', unit_name: 'Abnub 1' }],
@@ -316,17 +320,16 @@ describe('filters', () => {
 
 describe('summary metrics', () => {
   it('counts on the server, under the same filters, not from the loaded page', async () => {
-    db.counts.v_report_due_compliance = 4210
+    db.rows.v_report_due_summary = [{
+      total: 4210, overdue: 100, due_today: 2, due_7: 8,
+      due_30: 20, unknown: 300, unresolved: 400,
+    }]
     render(withRouter(<ReportWorkspace spec={dueSpec} />))
-    // Scoped to the Total metric: the mock answers every count query with the
-    // same number, so a bare text query would match several tiles.
     const total = (await screen.findByText('Total Records')).closest('div')!
     expect(within(total).getByText('4,210')).toBeDefined()
-    const headQueries = db.queries.filter((q) => q.table === 'v_report_due_compliance' && q.head)
-    expect(headQueries.length).toBeGreaterThan(0)
-    // `head: true` asks for the count and no rows: a metric is never derived
-    // from the page the table happens to hold.
-    expect(headQueries[0].ops.join(' ')).toMatch(/select:asset_id/)
+    const summaries = db.queries.filter((q) => q.table === 'v_report_due_summary')
+    expect(summaries).toHaveLength(1)
+    expect(summaries[0].ops).toContain('select:*')
   })
 
   it('offers an Unknown Due Date metric, so a non-exact date is never hidden', async () => {
