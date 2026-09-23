@@ -1,8 +1,16 @@
 import { expect, test } from 'playwright/test'
 
+// supabase-js expresses .range(a, b) either as a Range header or as
+// offset/limit query parameters depending on the request; accept both forms.
 function isPagedViewResponse(response: import('playwright/test').Response, view: string, range: string) {
   const request = response.request()
-  return response.url().includes(`/rest/v1/${view}`) && request.headers().range === range
+  if (!response.url().includes(`/rest/v1/${view}`)) return false
+  if (request.headers().range === range) return true
+  const [from, to] = range.split('-').map(Number)
+  const url = new URL(response.url())
+  const offset = Number(url.searchParams.get('offset') ?? 0)
+  const limit = Number(url.searchParams.get('limit'))
+  return offset === from && limit === to - from + 1
 }
 
 for (const { route, view } of [
