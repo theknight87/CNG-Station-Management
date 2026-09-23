@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils'
 import type { AppRole } from '@/types/domain'
 
 const COLLAPSE_KEY = 'cng.sidebar.collapsed'
-const TABLE_WORKSPACE = /^\/(alerts|reports|regions|stations|manage|admin(?:\/audit-log|\/data-quality|\/station-batch)?)(?:\/|$)/
+const TABLE_WORKSPACE = /^\/(alerts|reports|regions|stations|manage|admin(?:\/audit-log|\/data-quality)?)(?:\/|$)/
 
 /** Storage can throw (private mode, blocked site data); the default is expanded. */
 function readCollapsed(): boolean {

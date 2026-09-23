@@ -22,7 +22,6 @@ const SECTIONS = [
   { to: '/admin/alert-settings', label: 'Alert Settings' },
   { to: '/admin/data-quality', label: 'Data Quality' },
   { to: '/admin/audit-log', label: 'Audit Log' },
-  { to: '/admin/station-batch', label: 'Station Batch' },
 ]
 
 export function AdminView() {

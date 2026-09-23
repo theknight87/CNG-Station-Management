@@ -26,7 +26,6 @@ const AdminDataQualitySection = lazy(() => import('@/features/admin/sections/Adm
 const AdminUsersSection = lazy(() => import('@/features/admin/sections/AdminUsersSection').then((m) => ({ default: m.AdminUsersSection })))
 // Temporary: the owner-run execution surface for the Stage B2 Station batch (Phase 6).
 // Remove again once B2 is committed, as the Stage B surface was.
-const AdminStationBatchB2 = lazy(() => import('@/features/admin/sections/AdminStationBatchB2').then((m) => ({ default: m.AdminStationBatchB2 })))
 const ActivityReportSection = lazy(() => import('@/features/reports/sections/ReportSections').then((m) => ({ default: m.ActivityReportSection })))
 const DataQualityReportSection = lazy(() => import('@/features/reports/sections/ReportSections').then((m) => ({ default: m.DataQualityReportSection })))
 const DueReportSection = lazy(() => import('@/features/reports/sections/ReportSections').then((m) => ({ default: m.DueReportSection })))
@@ -136,7 +135,6 @@ export const router = createBrowserRouter([
           { path: 'alert-settings', element: <AdminAlertSettingsSection /> },
           { path: 'data-quality', element: <AdminDataQualitySection /> },
           { path: 'audit-log', element: <AdminAuditLogSection /> },
-          { path: 'station-batch', element: <AdminStationBatchB2 /> },
         ],
       },
       { path: '*', element: <NotFoundPage /> },

@@ -118,9 +118,9 @@ async function confirmAndSubmit(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('who can reach the control', () => {
-  it('offers the temporary Station Batch control in Admin navigation while Stage B2 is outstanding', () => {
+  it('removes the completed temporary Station Batch control from Admin navigation (Stage B and B2 committed)', () => {
     render(<MemoryRouter><AdminView /></MemoryRouter>)
-    expect(screen.getByRole('link', { name: /station batch/i }).getAttribute('href')).toBe('/admin/station-batch')
+    expect(screen.queryByRole('link', { name: /station batch/i })).toBeNull()
   })
 
   it.each(['manager', 'engineer', 'viewer'])('refuses the Admin area to a %s', (role) => {
