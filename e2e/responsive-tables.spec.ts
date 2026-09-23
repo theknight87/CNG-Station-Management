@@ -1,5 +1,11 @@
 import { expect, test } from 'playwright/test'
 
+// A skip decided by an instant count races the data load and silently drops
+// coverage. Wait for the element first; only a genuine absence skips.
+async function presentWithin(locator: import('playwright/test').Locator, ms = 10_000): Promise<boolean> {
+  return locator.first().waitFor({ state: 'attached', timeout: ms }).then(() => true, () => false)
+}
+
 test('sign in never creates document-level horizontal overflow', async ({ page }) => {
   await page.goto('/sign-in')
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy()
@@ -18,7 +24,7 @@ for (const route of ['/reports/due', '/alerts']) test(`responsive authenticated 
   }).toBeTruthy()
 
   const table = page.getByRole('table').first()
-  test.skip(await table.count() === 0, `The authorized ${route} dataset has no rendered table, so responsive table containment cannot be measured.`)
+  test.skip(!(await presentWithin(table)), `The authorized ${route} dataset has no rendered table, so responsive table containment cannot be measured.`)
   await expect(table).toBeVisible()
   await expect.poll(async () => {
     const box = await table.boundingBox()
@@ -33,7 +39,7 @@ test('mobile navigation dialog fits the visual viewport', async ({ page }) => {
   test.skip(!process.env.E2E_EMAIL || !process.env.E2E_PASSWORD, 'E2E credentials are absent; authenticated routes are intentionally skipped.')
   await page.goto('/alerts')
   const open = page.getByRole('button', { name: 'Open navigation' })
-  test.skip(await open.count() === 0, 'This desktop project has no mobile navigation trigger.')
+  test.skip(!(await presentWithin(open)), 'This desktop project has no mobile navigation trigger.')
   await open.click()
   const dialog = page.getByRole('dialog', { name: 'Main navigation' })
   await expect(dialog).toBeVisible()

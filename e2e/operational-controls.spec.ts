@@ -1,5 +1,11 @@
 import { expect, test } from 'playwright/test'
 
+// A skip decided by an instant count races the data load and silently drops
+// coverage. Wait for the element first; only a genuine absence skips.
+async function presentWithin(locator: import('playwright/test').Locator, ms = 10_000): Promise<boolean> {
+  return locator.first().waitFor({ state: 'attached', timeout: ms }).then(() => true, () => false)
+}
+
 const requireCredentials = () => {
   test.skip(!process.env.E2E_EMAIL || !process.env.E2E_PASSWORD, 'E2E credentials are absent; authenticated routes are intentionally skipped.')
 }
@@ -16,7 +22,7 @@ test('Alerts exposes its accessible bell and record details when rows are availa
   // The bell lives in the page header; the sidebar also has a plain "Alerts" link.
   await expect(page.getByRole('banner').getByRole('link', { name: /^Alerts(?: — \d+\+? unread(?:; exact count \d+)?)?$/ })).toBeVisible()
   const details = page.getByRole('button', { name: /show the full technical record/i }).first()
-  test.skip(await details.count() === 0, 'The authorized Alerts dataset has no rows, so a details dialog cannot be exercised.')
+  test.skip(!(await presentWithin(details)), 'The authorized Alerts dataset has no rows, so a details dialog cannot be exercised.')
   await details.click()
   await expect(page.getByRole('dialog')).toBeVisible()
   await expect(page.getByRole('button', { name: /close details/i })).toBeVisible()

@@ -340,3 +340,29 @@ Remove the screen again once B2 is committed. Frontend tests 640 → **647**.
   - owner steps: confirm the email, then in Admin → Users activate the account and set its role to admin. That route is audited.
   - its credentials exist only in a mode-600 file in the session scratchpad, never in the repository, logs or chat
 - Leaked-password protection needs a paid plan. The owner set a minimum length of 8 with complex passwords instead, and the protection stays off.
+
+## Phase 2 — signed-in browser suite against production (Chromium; read-only)
+
+Run with the dedicated admin test account on `https://cng-station-management.pages.dev`. Credentials come from a mode-600 env
+file and are **not present in any log**. Browser scope is Chromium only (owner decision).
+
+**Result: chromium-desktop + chromium-mobile, 66 passed, 1 skipped, 0 failed, 0 flaky.** The only skip is correct: the desktop
+layout has no mobile navigation trigger.
+
+The first run had 13 failures and 7 skips. **None was an application defect**; each cause was verified and fixed in the tests or
+the environment:
+1. **TLS.** The sandbox egress proxy re-signs TLS and Playwright's bundled Chromium does not trust it. An **opt-in**
+   `E2E_CHROMIUM_TRUSTED_SPKI_FILE` makes Chromium trust exactly the key hashes of this environment's CA bundle
+   (`--ignore-certificate-errors-spki-list`). Verification stays on: the proxy still rejects an expired certificate. It is unset, and so has no effect, by default.
+2. **Page selection.** `selectOption('1')` matches by value OR label, and the option labelled "1" is page 1 (value 0). The
+   tests never selected page 2. Suspecting the app, I first proved the pager works for keyboard and real event sequences,
+   then reverted an unnecessary pager change. The tests now select `{ value: '1' }`.
+3. **Paged request detection.** supabase-js sends `offset`/`limit` query parameters here, not a `Range` header. The helper now accepts both.
+4. **Ambiguous bell locator.** It also matched the sidebar's plain "Alerts" link, so it is now scoped to the page header (`banner`).
+5. **Sign-in test under a signed-in state.** A signed-in `/sign-in` visit correctly redirects away, so the spec now always runs signed out.
+6. **Skips hiding coverage.** Three conditional skips counted elements instantly, before data loaded, and skipped as "no rows / no
+   table / no trigger" on a page with 704 alerts and 2,941 report rows. They now wait up to 10 s before deciding.
+   All six affected checks run and pass.
+
+**Still NOT covered:** manager, engineer, viewer and inactive roles in the browser. The suite uses one admin account only.
+Multi-role browser authorization remains an open Phase 2 item, covered today only by the SQL suites.
