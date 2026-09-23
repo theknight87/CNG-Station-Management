@@ -163,3 +163,14 @@ the shape checks 2, 4, 5, 6 and 7; every authorization check passes both ways.
 
 **Gate:** `verify-all.sh` exit 0. There are 68 migrations from zero. Schema 344, RLS 697, rls_initplan_perf 25. The production-equivalent base is 67
 files (everything deployed), then the upgrade applies this migration, and all three suites re-pass.
+
+## RLS speed fix DEPLOYED (owner-approved 2026-09-23)
+
+- Recorded as `20260923121735 rls_initplan_alerts_audit`. Hosted migrations 68 -> **69**. No repository migration file is still undeployed.
+- The deployed policy text hashes to `ce069db6…`, **identical** to the locally tested database. The old value was `852c588b…`.
+- The production plans now read `Filter: ((InitPlan 1).col1 OR (actor_id = (InitPlan 2).col1))` for audit_logs and
+  `... ELSE (InitPlan 5).col1 END` for alerts. There are no per-row function calls.
+- **Admin visibility is identical.** Alerts 704 rows, id-set MD5 `40bc885b…`; audit 290 rows, `3fba3b2b…`. These are the same before and after.
+- Timings as admin with RLS on: alert inbox **347.5 ms -> 38–62 ms**, audit log **98.5 ms -> 0.7–3.5 ms**.
+- 0 rows changed (the write counter was 25,097 before and after). Non-admin roles are covered by `rls_initplan_perf.sql`
+  (25/25), because production has no non-admin test accounts.
