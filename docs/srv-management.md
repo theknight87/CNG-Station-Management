@@ -461,3 +461,17 @@ which is bookkeeping, not a hazard, and the from-zero replay applies 0054 then 0
 **NOT DEPLOYED, NOTHING WRITTEN**: production stays at 53 migrations, 0 `cng_wrv_import*` functions,
 `warehouse_relief_valves` **0**, installed SRVs 2,662 (1,054/1,608), four families 100/91/62/26,
 decisions 281, audit 285, aliases 0.
+
+## Prompt 27A — 0055 deployed, warehouse preview awaiting owner approval (2026-09-23)
+
+- Preflight: hosted had 66 migrations, no 0055/0054, 2,188 staged warehouse rows (run
+  `cdad1e5e-7faa-4f3b-9432-12a720f3dd64`), 0 committed, 0 canonical. The manifest was `764d3c0f…b8f`.
+- Disposable replay in hosted order (every migration except 0054, with 0055 applied last): focused suite 36/36,
+  schema 344/344, RLS 697/697 (the only error was the expected `RLS_SUITE_ROLLBACK` sentinel).
+- Deployed only 0055 as `20260923113221 warehouse_srv_import` (now 67 migrations; 0054 still
+  absent). File SHA-256 `4223c55c…a68a3`. The prosrc MD5 values match the approved build:
+  commit `310077f9…` (SECURITY DEFINER), preview `c58aa59f…` and proposal `b83a63b1…` (STABLE, invoker).
+  The search_path is pinned, EXECUTE is granted to service_role only, and there is no dynamic SQL. Deployment wrote no rows.
+- The deployed preview ran twice and gave identical results. It found 2,188 eligible rows and 0 excluded, already-imported or invalid rows. There are 2,188 distinct keys and 2,188 distinct hashes. Serial numbers are present on 2,187 rows, warehouse codes on 2,187 and part numbers on 2,167. A target Region is set on 1,775 rows and a target Station on none. A raw Station name is present on 1,774 rows. Exact next, last and issue dates are present on 1,854, 1,854 and 1,480 rows. All five availability values map to the enum, and there are 0 Region mismatches.
+- **Executable fingerprint (deployed): `9354a9c77ab22c92ee206eba34605c619d24b33207350c6f0be80b03a4de7f69`.**
+- **The commit has NOT been invoked. It waits for explicit owner approval of this fingerprint.**
