@@ -402,3 +402,31 @@ scratchpad. Delta access for all three.
 | inactive | efares0+cng-inactive (inactive viewer, never activated) | pass (desktop, mobile) |
 
 Final run: **9 passed, 0 skipped, 0 failed** (setup + 4 roles × 2 projects). The Phase 2 multi-role item is closed.
+
+## Phase 3 — browser measurement (2026-09-23, production, Chromium, signed in as the E2E admin)
+
+`scripts/measure-routes.mjs` (credentials from the environment only), 3 runs per route, each in a new page of one
+signed-in context. Measured from the cloud build environment, whose requests go through an egress proxy: a trivial
+API call (`app_users`, `regions`) already takes ~400–450 ms, so absolute times include that network cost.
+
+| Route | LCP ms (3 runs) | CLS | Data ready ms | API calls | Duplicates | Slowest API call (browser) |
+| --- | --- | --- | --- | --- | --- | --- |
+| /sign-in (anonymous) | 1936 cold, 372, 308 | 0 | 2652, 993, 928 | 0 | 0 | — |
+| /dashboard | 3900, 2484, 2696 | 0 | 4353, 2926, 3147 | 6 | 0 | v_dashboard_warehouse_summary ~1.5 s |
+| /alerts | 1332, 856, 1096 | 0.049 | ~2.2–3.2 s | 4 | 0 | v_alert_summary ~0.8–1.3 s |
+| /manage/hoses | 1040, 956, 1060 | ≤0.052 | ~2.1 s | 4 | 0 | ~0.4–0.7 s |
+| /manage/gas-detectors | 900, 1148, 832 | 0.065 | ~2.3–2.5 s | 3 | 0 | ~0.8–0.9 s |
+| /reports/due | 1080, 880, 896 | 0.009 | ~2.7–3.1 s | 4 | 0 | v_report_due_compliance ~1.3–1.7 s |
+| /admin/audit-log | 1288, 1052, 856 | 0.005 | ~1.9–2.3 s | 3 | 0 | ~0.5 s |
+| /manage/srvs/installed | 1468, 924, 1148 | 0.047 | ~2.8–3.7 s | 5 | 0 | v_installed_srv_summary ~1.3–1.8 s |
+| /manage/srvs/warehouse | 1040, 1040, 832 | 0.015 | ~1.7–2.2 s | 3 | 0 | ~0.3–0.6 s |
+
+**Same queries inside the database** (as the admin, RLS enforced, 3 runs, warm): v_dashboard_warehouse_summary 0.2–17 ms,
+v_installed_srv_summary 6–9 ms, v_alert_summary 47–80 ms, v_report_due_compliance first page of 50 by days left 198–239 ms,
+every other registry/summary view ≤55 ms (first cold run up to ~430 ms).
+
+**Conclusion: no database change is justified.** The slow calls seen in the browser are network and request queueing in
+this measurement path, not query time; no duplicate requests were found. Only the Dashboard misses the LCP < 2 s
+target here, because its content waits for 6 parallel calls through the proxy. That cannot be judged from this
+environment: it should be re-measured from a normal office connection before changing anything. CLS is below 0.05
+everywhere except Gas Detectors (0.065) and Hoses in one run (0.052), both small. Not changed.
