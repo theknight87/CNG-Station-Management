@@ -66,6 +66,7 @@ export function ReportFiltersBar({
     setDraftState({ seed, values: { ...draft, ...patch } })
   const dirty = JSON.stringify(draft) !== JSON.stringify(applied)
   const filtered = JSON.stringify(applied) !== JSON.stringify(EMPTY_FILTERS)
+  const controlId = (field: string) => `report-${spec.id}-${field}`
 
   return (
     <form
@@ -78,9 +79,9 @@ export function ReportFiltersBar({
     >
       <DataToolbar label={`Filter the ${spec.label} report`}>
         {has('region') ? (
-          <Field label="Region" htmlFor="rf-region">
+          <Field label="Region" htmlFor={controlId('region')}>
             <select
-              id="rf-region" value={draft.region}
+              id={controlId('region')} name={controlId('region')} value={draft.region}
               onChange={(e) => set({ region: e.target.value, station: '', unit: '' })}
               className="h-7 rounded border bg-background px-1 text-xs"
             >
@@ -91,9 +92,9 @@ export function ReportFiltersBar({
         ) : null}
 
         {has('station') ? (
-          <Field label="Station" htmlFor="rf-station">
+          <Field label="Station" htmlFor={controlId('station')}>
             <select
-              id="rf-station" value={draft.station} disabled={draft.region === ''}
+              id={controlId('station')} name={controlId('station')} value={draft.station} disabled={draft.region === ''}
               onChange={(e) => set({ station: e.target.value, unit: '' })}
               className="h-7 rounded border bg-background px-1 text-xs"
             >
@@ -106,9 +107,9 @@ export function ReportFiltersBar({
         ) : null}
 
         {has('unit') ? (
-          <Field label="Unit" htmlFor="rf-unit">
+          <Field label="Unit" htmlFor={controlId('unit')}>
             <select
-              id="rf-unit" value={draft.unit} disabled={draft.station === ''}
+              id={controlId('unit')} name={controlId('unit')} value={draft.unit} disabled={draft.station === ''}
               onChange={(e) => set({ unit: e.target.value })}
               className="h-7 rounded border bg-background px-1 text-xs"
             >
@@ -121,9 +122,9 @@ export function ReportFiltersBar({
         ) : null}
 
         {has('assetType') && spec.assetTypeOptions ? (
-          <Field label="Asset type" htmlFor="rf-asset">
+          <Field label="Asset type" htmlFor={controlId('asset')}>
             <select
-              id="rf-asset" value={draft.assetType}
+              id={controlId('asset')} name={controlId('asset')} value={draft.assetType}
               onChange={(e) => set({ assetType: e.target.value })}
               className="h-7 rounded border bg-background px-1 text-xs"
             >
@@ -136,9 +137,9 @@ export function ReportFiltersBar({
         ) : null}
 
         {has('dueState') ? (
-          <Field label="Due state" htmlFor="rf-due">
+          <Field label="Due state" htmlFor={controlId('due')}>
             <select
-              id="rf-due" value={draft.dueState}
+              id={controlId('due')} name={controlId('due')} value={draft.dueState}
               onChange={(e) => set({ dueState: e.target.value })}
               className="h-7 rounded border bg-background px-1 text-xs"
             >
@@ -148,9 +149,9 @@ export function ReportFiltersBar({
         ) : null}
 
         {has('mappingStatus') ? (
-          <Field label="Mapping status" htmlFor="rf-mapping">
+          <Field label="Mapping status" htmlFor={controlId('mapping')}>
             <select
-              id="rf-mapping" value={draft.mappingStatus}
+              id={controlId('mapping')} name={controlId('mapping')} value={draft.mappingStatus}
               onChange={(e) => set({ mappingStatus: e.target.value })}
               className="h-7 rounded border bg-background px-1 text-xs"
             >
@@ -160,9 +161,9 @@ export function ReportFiltersBar({
         ) : null}
 
         {has('dateRange') ? (
-          <Field label="Day" htmlFor="rf-day">
+          <Field label="Day" htmlFor={controlId('day')}>
             <input
-              id="rf-day" type="date" value={draft.from === draft.to ? draft.from : ''}
+              id={controlId('day')} name={controlId('day')} type="date" value={draft.from === draft.to ? draft.from : ''}
               onChange={(e) => set({ from: e.target.value, to: e.target.value })}
               className="h-7 rounded border bg-background px-1 text-xs"
             />
@@ -170,8 +171,9 @@ export function ReportFiltersBar({
         ) : null}
 
         {has('search') ? (
-          <Field label="Search" htmlFor="rf-search">
+          <Field label="Search" htmlFor={controlId('search')}>
             <DebouncedSearch
+              id={controlId('search')}
               value={draft.search}
               onChange={(v) => set({ search: v })}
               placeholder="Serial, Job No. or Station"
@@ -198,8 +200,8 @@ export function ReportFiltersBar({
  * explicit act — the debounce only keeps the draft from churning.
  */
 function DebouncedSearch({
-  value, onChange, placeholder,
-}: { value: string; onChange: (v: string) => void; placeholder: string }) {
+  id, value, onChange, placeholder,
+}: { id: string; value: string; onChange: (v: string) => void; placeholder: string }) {
   // Same technique: the typed text is stored with the value it was seeded from,
   // so an external reset (Clear, or a report switch) is picked up by derivation.
   const [local, setLocal] = useState({ seed: value, text: value })
@@ -211,7 +213,7 @@ function DebouncedSearch({
   }, [text, value, onChange])
   return (
     <input
-      id="rf-search" type="search" value={text}
+      id={id} name={id} type="search" value={text}
       onChange={(e) => setLocal({ seed: value, text: e.target.value })}
       placeholder={placeholder}
       className="h-7 w-56 rounded border bg-background px-1 text-xs"

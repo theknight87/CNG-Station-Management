@@ -1,12 +1,14 @@
 -- rls_authorization.sql
 -- Authorization test suite: role x region x operation, executed as the real
--- `authenticated` Postgres role with synthetic Clerk claims.
+-- `authenticated` Postgres role with synthetic request claims.
 --
 -- These are DATABASE-LEVEL authorization tests. They exercise the exact RLS and
--- GRANT path a Clerk-authenticated request takes, by setting the same
--- `request.jwt.claims` GUC that Supabase populates from a verified Clerk token.
--- They do NOT prove the Clerk -> Supabase token exchange itself; that is a
--- separate end-to-end test and is reported separately.
+-- GRANT path a Supabase Auth request takes, by setting the same
+-- `request.jwt.claims` GUC that Supabase populates from a verified token. The
+-- long-lived fixtures intentionally retain Clerk-shaped subjects only for
+-- migration 0056's rollback fallback: their auth_user_id is NULL, as that
+-- fallback requires. Production identity is auth_user_id. These tests do not
+-- emulate token verification, which remains an end-to-end concern.
 --
 -- Everything runs in one transaction that is deliberately aborted at the end, so
 -- the suite leaves no data behind.
@@ -19,8 +21,32 @@ SET client_min_messages = notice;
 CREATE OR REPLACE FUNCTION pg_temp.ok(p_cond boolean, p_label text)
 RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
-  IF NOT p_cond THEN RAISE EXCEPTION 'FAILED: %', p_label; END IF;
+  IF p_cond IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAILED: %', p_label; END IF;
   RAISE NOTICE 'PASS  %', p_label;
+END $$;
+
+-- Use this for authorization boundaries: a generic error such as "user not
+-- found" must not be counted as proof that the caller was denied by policy.
+CREATE OR REPLACE FUNCTION pg_temp.rejected_sqlstate(p_sql text, p_sqlstate text)
+RETURNS boolean LANGUAGE plpgsql AS $$
+BEGIN
+  EXECUTE p_sql;
+  RETURN false;
+EXCEPTION WHEN others THEN
+  RETURN SQLSTATE = p_sqlstate;
+END $$;
+
+-- cng_acknowledge_alert predates the admin RPC convention and emits its
+-- documented "no active application user" error as P0001. Keep that narrower
+-- than a generic denial until a separately scoped API-error migration changes
+-- the function's public error contract.
+CREATE OR REPLACE FUNCTION pg_temp.rejected_error(p_sql text, p_sqlstate text, p_message text)
+RETURNS boolean LANGUAGE plpgsql AS $$
+BEGIN
+  EXECUTE p_sql;
+  RETURN false;
+EXCEPTION WHEN others THEN
+  RETURN SQLSTATE = p_sqlstate AND SQLERRM = p_message;
 END $$;
 
 -- Becomes the given persona for subsequent statements in this transaction.
@@ -29,7 +55,7 @@ RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
   EXECUTE 'SET LOCAL ROLE authenticated';
   IF p_sub IS NULL THEN
-    PERFORM set_config('request.jwt.claims', '', true);
+    PERFORM set_config('request.jwt.claims', '{}'::text, true);
   ELSE
     PERFORM set_config('request.jwt.claims',
       json_build_object('sub', p_sub, 'role', 'authenticated')::text, true);
@@ -40,7 +66,7 @@ CREATE OR REPLACE FUNCTION pg_temp.as_anon()
 RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
   EXECUTE 'SET LOCAL ROLE anon';
-  PERFORM set_config('request.jwt.claims', '', true);
+  PERFORM set_config('request.jwt.claims', '{}'::text, true);
 END $$;
 
 -- Runs SQL as the current persona and reports whether it was DENIED.
@@ -57,6 +83,17 @@ END $$;
 -- ===========================================================================
 -- Fixtures, created with RLS bypassed (superuser).
 -- ===========================================================================
+-- The repository's vanilla migration harness has no Supabase Auth schema. A
+-- transaction-local minimal stand-in lets the removal RPC exercise its
+-- auth.users DELETE path without claiming to be a full Auth integration test.
+DO $$
+BEGIN
+  IF to_regclass('auth.users') IS NULL THEN
+    EXECUTE 'CREATE SCHEMA IF NOT EXISTS auth';
+    EXECUTE 'CREATE TABLE auth.users (id uuid PRIMARY KEY)';
+  END IF;
+END $$;
+
 CREATE TEMP TABLE f AS
 SELECT
   (SELECT id FROM regions WHERE code='east') AS r_east,
@@ -4449,6 +4486,240 @@ SELECT pg_temp.ok(
      AND (has_function_privilege('authenticated', p.oid, 'EXECUTE')
        OR has_function_privilege('anon', p.oid, 'EXECUTE'))) = 0,
   'STAGEBSEC-14: Stage A remains service_role-only after Stage B was added');
+
+-- ===========================================================================
+-- WORKSTREAM H — Advisor-listed callable SECURITY DEFINER behavior matrix.
+-- Catalog shape/grants live in schema_scenarios.sql. These are actual calls as
+-- browser personas, so the cng_require_admin() boundary is exercised before an
+-- untrusted target id can be acted on.
+-- ===========================================================================
+DO $workstream_h_admin_gate$
+DECLARE
+  persona text;
+  i integer;
+  v_east uuid;
+  v_west uuid;
+  v_rule uuid;
+  call_names text[] := ARRAY[
+    'cng_admin_decide_staged_mapping', 'cng_admin_grant_region',
+    'cng_admin_map_srv', 'cng_admin_remove_user', 'cng_admin_revoke_region',
+    'cng_admin_set_alert_rule_enabled', 'cng_admin_set_channel_policy',
+    'cng_admin_set_user_active', 'cng_admin_set_user_role'
+  ];
+  call_statements text[] := ARRAY[
+    $q$SELECT * FROM cng_admin_decide_staged_mapping('e5719a00-0000-0000-0000-000000000011', 'e5700000-0000-0000-0000-0000000000e1', NULL, NULL, NULL)$q$,
+    NULL,
+    $q$SELECT * FROM cng_admin_map_srv('e5700000-0000-0000-0000-0000000000e5', 'e5700000-0000-0000-0000-0000000000e1', NULL, NULL, NULL, NULL, NULL)$q$,
+    $q$SELECT cng_admin_remove_user('a0000000-0000-0000-0000-00000000000d', NULL)$q$,
+    NULL,
+    NULL,
+    $q$SELECT cng_admin_set_channel_policy('email', false, NULL, NULL)$q$,
+    $q$SELECT cng_admin_set_user_active('a0000000-0000-0000-0000-00000000000d', false, NULL)$q$,
+    $q$SELECT cng_admin_set_user_role('a0000000-0000-0000-0000-00000000000d', 'viewer', NULL)$q$
+  ];
+BEGIN
+  SELECT r_east, r_west INTO v_east, v_west FROM f;
+  SELECT id INTO v_rule FROM alert_rules ORDER BY id LIMIT 1;
+  call_statements[2] := format(
+    'SELECT cng_admin_grant_region(%L, %L, false)',
+    'a0000000-0000-0000-0000-00000000000d'::uuid, v_east);
+  call_statements[5] := format(
+    'SELECT cng_admin_revoke_region(%L, %L)',
+    'a0000000-0000-0000-0000-00000000000d'::uuid, v_west);
+  call_statements[6] := format(
+    'SELECT cng_admin_set_alert_rule_enabled(%L, false, NULL)', v_rule);
+  FOR persona IN SELECT unnest(ARRAY['clerk_view_east', 'clerk_eng_east', 'clerk_manager', 'clerk_pending'])
+  LOOP
+    PERFORM pg_temp.become(persona);
+    FOR i IN 1..array_length(call_names, 1) LOOP
+      PERFORM pg_temp.ok(pg_temp.rejected_sqlstate(call_statements[i], '42501'),
+        format('H-AUTH %s rejects %s before any caller-supplied target is trusted', call_names[i], persona));
+    END LOOP;
+    RESET ROLE;
+  END LOOP;
+  PERFORM pg_temp.become(NULL);
+  FOR i IN 1..array_length(call_names, 1) LOOP
+    PERFORM pg_temp.ok(pg_temp.rejected_sqlstate(call_statements[i], '42501'),
+      format('H-AUTH %s rejects an authenticated request with no app user', call_names[i]));
+  END LOOP;
+  RESET ROLE;
+END
+$workstream_h_admin_gate$;
+
+-- Add first-party Auth fixtures only after the legacy suite's row-count
+-- assertions. The older six-user fixture is intentionally stable.
+-- Real Supabase Auth has required columns and a profile-sync trigger; a plain
+-- migration replay has only the transactional auth.users stand-in above.
+DO $auth_fixture$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'auth' AND table_name = 'users' AND column_name = 'email'
+  ) THEN
+    INSERT INTO auth.users (
+      id, aud, role, email, encrypted_password, email_confirmed_at,
+      raw_app_meta_data, raw_user_meta_data
+    ) VALUES
+      ('b0000000-0000-0000-0000-000000000010', 'authenticated', 'authenticated', 'test-auth-viewer-010@example.invalid', '', now(), '{}'::jsonb, '{}'::jsonb),
+      ('b0000000-0000-0000-0000-000000000011', 'authenticated', 'authenticated', 'test-auth-pending-011@example.invalid', '', now(), '{}'::jsonb, '{}'::jsonb)
+    ON CONFLICT (id) DO NOTHING;
+  ELSE
+    INSERT INTO auth.users (id) VALUES
+      ('b0000000-0000-0000-0000-000000000010'),
+      ('b0000000-0000-0000-0000-000000000011')
+    ON CONFLICT (id) DO NOTHING;
+  END IF;
+END
+$auth_fixture$;
+
+INSERT INTO app_users (id, auth_user_id, email, role, is_active, full_name) VALUES
+  ('a0000000-0000-0000-0000-000000000010','b0000000-0000-0000-0000-000000000010','test-auth-viewer-010@example.invalid','viewer', true,  'TESTDATA Auth Viewer'),
+  ('a0000000-0000-0000-0000-000000000011','b0000000-0000-0000-0000-000000000011','test-auth-pending-011@example.invalid','viewer', false, 'TESTDATA Auth Pending')
+ON CONFLICT (auth_user_id) DO UPDATE
+  SET id = EXCLUDED.id,
+      email = EXCLUDED.email,
+      role = EXCLUDED.role,
+      is_active = EXCLUDED.is_active,
+      full_name = EXCLUDED.full_name;
+
+INSERT INTO user_region_access (app_user_id, region_id, can_map)
+SELECT 'a0000000-0000-0000-0000-000000000010'::uuid, r_east, false FROM f;
+
+-- Helpers answer only for the verified caller.  These fixtures intentionally
+-- use 0056's legacy fallback (auth_user_id IS NULL); the fallback is retained
+-- for rollback/audit continuity and must remain as constrained as Auth UUIDs.
+DO $workstream_h_identity$
+DECLARE
+  v_east uuid;
+  v_west uuid;
+BEGIN
+  SELECT r_east, r_west INTO v_east, v_west FROM f;
+  PERFORM pg_temp.become('clerk_eng_east');
+  PERFORM pg_temp.ok(cng_current_role() = 'engineer',
+    'H-IDENTITY current_role returns the authenticated engineer role only');
+  PERFORM pg_temp.ok(cng_has_region_grant(v_east, true) AND NOT cng_has_region_grant(v_west, false),
+    'H-IDENTITY region helper answers only the caller grants, never another user grants');
+  RESET ROLE;
+
+  PERFORM pg_temp.become('clerk_view_east');
+  PERFORM pg_temp.ok(cng_current_role() = 'viewer' AND cng_has_region_grant(v_east, false)
+                     AND NOT cng_has_region_grant(v_east, true),
+    'H-IDENTITY viewer receives only their role and non-map grant');
+  RESET ROLE;
+
+  PERFORM pg_temp.become('b0000000-0000-0000-0000-000000000010');
+  PERFORM pg_temp.ok(cng_current_role() = 'viewer' AND cng_has_region_grant(v_east, false),
+    'H-IDENTITY active Supabase Auth UUID resolves without a legacy Clerk subject');
+  RESET ROLE;
+
+  PERFORM pg_temp.become('b0000000-0000-0000-0000-000000000011');
+  PERFORM pg_temp.ok(cng_current_role() IS NULL AND NOT cng_has_region_grant(v_east, false),
+    'H-IDENTITY inactive Supabase Auth UUID receives no helper answer');
+  RESET ROLE;
+
+  PERFORM pg_temp.become('b0000000-0000-0000-0000-000000000012');
+  PERFORM pg_temp.ok(cng_current_role() IS NULL AND NOT cng_has_region_grant(v_east, false),
+    'H-IDENTITY missing Supabase Auth UUID receives no helper answer');
+  RESET ROLE;
+
+  PERFORM pg_temp.become('clerk_pending');
+  PERFORM pg_temp.ok(cng_current_role() IS NULL AND NOT cng_has_region_grant(v_east, false),
+    'H-IDENTITY inactive app user receives no privileged helper answer');
+  RESET ROLE;
+
+  PERFORM pg_temp.become(NULL);
+  PERFORM pg_temp.ok(cng_current_role() IS NULL AND NOT cng_has_region_grant(v_east, false),
+    'H-IDENTITY authenticated request with no app user receives no helper answer');
+  RESET ROLE;
+
+  PERFORM pg_temp.as_anon();
+  PERFORM pg_temp.ok(pg_temp.denied(format('SELECT cng_has_region_grant(%L, false)', v_east)),
+    'H-IDENTITY anon cannot execute the region helper');
+  RESET ROLE;
+END
+$workstream_h_identity$;
+
+-- The alert function is a region-scoped mutation, not an opaque definer read.
+-- ALRT-13/18 already prove viewer and cross-region refusal; these close the
+-- identity failure cases in the same actual callable path.
+SELECT pg_temp.become('clerk_pending');
+SELECT pg_temp.ok(pg_temp.rejected_error(
+  $q$SELECT cng_acknowledge_alert('e5700000-0000-0000-0000-0000000000d1')$q$,
+  'P0001', 'no active application user'),
+  'H-ALERT inactive caller cannot acknowledge an otherwise visible alert');
+SELECT pg_temp.become(NULL);
+SELECT pg_temp.ok(pg_temp.rejected_error(
+  $q$SELECT cng_acknowledge_alert('e5700000-0000-0000-0000-0000000000d1')$q$,
+  'P0001', 'no active application user'),
+  'H-ALERT caller without an app user cannot acknowledge an alert');
+RESET ROLE;
+
+-- Batch commits must fail before they can partially write.  Stage B's full
+-- fingerprint/replay atomicity is exercised in schema_scenarios; this covers
+-- the separate Installed-SRV batch's role boundary and count mismatch path.
+DO $workstream_h_irv$
+DECLARE
+  persona text;
+  v_before integer;
+  v_after integer;
+BEGIN
+  FOR persona IN SELECT unnest(ARRAY['clerk_view_east', 'clerk_eng_east', 'clerk_manager', 'clerk_pending'])
+  LOOP
+    PERFORM pg_temp.become(persona);
+    PERFORM pg_temp.ok(pg_temp.rejected_sqlstate(
+      $q$SELECT * FROM cng_irv_station_batch_commit(repeat('0', 64), 0, 0, 'H authorization probe')$q$,
+      '42501'),
+      format('H-IRV %s cannot commit the Installed-SRV station batch', persona));
+    RESET ROLE;
+  END LOOP;
+  SELECT count(*) INTO v_before FROM installed_relief_valves WHERE mapping_status = 'needs_station_mapping';
+  PERFORM pg_temp.become('clerk_admin');
+  PERFORM pg_temp.ok(pg_temp.rejected_sqlstate(
+    $q$SELECT * FROM cng_irv_station_batch_commit(repeat('0', 64), -1, -1, 'H mismatched approval')$q$,
+    '23514'),
+    'H-IRV admin count/fingerprint mismatch fails closed');
+  RESET ROLE;
+  SELECT count(*) INTO v_after FROM installed_relief_valves WHERE mapping_status = 'needs_station_mapping';
+  PERFORM pg_temp.ok(v_after = v_before,
+    'H-IRV rejected batch leaves no partial Installed-SRV mapping');
+END
+$workstream_h_irv$;
+
+-- A valid admin removal is server-attributed and atomic with deactivation and
+-- region-grant cleanup.  The self-removal guard is the reachable protection
+-- when the actor is the sole active administrator; role/deactivation last-admin
+-- protections are exercised above in ADMSEC-17..19.
+DO $workstream_h_remove$
+DECLARE
+  v_target uuid := 'a0000000-0000-0000-0000-000000000010';
+  v_admin uuid;
+  v_audit_before integer;
+BEGIN
+  SELECT id INTO v_admin FROM app_users WHERE clerk_user_id = 'clerk_admin';
+  SELECT count(*) INTO v_audit_before FROM audit_logs
+    WHERE entity_id = v_target AND action = 'admin_action';
+
+  PERFORM pg_temp.become('clerk_admin');
+  PERFORM pg_temp.ok(pg_temp.rejected_sqlstate(format('SELECT cng_admin_remove_user(%L, NULL)', v_admin), '42501'),
+    'H-REMOVE admin cannot remove themselves');
+  PERFORM cng_admin_remove_user(v_target, NULL);
+  RESET ROLE;
+
+  PERFORM pg_temp.ok((SELECT NOT is_active AND removed_at IS NOT NULL
+                        AND auth_user_id IS NULL AND clerk_user_id IS NULL
+                        FROM app_users WHERE id = v_target),
+    'H-REMOVE valid admin removal creates an inactive identity-less Auth tombstone');
+  PERFORM pg_temp.ok((SELECT count(*) FROM user_region_access WHERE app_user_id = v_target) = 0,
+    'H-REMOVE removal atomically clears region grants');
+  PERFORM pg_temp.ok((SELECT count(*) FROM audit_logs
+                        WHERE entity_id = v_target AND action = 'admin_action' AND actor_id = v_admin)
+                      = v_audit_before + 1,
+    'H-REMOVE removal atomically records the server-derived admin actor');
+  PERFORM pg_temp.ok((SELECT count(*) FROM auth.users
+                       WHERE id = 'b0000000-0000-0000-0000-000000000010') = 0,
+    'H-REMOVE the Supabase Auth UUID is deleted after the tombstone and audit write');
+END
+$workstream_h_remove$;
 
 DO $$ BEGIN RAISE EXCEPTION 'RLS_SUITE_ROLLBACK'; END $$;
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 
@@ -308,13 +308,17 @@ describe('filters', () => {
     db.counts.v_report_due_compliance = 120
     render(withRouter(<ReportWorkspace spec={dueSpec} />))
     await screen.findByText('S-0')
-    await userEvent.click(await screen.findByRole('button', { name: /load more/i }))
-    expect(queriesFor('v_report_due_compliance').at(-1)!.ops).toContain('range:0-99')
+    const pager = await screen.findByLabelText('Due & Overdue report page number')
+    expect((pager as HTMLSelectElement).options).toHaveLength(3)
+    fireEvent.change(pager, { target: { value: '1' } })
+    expect((pager as HTMLSelectElement).value).toBe('1')
+    await screen.findByText('S-50')
+    await waitFor(() => expect([...queriesFor('v_report_due_compliance')].reverse().find((query) => query.ops.some((op) => op.startsWith('range:')))!.ops).toContain('range:50-99'))
 
     await userEvent.selectOptions(screen.getByLabelText(/due state/i), 'overdue')
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
     // Page 2 of the old question must not survive into the new one.
-    expect(queriesFor('v_report_due_compliance').at(-1)!.ops).toContain('range:0-49')
+    await waitFor(() => expect([...queriesFor('v_report_due_compliance')].reverse().find((query) => query.ops.some((op) => op.startsWith('range:')))!.ops).toContain('range:0-49'))
   })
 })
 
@@ -595,7 +599,7 @@ describe('data quality covers all three layers', () => {
     db.role = 'admin'
     db.rows.v_report_data_quality = [STAGED_STALE]
     render(withRouter(<DataQualityReportSection />))
-    expect(await screen.findByText('stale_source_decision')).toBeDefined()
+    expect((await screen.findAllByText('Stale Source Decision')).length).toBeGreaterThanOrEqual(2)
     // Never relabelled as awaiting, nor as a recorded decision.
     expect(screen.queryByText('staged_awaiting_decision')).toBeNull()
     expect(screen.queryByText('staged_decision_recorded')).toBeNull()
@@ -606,7 +610,7 @@ describe('data quality covers all three layers', () => {
     db.rows.v_report_data_quality = [STAGED_STALE]
     db.counts.v_report_data_quality = 3
     render(withRouter(<DataQualityReportSection />))
-    expect(await screen.findByText('Stale Source Decision')).toBeDefined()
+    expect((await screen.findAllByText('Stale Source Decision')).length).toBeGreaterThanOrEqual(2)
     expect(screen.getByText('Awaiting Decision')).toBeDefined()
   })
 

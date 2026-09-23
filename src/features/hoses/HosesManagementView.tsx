@@ -100,7 +100,7 @@ export function HosesManagementView() {
     () => ({ ...DEFAULT_STATION_QUERY, regionId: query.regionId, pageSize: 200 }),
     [query.regionId],
   )
-  const stations = useStations(stationQuery)
+  const stations = useStations(stationQuery, { enabled: Boolean(query.regionId) })
 
   const update = useCallback((patch: Partial<HoseQuery>) => {
     setQuery((prev) => ({ ...prev, ...patch, page: 'page' in patch ? (patch.page as number) : 0 }))
@@ -183,7 +183,7 @@ export function HosesManagementView() {
             <Search className="pointer-events-none absolute left-2 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
             <span className="sr-only">Search hoses</span>
             <input
-              type="search"
+              id="hoses-search" name="hoses-search" type="search"
               value={query.search}
               onChange={(e) => update({ search: e.target.value })}
               placeholder="Serial, description, station…"
@@ -195,7 +195,7 @@ export function HosesManagementView() {
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>Region</span>
             <select
-              value={query.regionId ?? ''}
+              id="hoses-region" name="hoses-region" value={query.regionId ?? ''}
               // Changing Region clears the Station: a station from the old
               // region would silently contradict the new one.
               onChange={(e) => update({ regionId: e.target.value || null, stationId: null })}
@@ -216,7 +216,7 @@ export function HosesManagementView() {
             <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <span>Station</span>
               <select
-                value={query.stationId ?? ''}
+                id="hoses-station" name="hoses-station" value={query.stationId ?? ''}
                 onChange={(e) => update({ stationId: e.target.value || null })}
                 className="h-7 max-w-[12rem] rounded border bg-background px-1.5 text-sm text-foreground"
               >
@@ -235,7 +235,7 @@ export function HosesManagementView() {
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>Serial</span>
             <select
-              value={query.serial}
+              id="hoses-serial" name="hoses-serial" value={query.serial}
               onChange={(e) => update({ serial: e.target.value as HoseQuery['serial'] })}
               className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
             >
@@ -250,7 +250,7 @@ export function HosesManagementView() {
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>Mapping</span>
             <select
-              value={query.mapping}
+              id="hoses-mapping" name="hoses-mapping" value={query.mapping}
               onChange={(e) => update({ mapping: e.target.value as HoseQuery['mapping'] })}
               className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
             >
@@ -265,7 +265,7 @@ export function HosesManagementView() {
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>Due</span>
             <select
-              value={query.due}
+              id="hoses-due" name="hoses-due" value={query.due}
               onChange={(e) => update({ due: e.target.value as HoseQuery['due'] })}
               className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
             >

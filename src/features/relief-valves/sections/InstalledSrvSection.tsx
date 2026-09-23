@@ -174,7 +174,7 @@ export function InstalledSrvSection() {
           <Search className="pointer-events-none absolute left-2 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
           <span className="sr-only">Search installed relief valves</span>
           <input
-            type="search"
+            id="installed-srv-search" name="installed-srv-search" type="search"
             value={query.search}
             onChange={(e) => update({ search: e.target.value })}
             placeholder="Serial, part number, station…"
@@ -186,7 +186,7 @@ export function InstalledSrvSection() {
         <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span>Region</span>
           <select
-            value={query.regionId ?? ''}
+            id="installed-srv-region" name="installed-srv-region" value={query.regionId ?? ''}
             onChange={(e) => update({ regionId: e.target.value || null })}
             className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
           >
@@ -204,7 +204,7 @@ export function InstalledSrvSection() {
         <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span>Mapping</span>
           <select
-            value={query.mapping}
+            id="installed-srv-mapping" name="installed-srv-mapping" value={query.mapping}
             onChange={(e) => update({ mapping: e.target.value as InstalledQuery['mapping'] })}
             className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
           >
@@ -220,7 +220,7 @@ export function InstalledSrvSection() {
         <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span>Due</span>
           <select
-            value={query.due}
+            id="installed-srv-due" name="installed-srv-due" value={query.due}
             onChange={(e) => update({ due: e.target.value as InstalledQuery['due'] })}
             className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
           >
@@ -234,7 +234,7 @@ export function InstalledSrvSection() {
         <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span>Parent</span>
           <select
-            value={query.parentKind}
+            id="installed-srv-parent" name="installed-srv-parent" value={query.parentKind}
             onChange={(e) => update({ parentKind: e.target.value as InstalledQuery['parentKind'] })}
             className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
           >

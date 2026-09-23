@@ -1,15 +1,14 @@
 import { useState, type ReactNode } from 'react'
-import { ChevronLeft, ChevronRight, Eye } from 'lucide-react'
+import { Eye } from 'lucide-react'
 
 import {
   DataTable, RowHeaderCell, SortableHeader, TableBody, TableCell, TableHead, TableRow, TableScroll,
 } from '@/components/data/DataTable'
 import { EmptyState, ErrorState, LoadingState, NoResultsState, NotImplemented } from '@/components/states/AppStates'
-import { Button } from '@/components/ui/button'
 import { FactGrid } from '@/features/hierarchy/HierarchyPieces'
-import { pageCount } from '@/features/hierarchy/useHierarchy'
 import type { Loadable } from '@/features/hierarchy/useHierarchy'
 import { RecordDetailsDialog } from './RecordDetailsDialog'
+import { PaginationControls } from './PaginationControls'
 
 
 /**
@@ -92,8 +91,6 @@ export function RegistryTable<T>({
   if (rows.length === 0 && filtered) return <NoResultsState onClear={onClearFilters} />
   if (rows.length === 0) return <EmptyState title={emptyTitle} description={emptyDescription} />
 
-  const pages = pageCount(total, pageSize)
-  const first = page * pageSize + 1
   // Registry rows are a scanning surface, not the entire record. Keep the
   // identifying columns plus the final operational state; the dialog owns the
   // complete technical record.
@@ -161,45 +158,7 @@ export function RegistryTable<T>({
         </DataTable>
       </TableScroll>
 
-      <nav aria-label={`${label} pagination`} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-        {/* The total is the caller's own, computed under RLS. */}
-        <p className="text-muted-foreground" aria-live="polite">
-          Showing{' '}
-          <span className="tabular">
-            {first.toLocaleString()}–{(first + rows.length - 1).toLocaleString()} of {total.toLocaleString()}
-          </span>
-        </p>
-        <div className="flex items-center gap-1.5">
-          <Button variant="outline" size="sm" className="h-7" disabled={page === 0} onClick={() => onPage(page - 1)}>
-            <ChevronLeft className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
-            Previous
-          </Button>
-          <label className="flex items-center gap-1 text-xs text-muted-foreground">
-            <span>Page</span>
-            <select
-              aria-label="Page number"
-              value={page}
-              onChange={(event) => onPage(Number(event.target.value))}
-              className="h-7 rounded border bg-background px-1.5 text-foreground"
-            >
-              {Array.from({ length: pages }, (_, index) => (
-                <option key={index} value={index}>{index + 1}</option>
-              ))}
-            </select>
-            <span>of {pages}</span>
-          </label>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7"
-            disabled={page + 1 >= pages}
-            onClick={() => onPage(page + 1)}
-          >
-            Next
-            <ChevronRight className="ml-1 h-3.5 w-3.5" aria-hidden="true" />
-          </Button>
-        </div>
-      </nav>
+      <PaginationControls label={label} page={page} pageSize={pageSize} total={total} visibleRows={rows.length} onPage={onPage} />
       {footnote ? <p className="text-sm text-muted-foreground">{footnote}</p> : null}
       <RecordDetailsDialog
         open={selected !== null}

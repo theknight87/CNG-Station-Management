@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -13,8 +14,13 @@ vi.mock('@/hooks/useAppUser', () => ({
   useAppUser: () => ({ status: 'unauthenticated' }),
 }))
 
+const auth = vi.hoisted(() => ({
+  signInWithPassword: vi.fn(),
+  signInWithOAuth: vi.fn(),
+}))
+
 vi.mock('@/lib/supabase/client', () => ({
-  useSupabaseClient: () => ({ auth: { signInWithPassword: vi.fn(), signInWithOAuth: vi.fn() } }),
+  useSupabaseClient: () => ({ auth }),
 }))
 
 function SignInWithLocation() {
@@ -46,5 +52,20 @@ describe('authentication experience', () => {
     expect(screen.getAllByAltText('Cargas NGV').length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeDefined()
     expect(screen.getByText('Role and Region controlled access')).toBeDefined()
+  })
+
+  it('maps provider failures to a safe sign-in message', async () => {
+    auth.signInWithPassword.mockResolvedValueOnce({
+      error: { message: 'provider diagnostic: upstream token failure' },
+    })
+    const user = userEvent.setup()
+    render(<MemoryRouter><SignInPage /></MemoryRouter>)
+
+    await user.type(screen.getByLabelText('Email address'), 'test@example.invalid')
+    await user.type(screen.getByLabelText('Password'), 'not-a-real-password')
+    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+
+    expect((await screen.findByRole('alert')).textContent).toContain('Email or password is incorrect. Please try again.')
+    expect(screen.queryByText(/provider diagnostic/i)).toBeNull()
   })
 })

@@ -68,6 +68,7 @@ vi.mock('@/lib/supabase/client', () => {
       const result = Promise.resolve({
         data: db.selectError ? null : rowsFor(table),
         error: db.selectError,
+        count: db.selectError ? null : rowsFor(table).length,
       })
       // Every terminal call resolves to the same result, so the chain order in
       // the hooks is free to change without rewriting this mock.
@@ -77,6 +78,7 @@ vi.mock('@/lib/supabase/client', () => {
         insert: () => { db.tableWrites.push({ table, op: 'insert' }); return Promise.resolve({ error: null }) },
         update: () => { db.tableWrites.push({ table, op: 'update' }); return { eq: () => Promise.resolve({ error: null }) } },
         delete: () => { db.tableWrites.push({ table, op: 'delete' }); return { eq: () => Promise.resolve({ error: null }) } },
+        range: () => result,
       }
       for (const method of ['select', 'order', 'eq', 'is', 'limit']) {
         chain[method] = () => chain

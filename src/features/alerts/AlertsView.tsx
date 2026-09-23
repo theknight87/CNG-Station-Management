@@ -10,6 +10,7 @@ import { Fact } from '@/features/hierarchy/HierarchyPieces'
 import { DEFAULT_STATION_QUERY, useRegions, useStations } from '@/features/hierarchy/useHierarchy'
 import { Metric } from '@/features/relief-valves/SrvPieces'
 import { DueBadge, Text } from '@/features/units/assetDisplay'
+import { humanizeAssetType } from '@/lib/presentation/humanize'
 import {
   AckState, AlertAssetCell, AlertStationCell, AlertUnitCell, DeliveryState, ReadState,
   SubjectLabel, ThresholdBadge,
@@ -53,25 +54,17 @@ function columns(): RegistryColumn<AlertRow>[] {
     },
     { key: 'serial', header: 'Asset', sort: 'serial', render: (r) => <AlertAssetCell row={r} /> },
     { key: 'station', header: 'Station', sort: 'station', render: (r) => <AlertStationCell row={r} /> },
-    { key: 'unit', header: 'Unit', render: (r) => <AlertUnitCell row={r} /> },
     {
-      key: 'due_date', header: 'Due date', sort: 'due_date',
+      key: 'due_date', header: 'Due', sort: 'due_date',
       // Always an exact date: a year-only date can never reach an alert.
-      render: (r) => <span className="tabular whitespace-nowrap">{r.due_date}</span>,
+      render: (r) => <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><DueBadge status={r.due_status} /><span className="tabular">{r.due_date}</span></span>,
     },
     {
       key: 'days_left', header: 'Days left', align: 'right', numeric: true,
       render: (r) => (r.days_left === null ? <NullValue /> : <span>{r.days_left.toLocaleString()}</span>),
     },
-    { key: 'due', header: 'Status', render: (r) => <DueBadge status={r.due_status} /> },
     { key: 'read', header: 'Read', render: (r) => <ReadState row={r} /> },
     { key: 'ack', header: 'Acknowledged', render: (r) => <AckState row={r} /> },
-    // Subject sits here, not second. It is the widest column (~200px) and it is
-    // both filterable and implied by the asset type, whereas Acknowledged is a
-    // core workflow of this screen — with Subject second, Acknowledged fell 17px
-    // outside the visible region at the 1440px desktop target.
-    { key: 'subject', header: 'Subject', sort: 'subject', render: (r) => <SubjectLabel value={r.subject} /> },
-    { key: 'delivery', header: 'Email', render: (r) => <DeliveryState value={r.email_status} /> },
   ]
 }
 
@@ -88,7 +81,7 @@ export function AlertsView() {
     () => ({ ...DEFAULT_STATION_QUERY, regionId: query.regionId, pageSize: 200 }),
     [query.regionId],
   )
-  const stations = useStations(stationQuery)
+  const stations = useStations(stationQuery, { enabled: Boolean(query.regionId) })
 
   const update = useCallback((patch: Partial<AlertQuery>) => {
     setQuery((prev) => ({ ...prev, ...patch, page: 'page' in patch ? (patch.page as number) : 0 }))
@@ -209,7 +202,7 @@ export function AlertsView() {
             <Search className="pointer-events-none absolute left-2 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
             <span className="sr-only">Search alerts</span>
             <input
-              type="search"
+              id="alerts-search" name="alerts-search" type="search"
               value={query.search}
               onChange={(e) => update({ search: e.target.value })}
               placeholder="Asset serial, station…"
@@ -221,7 +214,7 @@ export function AlertsView() {
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>Region</span>
             <select
-              value={query.regionId ?? ''}
+              id="alerts-region" name="alerts-region" value={query.regionId ?? ''}
               onChange={(e) => update({ regionId: e.target.value || null, stationId: null })}
               className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
             >
@@ -240,7 +233,7 @@ export function AlertsView() {
             <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <span>Station</span>
               <select
-                value={query.stationId ?? ''}
+                id="alerts-station" name="alerts-station" value={query.stationId ?? ''}
                 onChange={(e) => update({ stationId: e.target.value || null })}
                 className="h-7 max-w-[12rem] rounded border bg-background px-1.5 text-sm text-foreground"
               >
@@ -259,7 +252,7 @@ export function AlertsView() {
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>Subject</span>
             <select
-              value={query.subject}
+              id="alerts-subject" name="alerts-subject" value={query.subject}
               onChange={(e) => update({ subject: e.target.value as AlertQuery['subject'] })}
               className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
             >
@@ -276,7 +269,7 @@ export function AlertsView() {
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>Threshold</span>
             <select
-              value={query.threshold}
+              id="alerts-threshold" name="alerts-threshold" value={query.threshold}
               onChange={(e) => update({ threshold: e.target.value as AlertQuery['threshold'] })}
               className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
             >
@@ -293,7 +286,7 @@ export function AlertsView() {
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>Read</span>
             <select
-              value={query.read}
+              id="alerts-read" name="alerts-read" value={query.read}
               onChange={(e) => update({ read: e.target.value as AlertQuery['read'] })}
               className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
             >
@@ -306,7 +299,7 @@ export function AlertsView() {
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>Acknowledgement</span>
             <select
-              value={query.ack}
+              id="alerts-acknowledged" name="alerts-acknowledged" value={query.ack}
               onChange={(e) => update({ ack: e.target.value as AlertQuery['ack'] })}
               className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
             >
@@ -319,7 +312,7 @@ export function AlertsView() {
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>Delivery</span>
             <select
-              value={query.delivery}
+              id="alerts-delivery" name="alerts-delivery" value={query.delivery}
               onChange={(e) => update({ delivery: e.target.value as AlertQuery['delivery'] })}
               className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
             >
@@ -359,7 +352,7 @@ export function AlertsView() {
               <Fact label="Alert"><ThresholdBadge value={r.threshold} /></Fact>
               <Fact label="Subject"><SubjectLabel value={r.subject} /></Fact>
               <Fact label="Asset"><AlertAssetCell row={r} /></Fact>
-              <Fact label="Asset type"><Text value={r.asset_type.replace(/_/g, ' ')} /></Fact>
+              <Fact label="Asset type"><Text value={humanizeAssetType(r.asset_type)} /></Fact>
               <Fact label="Region"><Text value={r.region_name} /></Fact>
               <Fact label="Station"><AlertStationCell row={r} /></Fact>
               {/* Preserved verbatim; never promoted to a canonical Station. */}

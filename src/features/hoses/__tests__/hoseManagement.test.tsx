@@ -461,8 +461,11 @@ describe('Server-side search, filters and their intersection', () => {
     renderHoses()
     await screen.findByText('HS-2024001')
     expect(screen.queryByRole('combobox', { name: /station/i })).toBeNull()
+    expect(calls.list.some((call) => call.startsWith('v_station_summary.'))).toBe(false)
     await userEvent.selectOptions(screen.getByRole('combobox', { name: /region/i }), 'r-east')
     expect(await screen.findByRole('combobox', { name: /station/i })).toBeDefined()
+    expect(calls.list.filter((call) => call.startsWith('v_station_summary.range:'))).toHaveLength(1)
+    expect(calls.list).toContain('v_station_summary.eq:region_id=r-east')
   })
 })
 

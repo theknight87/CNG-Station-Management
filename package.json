@@ -11,7 +11,8 @@
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
     "verify:ui": "node scripts/verify-ui.mjs",
-    "verify:dashboard": "node scripts/verify-dashboard.mjs"
+    "verify:dashboard": "node scripts/verify-dashboard.mjs",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",

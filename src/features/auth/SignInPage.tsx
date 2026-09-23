@@ -7,6 +7,8 @@ import { BrandMark } from '@/components/layout/BrandMark'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { useSupabaseClient } from '@/lib/supabase/client'
 
+const SIGN_IN_FAILURE = 'Email or password is incorrect. Please try again.'
+
 /** First-party Supabase email/password and Google sign-in. */
 export function SignInPage() {
   const supabase = useSupabaseClient()
@@ -29,7 +31,7 @@ export function SignInPage() {
     setError(null)
     const result = await supabase.auth.signInWithPassword({ email, password })
     setBusy(false)
-    if (result.error) setError(result.error.message)
+    if (result.error) setError(SIGN_IN_FAILURE)
   }
 
   async function signInWithGoogle() {
@@ -42,7 +44,7 @@ export function SignInPage() {
     })
     if (oauthError) {
       setBusy(false)
-      setError(oauthError.message)
+      setError('Google sign-in could not be started. Please try again.')
     }
   }
 
@@ -94,10 +96,10 @@ export function SignInPage() {
 
             <form className="space-y-5" onSubmit={submit}>
               <label className="block text-sm font-semibold text-slate-800" htmlFor="sign-in-email">Email address</label>
-              <input id="sign-in-email" className="-mt-3 h-12 w-full rounded-md border border-slate-300 bg-white px-3.5 text-base shadow-sm transition-colors placeholder:text-slate-400 hover:border-slate-400 focus:border-brand-strong" type="email" inputMode="email" autoComplete="email" placeholder="name@company.com" required value={email} onChange={(e) => setEmail(e.target.value)} />
+              <input id="sign-in-email" name="sign-in-email" className="-mt-3 h-12 w-full rounded-md border border-slate-300 bg-white px-3.5 text-base shadow-sm transition-colors placeholder:text-slate-400 hover:border-slate-400 focus:border-brand-strong" type="email" inputMode="email" autoComplete="email" placeholder="name@company.com" required value={email} onChange={(e) => setEmail(e.target.value)} />
 
               <label className="block text-sm font-semibold text-slate-800" htmlFor="sign-in-password">Password</label>
-              <input id="sign-in-password" className="-mt-3 h-12 w-full rounded-md border border-slate-300 bg-white px-3.5 text-base shadow-sm transition-colors hover:border-slate-400 focus:border-brand-strong" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+              <input id="sign-in-password" name="sign-in-password" className="-mt-3 h-12 w-full rounded-md border border-slate-300 bg-white px-3.5 text-base shadow-sm transition-colors placeholder:text-slate-400 hover:border-slate-400 focus:border-brand-strong" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
 
               {error ? <p role="alert" className="border-l-2 border-destructive bg-red-50 px-3 py-2 text-sm text-destructive">{error}</p> : null}
               <Button className="h-12 w-full bg-brand-strong text-base font-semibold text-brand-strong-fg hover:bg-brand-deep" type="submit" disabled={busy || authLoading}>{busy ? 'Signing in…' : 'Sign in'}</Button>

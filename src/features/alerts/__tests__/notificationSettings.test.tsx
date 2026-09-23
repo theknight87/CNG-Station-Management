@@ -73,28 +73,28 @@ describe('The notification bell', () => {
   it('shows the unread count when there is one', async () => {
     db.unread = 7
     render(withRouter(<AlertBell />))
-    expect(await screen.findByRole('link', { name: /7 unread/i })).toBeDefined()
+    expect(await screen.findByRole('link', { name: 'Alerts — 7 unread' })).toBeDefined()
     expect(screen.getByText('7')).toBeDefined()
   })
 
   it('caps the badge but keeps the exact number for screen readers', async () => {
     db.unread = 412
     render(withRouter(<AlertBell />))
-    expect(await screen.findByRole('link', { name: /412 unread/i })).toBeDefined()
+    expect(await screen.findByRole('link', { name: 'Alerts — 99+ unread; exact count 412' })).toBeDefined()
     expect(screen.getByText('99+')).toBeDefined()
   })
 
   it('shows no badge at zero', async () => {
     db.unread = 0
     render(withRouter(<AlertBell />))
-    await screen.findByRole('link', { name: /alerts/i })
+    await screen.findByRole('link', { name: 'Alerts' })
     expect(screen.queryByText('0')).toBeNull()
   })
 
   it('shows no badge when the count could not be read, rather than a confident zero', async () => {
     db.countError = { message: 'network' }
     render(withRouter(<AlertBell />))
-    const link = await screen.findByRole('link', { name: /alerts/i })
+    const link = await screen.findByRole('link', { name: 'Alerts' })
     expect(link.textContent).toBe('')
     expect(screen.queryByText('0')).toBeNull()
   })

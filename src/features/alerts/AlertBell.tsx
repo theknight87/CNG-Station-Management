@@ -29,6 +29,7 @@ import { useUnreadAlertCount } from '@/features/alerts/useAlerts'
 export function AlertBell() {
   const { count } = useUnreadAlertCount()
   const unread = count !== null && count > 0
+  const visibleCount = unread ? (count > 99 ? '99+' : String(count)) : null
 
   return (
     <Link
@@ -36,7 +37,7 @@ export function AlertBell() {
       className="relative inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-strong"
       aria-label={
         unread
-          ? `Alerts — ${count} unread`
+          ? `Alerts — ${visibleCount} unread${count > 99 ? `; exact count ${count}` : ''}`
           : 'Alerts'
       }
     >
@@ -48,7 +49,7 @@ export function AlertBell() {
           className="absolute -right-0.5 -top-0.5 min-w-[1rem] rounded-full bg-status-overdue px-1 text-[10px] font-medium leading-4 text-white tabular"
           aria-hidden="true"
         >
-          {count > 99 ? '99+' : count}
+          {visibleCount}
         </span>
       ) : null}
     </Link>

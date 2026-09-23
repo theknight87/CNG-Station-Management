@@ -34,7 +34,7 @@ const db = vi.hoisted(() => ({
   rules: [] as Record<string, unknown>[],
   rpcCalls: [] as { fn: string; args: Record<string, unknown> }[],
   tableWrites: [] as { table: string; op: string }[],
-  queries: [] as { table: string; ops: string[] }[],
+  queries: [] as { table: string; ops: string[]; countExact: boolean }[],
 }))
 
 function rowsFor(table: string) {
@@ -58,9 +58,9 @@ const client = vi.hoisted(() => ({ value: null as unknown }))
 vi.mock('@/lib/supabase/client', () => {
   client.value = {
     from: (table: string) => {
-      const trace = { table, ops: [] as string[] }
+      const trace = { table, ops: [] as string[], countExact: false }
       db.queries.push(trace)
-      const result = Promise.resolve({ data: rowsFor(table), error: null })
+      const result = Promise.resolve({ data: rowsFor(table), error: null, count: rowsFor(table).length })
       const chain: Record<string, unknown> = {
         then: (...args: unknown[]) =>
           (result.then as (...a: unknown[]) => unknown).apply(result, args),
@@ -68,11 +68,21 @@ vi.mock('@/lib/supabase/client', () => {
         update: () => { db.tableWrites.push({ table, op: 'update' }); return { eq: () => Promise.resolve({ error: null }) } },
         delete: () => { db.tableWrites.push({ table, op: 'delete' }); return { eq: () => Promise.resolve({ error: null }) } },
       }
-      for (const method of ['select', 'order', 'eq', 'is', 'limit', 'or', 'gte', 'lte', 'ilike']) {
+      chain.select = (...args: unknown[]) => {
+        trace.ops.push(`select:${String(args[0] ?? '')}`)
+        trace.countExact = Boolean((args[1] as { count?: string } | undefined)?.count === 'exact')
+        return chain
+      }
+      for (const method of ['order', 'eq', 'is', 'limit', 'or', 'gte', 'lte', 'ilike']) {
         chain[method] = (...args: unknown[]) => {
           trace.ops.push(`${method}:${String(args[0] ?? '')}`)
           return chain
         }
+      }
+      chain.range = (from: number, to: number) => {
+        trace.ops.push(`range:${from}-${to}`)
+        const rows = rowsFor(table)
+        return Promise.resolve({ data: rows.slice(from, to + 1), error: null, count: rows.length })
       }
       return chain
     },

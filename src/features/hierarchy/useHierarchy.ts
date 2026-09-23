@@ -187,7 +187,9 @@ export function useRegions(): { state: Loadable<RegionSummary[]>; reload: () => 
   return { state, reload }
 }
 
-export function useStations(query: StationQuery): {
+export interface UseStationsOptions { enabled?: boolean }
+
+export function useStations(query: StationQuery, options: UseStationsOptions = {}): {
   state: Loadable<StationPage>
   reload: () => void
 } {
@@ -199,11 +201,16 @@ export function useStations(query: StationQuery): {
   // The query object is rebuilt on every render by the caller; depending on it
   // directly would refetch forever. Depend on its VALUE instead.
   const key = JSON.stringify(query)
+  const enabled = options.enabled ?? true
 
   useEffect(() => {
     let cancelled = false
 
     async function load() {
+      if (!enabled) {
+        setState({ status: 'ready', data: { rows: [], total: 0, filtered: false } })
+        return
+      }
       if (!supabase) {
         if (!cancelled) setState({ status: 'unconfigured' })
         return
@@ -266,7 +273,7 @@ export function useStations(query: StationQuery): {
     return () => {
       cancelled = true
     }
-  }, [supabase, key, nonce])
+  }, [supabase, key, nonce, enabled])
 
   return { state, reload }
 }

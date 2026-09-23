@@ -17,7 +17,7 @@ SET client_min_messages = notice;
 CREATE OR REPLACE FUNCTION pg_temp.assert(p_ok boolean, p_label text)
 RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
-  IF NOT p_ok THEN RAISE EXCEPTION 'FAILED: %', p_label; END IF;
+  IF p_ok IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAILED: %', p_label; END IF;
   RAISE NOTICE 'PASS  %', p_label;
 END $$;
 
@@ -30,6 +30,25 @@ BEGIN
   EXCEPTION WHEN others THEN
     RAISE NOTICE 'PASS  % (rejected: %)', p_label, left(SQLERRM, 60);
     RETURN;
+  END;
+  RAISE EXCEPTION 'FAILED: % — the database ACCEPTED data it should reject', p_label;
+END $$;
+
+-- A constraint regression must fail at the constraint layer, not incidentally
+-- because a fixture column or an unrelated object happened to be invalid.
+CREATE OR REPLACE FUNCTION pg_temp.assert_rejected_sqlstate(
+  p_sql text, p_sqlstate text, p_label text
+)
+RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+  BEGIN
+    EXECUTE p_sql;
+  EXCEPTION WHEN others THEN
+    IF SQLSTATE = p_sqlstate THEN
+      RAISE NOTICE 'PASS  % (rejected: %)', p_label, SQLSTATE;
+      RETURN;
+    END IF;
+    RAISE EXCEPTION 'FAILED: % — expected SQLSTATE %, got %', p_label, p_sqlstate, SQLSTATE;
   END;
   RAISE EXCEPTION 'FAILED: % — the database ACCEPTED data it should reject', p_label;
 END $$;
@@ -2581,5 +2600,76 @@ SELECT pg_temp.assert(
         WHERE table_name = 'v_installed_srv_summary') = 7,
   'SRVSUM-11: the summary exposes exactly the seven counts the strip renders');
 
+
+-- ===========================================================================
+-- WORKSTREAM H — callable SECURITY DEFINER contract
+--
+-- These catalog assertions are intentionally separate from the behavioral
+-- authorization attacks in rls_authorization.sql. They inspect the installed
+-- function, so a later CREATE OR REPLACE cannot silently lose a safe path or
+-- widen EXECUTE.
+-- ===========================================================================
+-- A removed Supabase-only user is a tombstone, not a live identity-less
+-- principal. These assert the forward migration's exact boundary without
+-- needing an auth.users integration fixture.
+SELECT pg_temp.assert_rejected_sqlstate($$
+  INSERT INTO app_users (id, role, is_active, full_name)
+  VALUES ('11111111-1111-1111-1111-1111111111a1', 'viewer', true, 'H live identity-less');
+$$, '23514', 'H-TOMBSTONE a live identity-less app user is rejected');
+SELECT pg_temp.assert_rejected_sqlstate($$
+  INSERT INTO app_users (id, role, is_active, removed_at, full_name)
+  VALUES ('11111111-1111-1111-1111-1111111111a2', 'viewer', true, now(), 'H active tombstone');
+$$, '23514', 'H-TOMBSTONE an active removed row is rejected');
+INSERT INTO app_users (id, role, is_active, removed_at, full_name)
+VALUES ('11111111-1111-1111-1111-1111111111a3', 'viewer', false, now(), 'H removed tombstone');
+SELECT pg_temp.assert(
+  (SELECT NOT is_active AND removed_at IS NOT NULL
+     AND auth_user_id IS NULL AND clerk_user_id IS NULL
+   FROM app_users WHERE id = '11111111-1111-1111-1111-1111111111a3'),
+  'H-TOMBSTONE an inactive removed row may clear both identities');
+
+DO $workstream_h$
+DECLARE
+  r record;
+  v_oid oid;
+BEGIN
+  FOR r IN
+    SELECT * FROM (VALUES
+      ('cng_acknowledge_alert(uuid)', 'search_path=pg_catalog, public'),
+      ('cng_admin_decide_staged_mapping(uuid,uuid,uuid,timestamptz,text)', 'search_path=pg_catalog, public'),
+      ('cng_admin_grant_region(uuid,uuid,boolean)', 'search_path=pg_catalog, public'),
+      ('cng_admin_map_srv(uuid,uuid,uuid,srv_parent_kind,uuid,timestamptz,text)', 'search_path=pg_catalog, public'),
+      ('cng_admin_remove_user(uuid,timestamptz)', 'search_path=pg_catalog, public, auth'),
+      ('cng_admin_revoke_region(uuid,uuid)', 'search_path=pg_catalog, public'),
+      ('cng_admin_set_alert_rule_enabled(uuid,boolean,timestamptz)', 'search_path=pg_catalog, public'),
+      ('cng_admin_set_channel_policy(text,boolean,timestamptz,text)', 'search_path=pg_catalog, public'),
+      ('cng_admin_set_user_active(uuid,boolean,timestamptz)', 'search_path=pg_catalog, public'),
+      ('cng_admin_set_user_role(uuid,app_role,timestamptz)', 'search_path=pg_catalog, public'),
+      ('cng_current_role()', 'search_path=pg_catalog, public'),
+      ('cng_has_region_grant(uuid,boolean)', 'search_path=pg_catalog, public'),
+      ('cng_irv_station_batch_commit(text,integer,integer,text)', 'search_path=pg_catalog, public'),
+      ('cng_stage_b_station_commit(uuid,text,text,text)', 'search_path=pg_catalog, public')
+    ) AS expected(signature, safe_search_path)
+  LOOP
+    v_oid := to_regprocedure('public.' || r.signature);
+    PERFORM pg_temp.assert(v_oid IS NOT NULL,
+      format('H-CATALOG %s has the exact callable signature', r.signature));
+    PERFORM pg_temp.assert(
+      coalesce((SELECT prosecdef
+         AND proconfig @> ARRAY[r.safe_search_path]
+       FROM pg_proc WHERE oid = v_oid), false),
+      format('H-CATALOG %s is SECURITY DEFINER with a pinned safe search_path', r.signature));
+    -- acldefault() matters: a NULL proacl is PostgreSQL's default PUBLIC
+    -- EXECUTE grant, not "no grants recorded".
+    PERFORM pg_temp.assert(NOT EXISTS (
+      SELECT 1 FROM aclexplode((SELECT coalesce(proacl, acldefault('f', proowner))
+                                  FROM pg_proc WHERE oid = v_oid)) a
+      WHERE a.grantee = 0 AND a.privilege_type = 'EXECUTE'
+    ), format('H-CATALOG %s has no PUBLIC EXECUTE', r.signature));
+    PERFORM pg_temp.assert(NOT has_function_privilege('anon', v_oid, 'EXECUTE'),
+      format('H-CATALOG %s has no anon EXECUTE', r.signature));
+  END LOOP;
+END
+$workstream_h$;
 
 ROLLBACK;

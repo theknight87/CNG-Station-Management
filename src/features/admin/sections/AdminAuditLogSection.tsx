@@ -8,6 +8,8 @@ import { DetailGrid, DetailItem, RecordDetailsDialog } from '@/components/data/R
 import { DataToolbar, SectionHeader } from '@/components/layout/PageContainer'
 import { EmptyState, ErrorState, LoadingState } from '@/components/states/AppStates'
 import { Button } from '@/components/ui/button'
+import { PaginationControls } from '@/components/data/PaginationControls'
+import { humanizeAuditAction, humanizeRecordType, humanizeTechnicalValue } from '@/lib/presentation/humanize'
 import {
   EMPTY_AUDIT_FILTERS, useAdminAuditLog, useAuditActors, type AuditFilters, type AuditLogRow,
 } from '../useAdminAuditLog'
@@ -44,7 +46,7 @@ const ENTITIES = [
  */
 export function AdminAuditLogSection() {
   const [filters, setFilters] = useState<AuditFilters>(EMPTY_AUDIT_FILTERS)
-  const { entries, loadError, loading, hasMore, loadMore } = useAdminAuditLog(filters)
+  const { entries, loadError, loading, total, page, pageSize, onPage } = useAdminAuditLog(filters)
   const actors = useAuditActors()
   const [open, setOpen] = useState<string | null>(null)
 
@@ -62,14 +64,14 @@ export function AdminAuditLogSection() {
       <DataToolbar label="Filter the audit log">
         <Field label="Day" htmlFor="audit-day">
           <input
-            id="audit-day" type="date" value={filters.from === filters.to ? filters.from : ''}
+            id="audit-day" name="audit-day" type="date" value={filters.from === filters.to ? filters.from : ''}
             onChange={(e) => set({ from: e.target.value, to: e.target.value })}
             className="h-7 rounded border bg-background px-1 text-xs"
           />
         </Field>
         <Field label="Actor" htmlFor="audit-actor">
           <select
-            id="audit-actor" value={filters.actorId}
+            id="audit-actor" name="audit-actor" value={filters.actorId}
             onChange={(e) => set({ actorId: e.target.value })}
             className="h-7 rounded border bg-background px-1 text-xs"
           >
@@ -79,7 +81,7 @@ export function AdminAuditLogSection() {
         </Field>
         <Field label="Action" htmlFor="audit-action">
           <select
-            id="audit-action" value={filters.action}
+            id="audit-action" name="audit-action" value={filters.action}
             onChange={(e) => set({ action: e.target.value })}
             className="h-7 rounded border bg-background px-1 text-xs"
           >
@@ -88,7 +90,7 @@ export function AdminAuditLogSection() {
         </Field>
         <Field label="Record type" htmlFor="audit-entity">
           <select
-            id="audit-entity" value={filters.entityTable}
+            id="audit-entity" name="audit-entity" value={filters.entityTable}
             onChange={(e) => set({ entityTable: e.target.value })}
             className="h-7 rounded border bg-background px-1 text-xs"
           >
@@ -97,7 +99,7 @@ export function AdminAuditLogSection() {
         </Field>
         <Field label="Record ID or summary" htmlFor="audit-search">
           <input
-            id="audit-search" type="search" value={filters.search}
+            id="audit-search" name="audit-search" type="search" value={filters.search}
             onChange={(e) => set({ search: e.target.value })}
             placeholder="id or text"
             className="h-7 w-52 rounded border bg-background px-1 text-xs"
@@ -143,11 +145,11 @@ export function AdminAuditLogSection() {
                     </TableCell>
                     <TableCell dataLabel="Actor">{entry.actor_label ?? <NullValue />}</TableCell>
                     <TableCell dataLabel="Action">
-                      <span className="whitespace-nowrap">{humanize(entry.action)}</span>
+                      <span className="whitespace-nowrap">{humanizeAuditAction(entry.action)}</span>
                       <span className="hidden">{entry.action}</span>
                     </TableCell>
                     <TableCell dataLabel="Record">
-                      <span>{humanize(entry.entity_table)}</span>
+                      <span>{humanizeRecordType(entry.entity_table)}</span>
                       {entry.entity_id ? <span className="ml-1 font-technical text-xs text-muted-foreground" title={entry.entity_id}>#{shortId(entry.entity_id)}</span> : null}
                       <span className="hidden">{entry.entity_table}</span>
                       <span className="hidden">{entry.entity_id}</span>
@@ -170,17 +172,7 @@ export function AdminAuditLogSection() {
 
           <AuditDetails entry={entries.find((e) => e.id === open) ?? null} onClose={() => setOpen(null)} />
 
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-muted-foreground">
-              Showing <span className="tabular">{entries.length}</span> entries
-              {hasMore ? ', more available' : ' — this is the end of the history under these filters'}
-            </span>
-            {hasMore ? (
-              <Button type="button" variant="outline" size="sm" disabled={loading} onClick={loadMore}>
-                Load more
-              </Button>
-            ) : null}
-          </div>
+          {total !== null ? <PaginationControls label="Audit log" page={page} pageSize={pageSize} total={total} visibleRows={entries.length} loading={loading} onPage={onPage} /> : null}
         </>
       )}
     </section>
@@ -191,7 +183,6 @@ function formatAuditDate(value: string) {
   return new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
 }
 
-function humanize(value: string) { return value.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase()) }
 function shortId(value: string) { return value.length > 12 ? `${value.slice(0, 8)}…${value.slice(-4)}` : value }
 
 function AuditDetails({ entry, onClose }: { entry: AuditLogRow | null; onClose: () => void }) {
@@ -201,8 +192,8 @@ function AuditDetails({ entry, onClose }: { entry: AuditLogRow | null; onClose: 
         <DetailGrid>
           <DetailItem label="When"><span className="whitespace-nowrap tabular">{formatAuditDate(entry.occurred_at)}</span></DetailItem>
           <DetailItem label="Actor">{entry.actor_label ?? <NullValue />}</DetailItem>
-          <DetailItem label="Action">{humanize(entry.action)}</DetailItem>
-          <DetailItem label="Record type">{humanize(entry.entity_table)}</DetailItem>
+          <DetailItem label="Action">{humanizeAuditAction(entry.action)}</DetailItem>
+          <DetailItem label="Record type">{humanizeRecordType(entry.entity_table)}</DetailItem>
           <DetailItem label="Record ID"><span className="font-technical text-xs" title={entry.entity_id ?? undefined}>{entry.entity_id ? shortId(entry.entity_id) : <NullValue />}</span></DetailItem>
           <DetailItem label="Summary">{entry.summary ?? <NullValue />}</DetailItem>
         </DetailGrid>
@@ -226,7 +217,7 @@ function ChangeDetails({ entry }: { entry: { before_data: unknown; after_data: u
       {keys.length ? (
         <DetailGrid>
           {keys.map((key) => (
-            <DetailItem key={key} label={humanize(key)}>
+            <DetailItem key={key} label={humanizeTechnicalValue(key) ?? key}>
               <ChangeValue before={before[key]} after={after[key]} hasBefore={key in before} hasAfter={key in after} />
             </DetailItem>
           ))}

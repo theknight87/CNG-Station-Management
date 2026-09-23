@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { SectionHeader } from '@/components/layout/PageContainer'
 import { EmptyState, ErrorState, LoadingState } from '@/components/states/AppStates'
 import { Button } from '@/components/ui/button'
+import { PaginationControls } from '@/components/data/PaginationControls'
 import { cairoBusinessDate, downloadCsv, exportFilename, toCsv } from './csv'
 import { ReportFiltersBar } from './ReportFiltersBar'
 import { ReportTable } from './ReportTable'
@@ -79,24 +80,7 @@ export function ReportWorkspace({ spec }: { spec: ReportSpec }) {
       ) : (
         <>
           <ReportTable spec={spec} rows={query.rows} />
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-muted-foreground">
-              Showing <span className="tabular">{query.rows.length.toLocaleString()}</span>
-              {query.total !== null ? (
-                <> of <span className="tabular">{query.total.toLocaleString()}</span></>
-              ) : null}{' '}
-              records
-              {query.hasMore ? '' : ' — this is the whole result under these filters'}
-            </span>
-            {query.hasMore ? (
-              <Button
-                type="button" variant="outline" size="sm"
-                disabled={query.loading} onClick={query.loadMore}
-              >
-                Load more
-              </Button>
-            ) : null}
-          </div>
+          {query.total !== null ? <PaginationControls label={`${spec.label} report`} page={query.page} pageSize={query.pageSize} total={query.total} visibleRows={query.rows.length} loading={query.loading} onPage={query.setPage} /> : null}
         </>
       )}
     </section>

@@ -153,6 +153,17 @@ async function expand() {
 }
 
 describe('Route and shell', () => {
+  it('defers station options until a Region is selected, then scopes the request', async () => {
+    replies.alerts = { data: [alert()], error: null, count: 1 }
+    replies.regions = { data: [{ region_id: 'r-east', region_name: 'East' }], error: null }
+    renderAlerts()
+    await screen.findByText('RV-880124')
+    expect(calls.list.some((call) => call.startsWith('v_station_summary.'))).toBe(false)
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /region/i }), 'r-east')
+    expect(await screen.findByRole('combobox', { name: /station/i })).toBeDefined()
+    expect(calls.list.filter((call) => call.startsWith('v_station_summary.range:'))).toHaveLength(1)
+    expect(calls.list).toContain('v_station_summary.eq:region_id=r-east')
+  })
   it('renders /alerts with exactly one h1', async () => {
     replies.alerts = { data: [alert()], error: null, count: 1 }
     renderAlerts()
@@ -172,7 +183,7 @@ describe('Route and shell', () => {
 })
 
 describe('Column priority', () => {
-  it('leads with attention, identity, hierarchy and timing before secondary state', async () => {
+  it('keeps exactly the compact scanning columns and moves secondary data to details', async () => {
     replies.alerts = { data: [alert()], error: null, count: 1 }
     renderAlerts()
     await screen.findByText('RV-880124')
@@ -180,12 +191,12 @@ describe('Column priority', () => {
       .getAllByRole('columnheader')
       .map((h) => h.textContent?.trim() ?? '')
       .filter((h) => h && !/expand/i.test(h))
-    expect(order.slice(0, 9)).toEqual([
-      'Alert', 'Asset', 'Station', 'Unit', 'Due date', 'Days left', 'Status', 'Read', 'Acknowledged',
-    ])
-    // Subject is filterable and implied by the asset type; with it second,
-    // Acknowledged fell outside the visible region at 1440px.
-    expect(order.indexOf('Subject')).toBeGreaterThan(order.indexOf('Acknowledged'))
+    expect(order).toEqual(['Alert', 'Asset', 'Station', 'Due', 'Days left', 'Read', 'Acknowledged'])
+    await expand()
+    expect(screen.getByText('Unit')).toBeDefined()
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText('Subject')).toBeDefined()
+    expect(within(dialog).getByText('Email delivery')).toBeDefined()
   })
 })
 
@@ -219,7 +230,8 @@ describe('Alert, Due Status and Delivery are three different things', () => {
     renderAlerts()
     const table = await screen.findByRole('table')
     expect(within(table).getByText('RV-880124')).toBeDefined()
-    expect(within(table).getAllByText(/failed/i).length).toBeGreaterThan(0)
+    await expand()
+    expect(screen.getAllByText(/failed/i).length).toBeGreaterThan(0)
     expect(screen.queryByText(/^No alerts$/i)).toBeNull()
   })
 
@@ -227,7 +239,8 @@ describe('Alert, Due Status and Delivery are three different things', () => {
     replies.alerts = { data: [alert({ email_status: null })], error: null, count: 1 }
     renderAlerts()
     const table = await screen.findByRole('table')
-    expect(within(table).getAllByText(/not attempted/i).length).toBeGreaterThan(0)
+    await expand()
+    expect(screen.getAllByText(/not attempted/i).length).toBeGreaterThan(0)
     expect(within(table).queryByText(/failed/i)).toBeNull()
   })
 
@@ -350,9 +363,8 @@ describe('Hierarchy and navigation', () => {
     }
     renderAlerts()
     await screen.findByText('RV-880124')
-    const table = screen.getByRole('table')
-    expect(within(table).getAllByText(/not confirmed/i).length).toBeGreaterThan(0)
     await expand()
+    expect(screen.getAllByText(/not confirmed/i).length).toBeGreaterThan(0)
     expect(screen.queryByRole('link', { name: /open unit/i })).toBeNull()
     // The Station IS proven, so that stays navigable.
     expect(screen.getByRole('link', { name: /open station/i })).toBeDefined()
@@ -432,7 +444,7 @@ describe('Server-side search, filters, sorting, pagination', () => {
     replies.alerts = { data: [alert()], error: null, count: 1 }
     renderAlerts()
     await screen.findByText('RV-880124')
-    const header = () => screen.getByRole('columnheader', { name: /due date/i })
+    const header = () => screen.getByRole('columnheader', { name: /^due$/i })
     await userEvent.click(within(header()).getByRole('button'))
     expect(calls.list).toContain('v_alert_inbox.order:due_date:asc')
     await userEvent.click(within(header()).getByRole('button'))

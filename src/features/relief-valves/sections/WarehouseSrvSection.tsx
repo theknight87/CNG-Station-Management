@@ -156,7 +156,7 @@ export function WarehouseSrvSection() {
           <Search className="pointer-events-none absolute left-2 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
           <span className="sr-only">Search warehouse relief valves</span>
           <input
-            type="search"
+            id="warehouse-srv-search" name="warehouse-srv-search" type="search"
             value={query.search}
             onChange={(e) => update({ search: e.target.value })}
             placeholder="Serial, part number, warehouse…"
@@ -169,7 +169,7 @@ export function WarehouseSrvSection() {
         <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span>Availability</span>
           <select
-            value={query.availability ?? ''}
+            id="warehouse-srv-availability" name="warehouse-srv-availability" value={query.availability ?? ''}
             onChange={(e) => update({ availability: e.target.value || null })}
             className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
           >
@@ -185,7 +185,7 @@ export function WarehouseSrvSection() {
         <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span>Due</span>
           <select
-            value={query.due}
+            id="warehouse-srv-due" name="warehouse-srv-due" value={query.due}
             onChange={(e) => update({ due: e.target.value as WarehouseQuery['due'] })}
             className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
           >

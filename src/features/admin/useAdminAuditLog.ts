@@ -47,87 +47,67 @@ export function useAdminAuditLog(filters: AuditFilters): {
   entries: AuditLogRow[] | null
   loadError: string | null
   loading: boolean
-  hasMore: boolean
-  loadMore: () => void
+  total: number | null
+  page: number
+  pageSize: number
+  onPage: (page: number) => void
 } {
   const supabase = useSupabaseClient()
   const [entries, setEntries] = useState<AuditLogRow[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [hasMore, setHasMore] = useState(false)
+  const [total, setTotal] = useState<number | null>(null)
 
   // A filter change restarts paging: keeping page 3 of a different question
   // would show a page that answers neither. The page number is stored WITH the
   // filter key it belongs to, so the reset is derived during render rather than
   // written by an effect that would cascade a second render.
   const key = JSON.stringify(filters)
-  const [paging, setPaging] = useState({ key, pages: 1 })
-  const pages = paging.key === key ? paging.pages : 1
+  const [paging, setPaging] = useState({ key, page: 0 })
+  const page = paging.key === key ? paging.page : 0
 
   useEffect(() => {
     let cancelled = false
     async function load() {
       if (!supabase) return
       setLoading(true)
-      const limit = pages * PAGE_SIZE
+      const safeSearch = filters.search.replace(/[(),*]/g, ' ').trim()
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(safeSearch)
       let query = supabase
         .from('v_admin_audit_log')
-        .select('id, action, entity_table, entity_id, actor_id, actor_label, summary, before_data, after_data, occurred_at')
+        .select('id, action, entity_table, entity_id, actor_id, actor_label, summary, before_data, after_data, occurred_at', { count: 'exact' })
         .order('occurred_at', { ascending: false })
-        // One extra row, purely to learn whether another page exists without
-        // asking for a count the database would have to compute.
-        .limit(limit + 1)
+        .order('id', { ascending: false })
       if (filters.action) query = query.eq('action', filters.action)
       if (filters.actorId) query = query.eq('actor_id', filters.actorId)
       if (filters.entityTable) query = query.eq('entity_table', filters.entityTable)
       if (filters.from) query = query.gte('occurred_at', filters.from)
       if (filters.to) query = query.lte('occurred_at', `${filters.to}T23:59:59.999Z`)
-      if (filters.search) {
+      if (safeSearch) {
         // An id, or free text in the summary. `or` needs the value inline, so
         // commas and parentheses are stripped rather than escaped — they cannot
         // appear in a uuid and are not worth a broken filter in a summary.
-        const safe = filters.search.replace(/[(),*]/g, ' ').trim()
-        if (safe) query = query.or(`summary.ilike.%${safe}%,entity_id.eq.${safe}`)
+        query = isUuid ? query.or(`summary.ilike.%${safeSearch}%,entity_id.eq.${safeSearch}`) : query.ilike('summary', `%${safeSearch}%`)
       }
-      const { data, error } = await query
+      const { data, error, count } = await query.range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1)
       if (cancelled) return
       setLoading(false)
       if (error) {
-        // An `entity_id.eq.<not a uuid>` is a type error, not a broken screen.
-        // Fall back to a summary-only search rather than showing a database
-        // message about uuid syntax.
-        if (filters.search && /invalid input syntax|uuid/i.test(error.message)) {
-          const safe = filters.search.replace(/[(),*]/g, ' ').trim()
-          const retry = await supabase
-            .from('v_admin_audit_log')
-            .select('id, action, entity_table, entity_id, actor_id, actor_label, summary, before_data, after_data, occurred_at')
-            .order('occurred_at', { ascending: false })
-            .limit(limit + 1)
-            .ilike('summary', `%${safe}%`)
-          if (cancelled) return
-          if (!retry.error) {
-            const rows = (retry.data ?? []) as AuditLogRow[]
-            setHasMore(rows.length > limit)
-            setEntries(rows.slice(0, limit))
-            setLoadError(null)
-            return
-          }
-        }
         setLoadError(error.message)
         return
       }
       const rows = (data ?? []) as AuditLogRow[]
-      setHasMore(rows.length > limit)
-      setEntries(rows.slice(0, limit))
+      setEntries(rows)
+      setTotal(count ?? null)
       setLoadError(null)
     }
     void load()
     return () => { cancelled = true }
-  }, [supabase, key, pages, filters])
+  }, [supabase, key, page, filters])
 
-  const loadMore = useCallback(() => setPaging({ key, pages: pages + 1 }), [key, pages])
+  const onPage = useCallback((nextPage: number) => setPaging({ key, page: Math.max(0, nextPage) }), [key])
 
-  return { entries, loadError, loading, hasMore, loadMore }
+  return { entries, loadError, loading, total, page, pageSize: PAGE_SIZE, onPage }
 }
 
 /** Distinct actors, for the actor filter. Read through the same admin view. */

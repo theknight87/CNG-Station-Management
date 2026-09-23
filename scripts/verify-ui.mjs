@@ -80,7 +80,10 @@ for (const vp of VIEWPORTS) {
       const out = []
       for (const a of document.querySelectorAll('aside nav a')) {
         const span = a.querySelector('span:not([aria-hidden])')
-        if (span && span.scrollWidth > span.clientWidth + 1) {
+        // Table-led routes deliberately start with the desktop sidebar
+        // collapsed. Its accessible label is then sr-only and a one-pixel box
+        // is expected; only visible text can be visually truncated.
+        if (span && !span.classList.contains('sr-only') && span.scrollWidth > span.clientWidth + 1) {
           out.push({ label: span.textContent, scroll: span.scrollWidth, client: span.clientWidth })
         }
       }
@@ -90,6 +93,11 @@ for (const vp of VIEWPORTS) {
       truncated.map((t) => `${t.label} ${t.scroll}>${t.client}`).join(', '))
 
 
+    // Table-led routes may start collapsed automatically. Verify both states
+    // from a known expanded state instead of assuming the initial preference.
+    if (await page.getByRole('button', { name: 'Expand sidebar' }).count()) {
+      await page.getByRole('button', { name: 'Expand sidebar' }).click()
+    }
     const expandedWidth = await page.locator('aside').evaluate((el) => el.getBoundingClientRect().width)
     await page.getByRole('button', { name: 'Collapse sidebar' }).click()
     await page.waitForTimeout(80)

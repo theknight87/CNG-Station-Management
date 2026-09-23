@@ -104,7 +104,7 @@ export function GasDetectorsView() {
     () => ({ ...DEFAULT_STATION_QUERY, regionId: query.regionId, pageSize: 200 }),
     [query.regionId],
   )
-  const stations = useStations(stationQuery)
+  const stations = useStations(stationQuery, { enabled: Boolean(query.regionId) })
 
   const update = useCallback((patch: Partial<DetectorQuery>) => {
     setQuery((prev) => ({ ...prev, ...patch, page: 'page' in patch ? (patch.page as number) : 0 }))
@@ -192,7 +192,7 @@ export function GasDetectorsView() {
             <Search className="pointer-events-none absolute left-2 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
             <span className="sr-only">Search gas detectors</span>
             <input
-              type="search"
+              id="gas-detectors-search" name="gas-detectors-search" type="search"
               value={query.search}
               onChange={(e) => update({ search: e.target.value })}
               placeholder="Serial, manufacturer, model, station…"
@@ -204,7 +204,7 @@ export function GasDetectorsView() {
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>Region</span>
             <select
-              value={query.regionId ?? ''}
+              id="gas-detectors-region" name="gas-detectors-region" value={query.regionId ?? ''}
               // Changing Region clears the Station: a station from the old
               // region would silently contradict the new one.
               onChange={(e) => update({ regionId: e.target.value || null, stationId: null })}
@@ -225,7 +225,7 @@ export function GasDetectorsView() {
             <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <span>Station</span>
               <select
-                value={query.stationId ?? ''}
+                id="gas-detectors-station" name="gas-detectors-station" value={query.stationId ?? ''}
                 onChange={(e) => update({ stationId: e.target.value || null })}
                 className="h-7 max-w-[12rem] rounded border bg-background px-1.5 text-sm text-foreground"
               >
@@ -244,7 +244,7 @@ export function GasDetectorsView() {
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>Area</span>
             <select
-              value={query.area}
+              id="gas-detectors-area" name="gas-detectors-area" value={query.area}
               onChange={(e) => update({ area: e.target.value as DetectorQuery['area'] })}
               className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
             >
@@ -259,7 +259,7 @@ export function GasDetectorsView() {
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>Presence</span>
             <select
-              value={query.presence}
+              id="gas-detectors-presence" name="gas-detectors-presence" value={query.presence}
               onChange={(e) => update({ presence: e.target.value as DetectorQuery['presence'] })}
               className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
             >
@@ -276,7 +276,7 @@ export function GasDetectorsView() {
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>Mapping</span>
             <select
-              value={query.mapping}
+              id="gas-detectors-mapping" name="gas-detectors-mapping" value={query.mapping}
               onChange={(e) => update({ mapping: e.target.value as DetectorQuery['mapping'] })}
               className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
             >
@@ -292,7 +292,7 @@ export function GasDetectorsView() {
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>Due</span>
             <select
-              value={query.due}
+              id="gas-detectors-due" name="gas-detectors-due" value={query.due}
               onChange={(e) => update({ due: e.target.value as DetectorQuery['due'] })}
               className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
             >

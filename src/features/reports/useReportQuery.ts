@@ -111,8 +111,9 @@ export interface ReportQueryState {
   total: number | null
   loading: boolean
   loadError: string | null
-  hasMore: boolean
-  loadMore: () => void
+  page: number
+  pageSize: number
+  setPage: (page: number) => void
   /** Fetches the whole authorized result set, in bounded pages, for export. */
   fetchAllForExport: () => Promise<{ rows: ReportRow[]; truncated: boolean } | null>
 }
@@ -133,15 +134,14 @@ export function useReportQuery(
   // cascade a second render — and page 3 of one question never survives into
   // another.
   const key = useMemo(() => JSON.stringify([spec.id, filters]), [spec.id, filters])
-  const [paging, setPaging] = useState({ key, pages: 1 })
-  const pages = paging.key === key ? paging.pages : 1
+  const [paging, setPaging] = useState({ key, page: 0 })
+  const page = paging.key === key ? paging.page : 0
 
   useEffect(() => {
     let cancelled = false
     async function load() {
       if (!supabase) return
       setLoading(true)
-      const limit = pages * PAGE_SIZE
       // `count: 'exact'` gives the real total for the summary and the pager.
       // It is computed by the database under the caller's RLS, so the total a
       // viewer sees is the total they are allowed to see.
@@ -150,7 +150,7 @@ export function useReportQuery(
       query = applyReportOrder(query as unknown as QueryBuilder, spec) as never
       const { data, error, count } = await (query as unknown as {
         range: (a: number, b: number) => Promise<{ data: unknown; error: { message: string } | null; count: number | null }>
-      }).range(0, limit - 1)
+      }).range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1)
 
       if (cancelled) return
       setLoading(false)
@@ -158,10 +158,11 @@ export function useReportQuery(
       setLoadError(null)
       setRows((data ?? []) as ReportRow[])
       setTotal(count ?? null)
+      if (count !== null && page > 0 && page * PAGE_SIZE >= count) setPaging({ key, page: Math.max(0, Math.ceil(count / PAGE_SIZE) - 1) })
     }
     void load()
     return () => { cancelled = true }
-  }, [supabase, spec, columns, key, pages, filters])
+  }, [supabase, spec, columns, key, page, filters])
 
   const fetchAllForExport = useCallback(async () => {
     if (!supabase) return null
@@ -185,13 +186,21 @@ export function useReportQuery(
     return { rows: collected, truncated: true }
   }, [supabase, spec, columns, filters])
 
+  const setPage = useCallback((nextPage: number) => {
+    // Keep the selected page paired with the current question. The functional
+    // update avoids a stale render resetting a user-selected page while a
+    // concurrent exact-count response is committing.
+    setPaging(() => ({ key, page: Math.max(0, nextPage) }))
+  }, [key])
+
   return {
     rows,
     total,
     loading,
     loadError,
-    hasMore: total !== null && rows !== null && rows.length < total,
-    loadMore: () => setPaging({ key, pages: pages + 1 }),
+    page,
+    pageSize: PAGE_SIZE,
+    setPage,
     fetchAllForExport,
   }
 }

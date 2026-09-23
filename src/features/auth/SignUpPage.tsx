@@ -48,13 +48,13 @@ export function SignUpPage() {
         <CardContent>
           <form className="space-y-3" onSubmit={submit}>
             <label className="block text-sm font-medium">Full name
-              <input className="mt-1 h-10 w-full rounded-md border bg-background px-3" autoComplete="name" required value={fullName} onChange={(e) => setFullName(e.target.value)} />
+              <input id="sign-up-name" name="sign-up-name" className="mt-1 h-10 w-full rounded-md border bg-background px-3" autoComplete="name" required value={fullName} onChange={(e) => setFullName(e.target.value)} />
             </label>
             <label className="block text-sm font-medium">Email
-              <input className="mt-1 h-10 w-full rounded-md border bg-background px-3" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+              <input id="sign-up-email" name="sign-up-email" className="mt-1 h-10 w-full rounded-md border bg-background px-3" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
             </label>
             <label className="block text-sm font-medium">Password
-              <input className="mt-1 h-10 w-full rounded-md border bg-background px-3" type="password" autoComplete="new-password" minLength={8} required value={password} onChange={(e) => setPassword(e.target.value)} />
+              <input id="sign-up-password" name="sign-up-password" className="mt-1 h-10 w-full rounded-md border bg-background px-3" type="password" autoComplete="new-password" minLength={8} required value={password} onChange={(e) => setPassword(e.target.value)} />
             </label>
             {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
             {message ? <p role="status" className="text-sm text-muted-foreground">{message}</p> : null}
