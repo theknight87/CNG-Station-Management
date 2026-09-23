@@ -13,7 +13,8 @@ test('Alerts exposes its accessible bell and record details when rows are availa
 
   await page.goto('/alerts')
   await expect(page.getByRole('heading', { name: 'Alerts' })).toBeVisible()
-  await expect(page.getByRole('link', { name: /^Alerts(?: — \d+\+? unread(?:; exact count \d+)?)?$/ })).toBeVisible()
+  // The bell lives in the page header; the sidebar also has a plain "Alerts" link.
+  await expect(page.getByRole('banner').getByRole('link', { name: /^Alerts(?: — \d+\+? unread(?:; exact count \d+)?)?$/ })).toBeVisible()
   const details = page.getByRole('button', { name: /show the full technical record/i }).first()
   test.skip(await details.count() === 0, 'The authorized Alerts dataset has no rows, so a details dialog cannot be exercised.')
   await details.click()
@@ -34,7 +35,7 @@ test('Installed SRV pagination uses a real pager when the authorized dataset spa
   const selector = page.getByLabel('Installed relief valves page number')
   await expect(selector).toBeVisible()
   test.skip(await selector.locator('option').count() < 2, 'The authorized Installed SRV dataset has fewer than 51 rows, so its second page does not exist.')
-  await selector.selectOption('1')
+  await selector.selectOption({ value: '1' })
   await expect(selector).toHaveValue('1')
   await expect.poll(() => requests.some(request => request.range === '50-99' || /offset=50|range=50-99/i.test(request.url))).toBeTruthy()
 })

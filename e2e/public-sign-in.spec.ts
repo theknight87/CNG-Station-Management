@@ -1,5 +1,9 @@
 import { expect, test } from 'playwright/test'
 
+// Always signed OUT: the authenticated projects share a signed-in storage state,
+// and a signed-in visit to /sign-in correctly redirects away from the form.
+test.use({ storageState: { cookies: [], origins: [] } })
+
 const isLocalPreview = (url: string) => /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i.test(url)
 
 test('sign in has an identifiable, keyboard-accessible form without overflow', async ({ page, baseURL, browserName }) => {
