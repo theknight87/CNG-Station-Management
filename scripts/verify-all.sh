@@ -62,7 +62,7 @@ run "report contract" npx tsx scripts/verify-report-contract.mjs "$DB"
 # runs but asserts nothing (a failed connection, a renamed file, a truncated
 # run) must FAIL rather than report a cheerful zero - that is precisely the
 # silent coverage loss this gate exists to stop.
-declare -A MIN=( [schema_scenarios]=274 [rls_authorization]=624 )
+declare -A MIN=( [schema_scenarios]=344 [rls_authorization]=697 )
 
 for suite in schema_scenarios rls_authorization; do
   out="$(sudo -n -u postgres psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "supabase/tests/$suite.sql" 2>&1)"
@@ -87,22 +87,31 @@ done
 UDB="${VERIFY_UPGRADE_DB:-cng_upgrade}"
 sudo -n -u postgres psql -q -c "DROP DATABASE IF EXISTS $UDB" -c "CREATE DATABASE $UDB" >/dev/null 2>&1
 up_fail=0
-# The migration count currently DEPLOYED to production. This is the ONE number
-# to bump after a deployment; the pending set below is derived from it, so the
-# base and the replay can never drift apart (they did twice, in 25I and 25J-C).
-DEPLOYED_MIGRATIONS=53
-for f in $(ls supabase/migrations/*.sql | head -"$DEPLOYED_MIGRATIONS"); do
+# Migration files present in the repository but NOT applied to production.
+# Production is no longer a file-order prefix: 0055 and everything after it are
+# deployed while 0054 is not (Prompt 27A). So the base is "every file except
+# these" and the upgrade replays exactly these. Update this list after each
+# deployment, checked against supabase_migrations.schema_migrations.
+UNDEPLOYED_MIGRATIONS=(0054_irv_station_batch_audit_fix.sql)
+is_undeployed() { local b; b="$(basename "$1")"; for u in "${UNDEPLOYED_MIGRATIONS[@]}"; do [ "$b" = "$u" ] && return 0; done; return 1; }
+base_count=0
+for f in supabase/migrations/*.sql; do
+  is_undeployed "$f" && continue
   sudo -n -u postgres psql -d "$UDB" -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null 2>&1 \
     || { echo "BASE MIGRATION FAILED: $f"; up_fail=1; break; }
+  base_count=$((base_count + 1))
 done
+DEPLOYED_MIGRATIONS=$base_count
 if [ $up_fail -eq 0 ]; then
   line "production-equivalent base" "PASS ($DEPLOYED_MIGRATIONS applied)"
   # The upgrade path from the CURRENT production migration count: everything the
   # repository has BEYOND what is deployed, derived rather than hard-coded. An
   # empty set reports "nothing pending" and must never run psql on a literal glob.
-  shopt -s nullglob
-  pending=($(ls supabase/migrations/*.sql | tail -n +$((DEPLOYED_MIGRATIONS + 1))))
-  shopt -u nullglob
+  pending=()
+  for u in "${UNDEPLOYED_MIGRATIONS[@]}"; do
+    [ -f "supabase/migrations/$u" ] || { echo "UNDEPLOYED FILE MISSING: $u"; up_fail=1; fail=1; }
+    pending+=("supabase/migrations/$u")
+  done
   if [ ${#pending[@]} -eq 0 ]; then
     line "upgrade replay" "PASS (nothing pending beyond the deployed count)"
   else
