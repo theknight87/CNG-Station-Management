@@ -95,3 +95,16 @@ Stations cannot be created automatically without guessing. `deliverables/phase-6
 lists every name with the files it appears in, a proposed Station and Unit (spelling folded, governorate suffix
 removed, trailing number read as the Unit), and yellow columns for the owner's Station and Unit. Once it is filled in,
 the Stations and Units are created from it with the same preview → approve → commit steps. Unknown values stay empty.
+
+## 6c-1 committed (2026-09-23)
+
+Owner approval: "Approve 6c 19995347…0003a8d0, 107 rows". Pre-commit guard re-ran the deployed preview and matched
+(same fingerprint, 107 rows / 107 Units, 8 blank, 0 Units already holding values). `cng_6c_unit_attribute_commit` ran
+**once**: 107 Units updated, 107 rows linked, 8 blank rows rejected.
+
+Reconciliation, all zero-defect: 107 Units now hold values and every one is linked from exactly one row; one commit
+timestamp; 0 wrong Region; 0 rows whose name differs from the Unit's; 0 stored values differing from the source text;
+0 numbers stored from a non-integer cell. 8 rows rejected (not deleted). 210 rows still held (S1 76, N1 11, Z 123), so
+325 = 107 + 8 + 210. Stations 157 and Units 188 unchanged, 0 Station values written. Audit: one new row
+(`service_role:unit_attributes_6c`), 617 in total. Replay blocked: the preview now shows 0 rows to attach
+(fingerprint `4add961e…`).
