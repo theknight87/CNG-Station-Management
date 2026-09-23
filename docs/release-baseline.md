@@ -327,3 +327,16 @@ Remove the screen again once B2 is committed. Frontend tests 640 → **647**.
 28 BLOCKED absence rows. Its deployed preview fingerprint then needs a separate owner approval before the one-time import.
 
 **6c — 325 `unit_attributes` rows:** not started yet. This is a separate workflow and needs its own analysis.
+
+## Network opened (2026-09-23): deployment now observed, not inferred
+
+- The session network policy was set to full by the owner, and both `ypkggegquetvpsflkaxg.supabase.co` and `cng-station-management.pages.dev`
+  are now reachable from the build environment.
+- **The live bundle was inspected directly**: it contains the B2 fingerprint `9ff0975c…`, `CONFIRM 308 STATION MAPPINGS`
+  and the phone "Due ≤60d" column. The live `Content-Security-Policy` carries the narrowed `connect-src`. So `main`
+  `cbf03d9` is DEPLOYED on Cloudflare Pages, verified at the response level for the first time.
+- **E2E test account** created through the normal public sign-up path (no SQL write to Auth, no role set by SQL):
+  - it is `app_users` `cd579932…`, an inactive `viewer` created by the `cng_auth_user_sync` trigger, with the email unconfirmed
+  - owner steps: confirm the email, then in Admin → Users activate the account and set its role to admin. That route is audited.
+  - its credentials exist only in a mode-600 file in the session scratchpad, never in the repository, logs or chat
+- Leaked-password protection needs a paid plan. The owner set a minimum length of 8 with complex passwords instead, and the protection stays off.
