@@ -63,6 +63,7 @@ export function RegistryTable<T>({
   errorTitle,
   footnote,
   record,
+  extra,
 }: {
   label: string
   state: Loadable<RegistryPage<T>>
@@ -83,6 +84,8 @@ export function RegistryTable<T>({
   footnote?: ReactNode
   /** The editable record behind a row, for admin editing and photos. Omit for read-only registries. */
   record?: (row: T) => RecordRef | null
+  /** Extra dialog content (workflow actions, history). `done` closes the dialog and reloads. */
+  extra?: (row: T, done: () => void) => ReactNode
 }) {
   const [selected, setSelected] = useState<T | null>(null)
 
@@ -172,6 +175,7 @@ export function RegistryTable<T>({
         onClose={() => setSelected(null)}
       >
         {selected ? <FactGrid>{detail(selected)}</FactGrid> : null}
+        {selected && extra ? <div key={rowKey(selected)}>{extra(selected, () => { setSelected(null); reload() })}</div> : null}
         {selected && record && record(selected) ? (
           <RecordAdminTools key={record(selected)!.id} record={record(selected)!} onSaved={reload} />
         ) : null}

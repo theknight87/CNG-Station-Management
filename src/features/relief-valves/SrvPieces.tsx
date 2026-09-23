@@ -4,6 +4,7 @@ import { StatusBadge } from '@/components/data/StatusBadge'
 import { Identifier } from '@/components/data/TechnicalText'
 import { NullValue } from '@/components/data/NullValue'
 import { cn } from '@/lib/utils'
+import { useRegions } from '@/features/admin/useMappingOptions'
 import type { InstalledSrvRow, SrvSmartFilters } from '@/features/relief-valves/useSrvManagement'
 
 /**
@@ -153,32 +154,48 @@ export function Metric({
  * The dedicated SRV filters: serial, Station, size and set pressure. Each input
  * narrows one column server-side; they combine with each other and with search.
  */
-export function SmartFilterBar({ id, value, onChange, stationLabel = 'Station' }: {
+export function SmartFilterBar({ id, value, onChange, stationLabel = 'Station', regionLabel = 'Region', showRegion = true, showStation = true }: {
   id: string
   value: SrvSmartFilters
   onChange: (next: SrvSmartFilters) => void
   stationLabel?: string
+  regionLabel?: string
+  showRegion?: boolean
+  showStation?: boolean
 }) {
+  const regions = useRegions()
   const set = (patch: Partial<SrvSmartFilters>) => onChange({ ...value, ...patch })
   const input = 'h-7 rounded border bg-background px-2 text-sm placeholder:text-muted-foreground'
   return (
-    <div role="group" aria-label="Filter by serial, station, size and set pressure" className="flex flex-wrap items-end gap-2">
+    <div role="group" aria-label="Filter by serial, region, station, size and set pressure" className="flex flex-wrap items-end gap-2">
       <label className="flex flex-col gap-0.5 text-xs text-muted-foreground" htmlFor={`${id}-serial`}>
         Serial
         <input id={`${id}-serial`} className={cn(input, 'w-32 font-technical')} value={value.serial} placeholder="contains…"
                onChange={(e) => set({ serial: e.target.value })} />
       </label>
-      <label className="flex flex-col gap-0.5 text-xs text-muted-foreground" htmlFor={`${id}-station`}>
-        {stationLabel}
-        <input id={`${id}-station`} dir="auto" className={cn(input, 'w-40')} value={value.station} placeholder="name contains…"
-               onChange={(e) => set({ station: e.target.value })} />
-      </label>
+      {showRegion ? (
+        <label className="flex flex-col gap-0.5 text-xs text-muted-foreground" htmlFor={`${id}-region`}>
+          {regionLabel}
+          <select id={`${id}-region`} className={cn(input, 'px-1.5 text-foreground')} value={value.region}
+                  onChange={(e) => set({ region: e.target.value })}>
+            <option value="">All</option>
+            {regions.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+          </select>
+        </label>
+      ) : null}
+      {showStation ? (
+        <label className="flex flex-col gap-0.5 text-xs text-muted-foreground" htmlFor={`${id}-station`}>
+          {stationLabel}
+          <input id={`${id}-station`} dir="auto" className={cn(input, 'w-40')} value={value.station} placeholder="name contains…"
+                 onChange={(e) => set({ station: e.target.value })} />
+        </label>
+      ) : null}
       <label className="flex flex-col gap-0.5 text-xs text-muted-foreground" htmlFor={`${id}-size`}>
-        Inlet size
-        <input id={`${id}-size`} list={`${id}-sizes`} className={cn(input, 'w-24 font-technical')} value={value.size} placeholder='e.g. 1/2"'
+        Size
+        <input id={`${id}-size`} list={`${id}-sizes`} className={cn(input, 'w-36 font-technical')} value={value.size} placeholder='e.g. M 3/4" X 1"'
                onChange={(e) => set({ size: e.target.value })} />
         <datalist id={`${id}-sizes`}>
-          {['1/4"', '1/2"', '3/4"', '7/8"', '1"'].map((s) => <option key={s} value={s} />)}
+          {['M 1/4" X 1/2"', 'M 1/2" X 3/4"', 'M 1/2" X 1"', 'M 3/4" X 1"', 'M 1" X 1 1/4"', 'F 1/2" X 3/4"'].map((s) => <option key={s} value={s} />)}
         </datalist>
       </label>
       <label className="flex flex-col gap-0.5 text-xs text-muted-foreground" htmlFor={`${id}-pressure`}>

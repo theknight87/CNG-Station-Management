@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Fact } from '@/features/hierarchy/HierarchyPieces'
 import { useRegions } from '@/features/hierarchy/useHierarchy'
 import { DueBadge, PrecisionDate, PressureRange, Serial, SourceStatus, Text } from '@/features/units/assetDisplay'
+import { ValveHistory } from '@/features/relief-valves/SrvWorkflowPieces'
 import { SmartFilterBar, HierarchyCell, MappingBadge, Metric, ParentCell, SourceContext } from '@/features/relief-valves/SrvPieces'
 import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
 import {
@@ -266,11 +267,12 @@ export function InstalledSrvSection() {
           </Button>
         ) : null}
       </DataToolbar>
-      <SmartFilterBar id="installed-srv" stationLabel="Station" value={query.filters} onChange={(filters) => update({ filters })} />
+      <SmartFilterBar id="installed-srv" stationLabel="Station" showRegion={false} value={query.filters} onChange={(filters) => update({ filters })} />
 
       <RegistryTable
 
         record={(r) => ({ table: 'installed_relief_valves', id: r.id })}
+        extra={(r) => <ValveHistory valveId={r.id} />}
         label="Installed relief valves"
         state={state}
         reload={reload}

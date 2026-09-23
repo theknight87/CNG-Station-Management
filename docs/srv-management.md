@@ -505,3 +505,29 @@ Owner request: warehouse code for every SRV, shown in the table; smarter filters
 - **Dedicated filters** on both SRV tables: serial (contains), Station (installed: Station or source name; warehouse:
   destination Station), inlet size, set pressure (matches valves whose recorded range contains the value) and unit
   (BAR/PSI). Each filters one column server-side, under RLS, and combines with search and the other filters.
+
+## Warehouse workflow (2026-09-23, migration 20260925090000)
+
+Owner rulings: the status is authoritative and the warehouse code follows it (two-letter base + nothing
+for new, `C` for calibrated, `U` for under calibration — `MB 9` / `MBC 9` / `MBU 9`, `KC 17` / `KCC 17` /
+`KCU 17`); only admins run the workflow.
+
+- **Warehouse SRVs** shows only stock in the store: available new / calibrated / under calibration, minus
+  anything at the calibration company (`v_srv_warehouse_stock`). A `+` beside an under-calibration valve
+  sends it to Calibration (3rd party). The details dialog offers **Issue from warehouse**: Station → Unit →
+  optionally the valve it replaces (same set pressure, at that Station) → Emergency. Issuing creates the
+  installed record, marks the warehouse record `sent_to_station_received`, archives the replaced valve and
+  puts it in the SRV Log.
+- **SRV Log**: valves out of the loop, expected back. "Arrived at warehouse" returns them to stock as
+  available — under calibration.
+- **Calibration (3rd party)**: at the company → returned, certificate awaited → returned with certificate
+  (becomes available — calibrated, last calibration = certificate date; next due only if entered).
+- **SRV Emergency**: every issue marked Emergency, with its replaced valve's status.
+- **History** in every valve's dialog, following the valve between warehouse and station records.
+- Filters: Region, Station, and the full size as written (`M 3/4" X 1"`).
+
+Production data step 6F (fingerprint `c9e83a00…d76c2fe7`, previewed twice identically, committed once,
+owner auto-approval): 36 codes corrected to the rule; of 1,483 sent-to-station valves, 1,090 are recorded
+with the same serial at the Station they were sent to (nothing logged), 55 were sent to a Station that
+records a different valve and 338 to a Station name with no valves recorded — those 393 are in the SRV Log
+as *location unconfirmed*. Store stock after the step: 705. Gate: frontend 671, `srv_warehouse_workflow` 43.

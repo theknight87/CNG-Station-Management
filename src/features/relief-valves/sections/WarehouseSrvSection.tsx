@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { Search, X } from 'lucide-react'
+import { Plus, Search, X } from 'lucide-react'
 
 import { Identifier } from '@/components/data/TechnicalText'
 import { NullValue } from '@/components/data/NullValue'
@@ -15,6 +15,8 @@ import {
   DEFAULT_WAREHOUSE_QUERY, useWarehouseSrvs,
   type WarehouseQuery, type WarehouseSrvRow, type WarehouseSort,
 } from '@/features/relief-valves/useSrvManagement'
+import { IssuePanel, ValveHistory } from '@/features/relief-valves/SrvWorkflowPieces'
+import { useIsAdmin, useWorkflowAction } from '@/features/relief-valves/useSrvWorkflow'
 
 /**
  * Warehouse relief valves — INVENTORY, not hierarchy.
@@ -40,7 +42,38 @@ const AVAILABILITY_LABEL: Record<string, string> = {
   sent_to_station_not_received: 'Sent to station — not received',
 }
 
-const COLUMNS: RegistryColumn<WarehouseSrvRow>[] = [
+/** The store holds only these three (owner ruling); issued stock lives in the installed register and the SRV Log. */
+const STOCK_STATUSES = ['available_new', 'available_calibrated', 'available_in_store_uc']
+
+function SendToCalibration({ row, onSent }: { row: WarehouseSrvRow; onSent: () => void }) {
+  const isAdmin = useIsAdmin()
+  const { run, busy } = useWorkflowAction()
+  const [error, setError] = useState<string | null>(null)
+  if (!isAdmin || row.availability_status !== 'available_in_store_uc') return null
+  return (
+    <span className="inline-flex items-center gap-1">
+      <button
+        type="button"
+        disabled={busy}
+        title="Send to the calibration company"
+        onClick={async (e) => {
+          e.stopPropagation()
+          setError(null)
+          const err = await run('cng_srv_calibration_send', { p_warehouse_valve_ids: [row.id] })
+          if (err) setError(err)
+          else onSent()
+        }}
+        className="flex h-5 w-5 items-center justify-center rounded border text-muted-foreground hover:bg-muted hover:text-foreground"
+      >
+        <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+        <span className="sr-only">Send serial {row.serial_number ?? ''} to Calibration (3rd party)</span>
+      </button>
+      {error ? <span role="alert" className="text-xs text-destructive">{error}</span> : null}
+    </span>
+  )
+}
+
+function columns(reload: () => void): RegistryColumn<WarehouseSrvRow>[] { return [
   {
     key: 'pressure', header: 'Set pressure', align: 'right',
     render: (r) => (
@@ -70,6 +103,10 @@ const COLUMNS: RegistryColumn<WarehouseSrvRow>[] = [
       ) : (
         <NullValue />
       ),
+  },
+  {
+    key: 'calibrate', header: 'Calibrate',
+    render: (r) => <SendToCalibration row={r} onSent={reload} />,
   },
   {
     key: 'warehouse_code', header: 'Warehouse',
@@ -103,7 +140,7 @@ const COLUMNS: RegistryColumn<WarehouseSrvRow>[] = [
     key: 'days_left', header: 'Days left', align: 'right', numeric: true,
     render: (r) => (r.days_left === null ? <NullValue /> : <span>{r.days_left.toLocaleString()}</span>),
   },
-]
+]}
 
 function ValveSize({ type, inlet, outlet }: { type: string | null; inlet: string | null; outlet: string | null }) {
   const prefix = type?.toLowerCase() === 'male' ? 'M' : type?.toLowerCase() === 'female' ? 'F' : type
@@ -176,7 +213,7 @@ export function WarehouseSrvSection() {
             className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
           >
             <option value="">All</option>
-            {Object.entries(AVAILABILITY_LABEL).map(([value, label]) => (
+            {Object.entries(AVAILABILITY_LABEL).filter(([value]) => STOCK_STATUSES.includes(value)).map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
               </option>
@@ -205,7 +242,7 @@ export function WarehouseSrvSection() {
           </Button>
         ) : null}
       </DataToolbar>
-      <SmartFilterBar id="warehouse-srv" stationLabel="Destination Station" value={query.filters} onChange={(filters) => update({ filters })} />
+      <SmartFilterBar id="warehouse-srv" stationLabel="Destination Station" regionLabel="Destination Region" value={query.filters} onChange={(filters) => update({ filters })} />
 
       <RegistryTable
 
@@ -213,7 +250,13 @@ export function WarehouseSrvSection() {
         label="Warehouse relief valves"
         state={state}
         reload={reload}
-        columns={COLUMNS}
+        columns={columns(reload)}
+        extra={(r, done) => (
+          <>
+            <IssuePanel row={r} onDone={done} />
+            <ValveHistory valveId={r.id} />
+          </>
+        )}
         rowKey={(r) => r.id}
         sort={query.sort}
         direction={query.direction}
@@ -222,8 +265,8 @@ export function WarehouseSrvSection() {
         pageSize={query.pageSize}
         onPage={(p) => setQuery((prev) => ({ ...prev, page: p }))}
         onClearFilters={clearFilters}
-        emptyTitle="No warehouse relief valves recorded yet"
-        emptyDescription="Warehouse stock appears here once the source workbooks have been imported. Nothing has been imported yet."
+        emptyTitle="No relief valves in the store"
+        emptyDescription="Valves in the store (new, calibrated or under calibration) appear here. Issued valves are in Installed SRVs and the SRV Log."
         errorTitle="Could not load warehouse relief valves"
         detail={(r) => (
           <>

@@ -19,7 +19,10 @@ import { cn } from '@/lib/utils'
 
 const SECTIONS = [
   { to: 'installed', label: 'Installed SRVs', hint: 'Valves fitted to station equipment' },
-  { to: 'warehouse', label: 'Warehouse SRVs', hint: 'Inventory — no station or unit' },
+  { to: 'warehouse', label: 'Warehouse SRVs', hint: 'In the store: new, calibrated, under calibration' },
+  { to: 'log', label: 'SRV Log', hint: 'Out at stations, expected back' },
+  { to: 'calibration', label: 'Calibration (3rd party)', hint: 'At the calibration company' },
+  { to: 'emergency', label: 'SRV Emergency', hint: 'Emergency issues' },
 ]
 
 export function SrvWorkspace() {

@@ -101,6 +101,7 @@ export interface WarehouseSrvRow {
   target_station_id: string | null
   target_station_name: string | null
   is_unassigned_stock: boolean
+  updated_at: string
   warehouse_issue_date: string | null
   last_calibration_date: string | null
   last_calibration_precision: DatePrecision | null
@@ -130,7 +131,7 @@ const WAREHOUSE_COLUMNS =
   'id, availability_status, warehouse_code, serial_number, serial_number_raw, serial_status, part_number, ' +
   'manufacturer, size_type, inlet_size, outlet_size, set_pressure_raw, pressure_min, pressure_max, ' +
   'pressure_unit, target_region_id, target_region_name, target_station_id, target_station_name, ' +
-  'is_unassigned_stock, warehouse_issue_date, last_calibration_date, last_calibration_precision, ' +
+  'is_unassigned_stock, updated_at, warehouse_issue_date, last_calibration_date, last_calibration_precision, ' +
   'last_calibration_display, next_calibration_date, next_calibration_precision, ' +
   'next_calibration_display, days_left, due_status, calibration_location, source_status_raw, ' +
   'needs_review, notes'
@@ -139,27 +140,52 @@ const WAREHOUSE_COLUMNS =
  * Dedicated filters (owner request): each narrows ONE column, independently of the
  * free-text search, and they combine with AND. Set pressure matches valves whose
  * recorded range contains the value (pressure_min <= v <= pressure_max) in the chosen unit.
+ * Size is the FULL size as the table shows it (`M 3/4" X 1"`): the M/F prefix narrows the
+ * size type, and the parts either side of X narrow inlet and outlet.
  */
 export interface SrvSmartFilters {
   serial: string
+  region: string
   station: string
   size: string
   pressure: string
   pressureUnit: '' | 'BAR' | 'PSI'
 }
-export const EMPTY_SMART_FILTERS: SrvSmartFilters = { serial: '', station: '', size: '', pressure: '', pressureUnit: '' }
+export const EMPTY_SMART_FILTERS: SrvSmartFilters = { serial: '', region: '', station: '', size: '', pressure: '', pressureUnit: '' }
 
 export function hasSmartFilters(f: SrvSmartFilters): boolean {
-  return Boolean(f.serial.trim() || f.station.trim() || f.size.trim() || f.pressure.trim() || f.pressureUnit)
+  return Boolean(f.serial.trim() || f.region || f.station.trim() || f.size.trim() || f.pressure.trim() || f.pressureUnit)
 }
 
-/** Applies the dedicated filters to a PostgREST builder. `stationColumn` differs per dataset. */
+/** Splits a full size (`M 3/4" X 1"`) into its type, inlet and outlet parts. Any part may be absent. */
+export function parseSize(value: string): { type: 'male' | 'female' | 'flange' | null; inlet: string; outlet: string } {
+  let v = value.trim()
+  let type: 'male' | 'female' | 'flange' | null = null
+  const m = /^(flange|male|female|M|F)(?:\s+|(?=\d))/i.exec(v)
+  if (m) {
+    const t = m[1].toLowerCase()
+    type = t === 'm' || t === 'male' ? 'male' : t === 'f' || t === 'female' ? 'female' : 'flange'
+    v = v.slice(m[0].length)
+  }
+  const [inlet = '', outlet = ''] = v.split(/\s*[xX×]\s*/)
+  return { type, inlet: inlet.trim(), outlet: outlet.trim() }
+}
+
+/** Applies the dedicated filters to a PostgREST builder. Station and Region columns differ per dataset. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function applySmartFilters<B extends { ilike: any; lte: any; gte: any; eq: any }>(b: B, f: SrvSmartFilters, stationColumn: string): B {
+export function applySmartFilters<B extends { ilike: any; lte: any; gte: any; eq: any }>(
+  b: B, f: SrvSmartFilters, stationColumn: string, regionColumn = 'region_id',
+): B {
   const clean = (v: string) => v.trim().replace(/[%*,()]/g, ' ').trim()
   if (clean(f.serial)) b = b.ilike('serial_number', `%${clean(f.serial)}%`)
+  if (f.region) b = b.eq(regionColumn, f.region)
   if (clean(f.station)) b = b.ilike(stationColumn, `%${clean(f.station)}%`)
-  if (clean(f.size)) b = b.ilike('inlet_size', `%${clean(f.size)}%`)
+  if (f.size.trim()) {
+    const size = parseSize(f.size)
+    if (size.type) b = b.ilike('size_type', size.type)
+    if (clean(size.inlet)) b = b.ilike('inlet_size', `${clean(size.inlet)}%`)
+    if (clean(size.outlet)) b = b.ilike('outlet_size', `${clean(size.outlet)}%`)
+  }
   const v = Number(f.pressure.trim())
   if (f.pressure.trim() && Number.isFinite(v)) b = b.lte('pressure_min', v).gte('pressure_max', v)
   if (f.pressureUnit) b = b.eq('pressure_unit', f.pressureUnit)
@@ -354,12 +380,12 @@ export function useWarehouseSrvs(query: WarehouseQuery): {
       const q: WarehouseQuery = JSON.parse(key)
       const term = q.search.trim()
 
-      let b = supabase.from('v_warehouse_srv_management').select(WAREHOUSE_COLUMNS, { count: 'exact' })
+      let b = supabase.from('v_srv_warehouse_stock').select(WAREHOUSE_COLUMNS, { count: 'exact' })
       if (q.availability) b = b.eq('availability_status', q.availability)
       if (q.due === 'overdue') b = b.eq('due_status', 'overdue')
       if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
       if (q.due === 'attention') b = b.in('due_status', ATTENTION_BUCKETS)
-      b = applySmartFilters(b, q.filters, 'target_station_name')
+      b = applySmartFilters(b, q.filters, 'target_station_name', 'target_region_id')
       if (term) {
         const raw = term.replace(/[,()]/g, ' ')
         b = b.or(
@@ -388,7 +414,7 @@ export function useWarehouseSrvs(query: WarehouseQuery): {
       const hasFilters = Boolean(term || q.availability || q.due !== 'all' || hasSmartFilters(q.filters))
       if (total === 0 && hasFilters) {
         const { count: unfiltered } = await supabase!
-          .from('v_warehouse_srv_management')
+          .from('v_srv_warehouse_stock')
           .select('id', { count: 'exact', head: true })
         if (cancelled) return
         filtered = (unfiltered ?? 0) > 0

@@ -67,14 +67,14 @@ vi.mock('@/lib/supabase/client', () => {
         },
         range: (a: number, b: number) => {
           calls.list.push(`${table}.range:${a}-${b}`)
-          return Promise.resolve(table === 'v_warehouse_srv_management' ? replies.warehouse : replies.installed)
+          return Promise.resolve(table === 'v_srv_warehouse_stock' ? replies.warehouse : replies.installed)
         },
         then: (resolve: (v: unknown) => unknown) => {
           const reply =
             table === 'v_installed_srv_summary' ? replies.summary
             : table === 'v_dashboard_region_summary' ? replies.regions
             : head ? replies.headCount
-            : table === 'v_warehouse_srv_management' ? replies.warehouse
+            : table === 'v_srv_warehouse_stock' ? replies.warehouse
             : replies.installed
           return Promise.resolve(reply).then(resolve)
         },
@@ -82,6 +82,7 @@ vi.mock('@/lib/supabase/client', () => {
       return chain
     },
   }
+  ;(client as Record<string, unknown>).rpc = () => Promise.resolve({ data: [], error: null })
   return { useSupabaseClient: () => client }
 })
 
@@ -166,7 +167,7 @@ describe('Workspace and routes', () => {
     expect(within(nav).getByText('Installed SRVs')).toBeDefined()
     expect(within(nav).getByText('Warehouse SRVs')).toBeDefined()
     // The hint text states the difference in words.
-    expect(within(nav).getByText(/no station or unit/i)).toBeDefined()
+    expect(within(nav).getByText(/in the store/i)).toBeDefined()
   })
 
   it('marks the active dataset with aria-current', async () => {
@@ -414,7 +415,7 @@ describe('Warehouse isolation', () => {
     replies.warehouse = { data: [warehouse()], error: null, count: 1 }
     renderSrv('/manage/srvs/warehouse')
     await screen.findByText('WRV-500001')
-    expect(calls.list.some((c) => c.startsWith('v_warehouse_srv_management.'))).toBe(true)
+    expect(calls.list.some((c) => c.startsWith('v_srv_warehouse_stock.'))).toBe(true)
     expect(calls.list.some((c) => c.startsWith('v_installed_srv_management.'))).toBe(false)
   })
 
@@ -525,15 +526,26 @@ describe('smart filters and warehouse code', () => {
       gte(c: string, v: unknown) { calls.push(['gte', c, v]); return b },
       eq(c: string, v: unknown) { calls.push(['eq', c, v]); return b },
     }
-    applySmartFilters(b, { serial: ' 0003,262 ', station: 'الهرم', size: '1/2"', pressure: '316', pressureUnit: 'BAR' }, 'station_display')
+    applySmartFilters(b, { serial: ' 0003,262 ', region: 'r-1', station: 'الهرم', size: 'M 3/4" X 1"', pressure: '316', pressureUnit: 'BAR' }, 'station_display')
     expect(calls).toEqual([
       ['ilike', 'serial_number', '%0003 262%'],
+      ['eq', 'region_id', 'r-1'],
       ['ilike', 'station_display', '%الهرم%'],
-      ['ilike', 'inlet_size', '%1/2"%'],
+      ['ilike', 'size_type', 'male'],
+      ['ilike', 'inlet_size', '3/4"%'],
+      ['ilike', 'outlet_size', '1"%'],
       ['lte', 'pressure_min', 316],
       ['gte', 'pressure_max', 316],
       ['eq', 'pressure_unit', 'BAR'],
     ])
+  })
+
+  it('FILTER-3 the full size is read as the table writes it; a bare inlet still works', async () => {
+    const { parseSize } = await import('@/features/relief-valves/useSrvManagement')
+    expect(parseSize('M 3/4" X 1"')).toEqual({ type: 'male', inlet: '3/4"', outlet: '1"' })
+    expect(parseSize('F 1/2"x3/4"')).toEqual({ type: 'female', inlet: '1/2"', outlet: '3/4"' })
+    expect(parseSize('flange 1" X 1 1/2"')).toEqual({ type: 'flange', inlet: '1"', outlet: '1 1/2"' })
+    expect(parseSize('1/2"')).toEqual({ type: null, inlet: '1/2"', outlet: '' })
   })
 
   it('FILTER-2 empty filters add nothing', async () => {

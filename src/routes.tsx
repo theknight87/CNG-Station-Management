@@ -20,6 +20,9 @@ const SrvSection = lazy(() => import('@/features/units/sections/SrvSection').the
 const VesselSection = lazy(() => import('@/features/units/sections/VesselSection').then((m) => ({ default: m.VesselSection })))
 const InstalledSrvSection = lazy(() => import('@/features/relief-valves/sections/InstalledSrvSection').then((m) => ({ default: m.InstalledSrvSection })))
 const WarehouseSrvSection = lazy(() => import('@/features/relief-valves/sections/WarehouseSrvSection').then((m) => ({ default: m.WarehouseSrvSection })))
+const SrvLogSection = lazy(() => import('@/features/relief-valves/sections/SrvWorkflowSections').then((m) => ({ default: m.SrvLogSection })))
+const SrvCalibrationSection = lazy(() => import('@/features/relief-valves/sections/SrvWorkflowSections').then((m) => ({ default: m.SrvCalibrationSection })))
+const SrvEmergencySection = lazy(() => import('@/features/relief-valves/sections/SrvWorkflowSections').then((m) => ({ default: m.SrvEmergencySection })))
 const VesselRegistrySection = lazy(() => import('@/features/vessels/sections/VesselRegistrySection').then((m) => ({ default: m.VesselRegistrySection })))
 const AdminAlertSettingsSection = lazy(() => import('@/features/admin/sections/AdminAlertSettingsSection').then((m) => ({ default: m.AdminAlertSettingsSection })))
 const AdminAuditLogSection = lazy(() => import('@/features/admin/sections/AdminAuditLogSection').then((m) => ({ default: m.AdminAuditLogSection })))
@@ -100,6 +103,9 @@ export const router = createBrowserRouter([
           { index: true, element: <Navigate to="/manage/srvs/installed" replace /> },
           { path: 'installed', element: <InstalledSrvSection /> },
           { path: 'warehouse', element: <WarehouseSrvSection /> },
+          { path: 'log', element: <SrvLogSection /> },
+          { path: 'calibration', element: <SrvCalibrationSection /> },
+          { path: 'emergency', element: <SrvEmergencySection /> },
         ],
       },
       {
