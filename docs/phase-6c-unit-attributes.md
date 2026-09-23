@@ -108,3 +108,28 @@ timestamp; 0 wrong Region; 0 rows whose name differs from the Unit's; 0 stored v
 325 = 107 + 8 + 210. Stations 157 and Units 188 unchanged, 0 Station values written. Audit: one new row
 (`service_role:unit_attributes_6c`), 617 in total. Replay blocked: the preview now shows 0 rows to attach
 (fingerprint `4add961e…`).
+
+## 6c-2: S1 rulings (2026-09-23), deployed, awaiting fingerprint approval
+
+Owner rulings: a Station with one Unit is that Unit (address-style Unit names are ignored); بيلا/كفر الشيخ has a Unit with
+the Station's name (compressor Galileo); فويل اب الدائرى has Units 1 and 2; bay status belongs to the Unit (enclosure),
+never the Station; Unit naming is "X" for a one-Unit Station and "X 1", "X 2", "X 3"… when there are several.
+
+Migration `20260923200000_unit_attributes_6c2.sql` (deployed as `unit_attributes_6c2`; prosrc MD5s proposal `4bf7f66d…`,
+preview `4118f134…`, commit `89f9bbf1…`, identical to the tested build). Suite `unit_attributes_6c2.sql`: 19 assertions.
+
+**Deployed preview (run twice, identical):** `45ff448e0b189a520c15a6e4f7aa9fe02bd517d78e5e9c07d5de510ca1d3985a`.
+All 76 S1 rows: 73 go to their Station's only Unit (Delta 72 and West الهرم), 1 creates the Unit بيلا / كفر الشيخ,
+2 go to فويل اب الدائرى 1 and 2 in row order. 1 count is not a plain number (kept raw). 0 Station values.
+
+## N1: the 11 names are East sites
+
+The owner confirms the 11 rows labelled Delta belong to East. None of them exists as a Station or Unit in East either
+(checked by exact name), so they need new East Stations. This is done with Z, from the review workbook.
+
+## Unit names that do not follow the owner's naming rule
+
+Measured against the rule "one Unit = X; several = X 1, X 2, …": East 42/42 follow it. West: 33 of 40 follow it,
+1 one-Unit Station has a Unit named otherwise (e.g. الهرم → Unit "الهرم 1"), and 6 two-Unit Stations are named "X" and "X 2"
+instead of "X 1" and "X 2". Delta: all 74 one-Unit Stations have address-style Unit names. **81 Units could be renamed**
+to the rule, with the old name kept in provenance. Not done; it needs an owner decision.
