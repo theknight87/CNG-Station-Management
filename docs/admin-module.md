@@ -194,3 +194,37 @@ see `docs/preimport-mapping.md`:
   opt-in at `/settings`. Severity was not invented; in-app is documented and tested as mandatory.
 
 Everything §1–§9 describes is unchanged and is re-asserted after the new migrations (REG-1..6).
+
+## Admin record editing and photos (2026-09-23)
+
+Owner request: all data editable by an admin; photos on SRV, hose, gas detector, vessel and asset details.
+
+**Editing.** `cng_admin_update_record(table, id, expected_updated_at, changes, reason)`, admin only (actor from
+`cng_require_admin()`, never supplied), for stations, units, compressors, dispensers, storage vessels, recovery tanks,
+gas detectors, hoses, installed and warehouse SRVs. Editable fields are **derived from the catalog**: plain text,
+number, date, boolean and enum columns, excluding every uuid (hierarchy links), `mapping_status`,
+`expected_parent_kind`, every `*_raw` and `source_*` column, `import_batch_id` and generated columns. So the
+hierarchy still changes only through mapping, and the original source text is never overwritten. A save must carry
+the `updated_at` it read. A newer version refuses with **PT409** (HTTP 409); 40001 was used first and PostgREST
+retried it in a loop until the gateway timed out (migration `20260923231000_admin_edit_stale_http409.sql`).
+Values are cast by the table's own types, so every CHECK, enum and FK still applies. One audit row per save
+(`admin_edit`) with only the changed fields, before and after. In the UI, typing a full date also sets that date's
+precision to `exact_date`.
+
+**Photos.** Private Storage bucket `asset-photos` (5 MB, JPEG/PNG/WebP) and table `asset_photos`. Anyone who can read
+the record under that table's RLS sees its photos (signed URLs, 1 hour); only an admin can add one
+(`cng_admin_add_photo`, which checks the uploaded object exists and that its path sits under the record) or remove one
+(`cng_admin_archive_photo`, archive, never delete). Both are audited (`admin_photo`). CSP `img-src` allows the
+project's Supabase host.
+
+**Where:** the details dialog of every registry (installed and warehouse SRVs, hoses, gas detectors, vessels), every
+Unit equipment tab (compressors, dispensers, vessels, detectors, hoses, SRVs), and the Station and Unit pages.
+
+**Verified in production through the API (no data written):** admin form 200 with 15 editable hose fields and no raw
+field; stale save 409 PT409; raw-field save 403; viewer form 403; viewer photo upload refused; 0 objects, 0 photos,
+0 edit audits afterwards. All 7 functions byte-identical to the tested build. SQL suite `admin_editing_photos.sql`:
+24 assertions. Frontend tests 658 → 665.
+
+**Known pre-existing issue:** functions from 0038/0039/0041 (user role/active/region changes, staged mapping
+decisions) also signal a stale write with 40001, so through the API they would retry instead of refusing. Not
+changed here.

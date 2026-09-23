@@ -208,6 +208,8 @@ export function WarehouseSrvSection() {
       <SmartFilterBar id="warehouse-srv" stationLabel="Destination Station" value={query.filters} onChange={(filters) => update({ filters })} />
 
       <RegistryTable
+
+        record={(r) => ({ table: 'warehouse_relief_valves', id: r.id })}
         label="Warehouse relief valves"
         state={state}
         reload={reload}

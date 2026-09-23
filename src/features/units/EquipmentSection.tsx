@@ -1,5 +1,7 @@
 import { Fragment, useCallback, useState, type ReactNode } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
+import { RecordAdminTools } from '@/features/record-tools/RecordAdminTools'
+import type { RecordRef } from '@/features/record-tools/recordTools'
 
 import {
   DataTable,
@@ -52,6 +54,7 @@ export function EquipmentSection<T>({
   emptyDescription,
   errorTitle,
   footnote,
+  record,
 }: {
   title: string
   state: Loadable<T[]>
@@ -64,6 +67,8 @@ export function EquipmentSection<T>({
   emptyDescription: string
   errorTitle: string
   footnote?: ReactNode
+  /** The editable record behind a row, for admin editing and photos. */
+  record?: (row: T) => RecordRef | null
 }) {
   const [open, setOpen] = useState<Set<string>>(() => new Set())
   const toggle = useCallback((key: string) => {
@@ -144,6 +149,7 @@ export function EquipmentSection<T>({
                     <tr id={`detail-${key}`} className="border-b bg-muted/30">
                       <td colSpan={columns.length + 1} className="px-[--table-cell-x] py-2.5">
                         <FactGrid>{detail(row)}</FactGrid>
+                        {record && record(row) ? <RecordAdminTools key={record(row)!.id} record={record(row)!} onSaved={reload} /> : null}
                       </td>
                     </tr>
                   ) : null}

@@ -1,4 +1,5 @@
 import { useParams } from 'react-router-dom'
+import { RecordAdminTools } from '@/features/record-tools/RecordAdminTools'
 
 import {
   DataTable,
@@ -182,6 +183,9 @@ export function StationOverview() {
           they are not counted under any Unit above. They are resolved in Admin → Data Quality.
         </p>
       ) : null}
+      <section aria-label="Photos and editing" className="rounded border bg-card p-3">
+        <RecordAdminTools record={{ table: 'stations', id: station.station_id }} onSaved={reload} />
+      </section>
     </PageContainer>
   )
 }

@@ -285,6 +285,8 @@ export function HosesManagementView() {
         </DataToolbar>
 
         <RegistryTable
+
+          record={(r) => ({ table: 'hoses', id: r.id })}
           label="Hoses"
           state={state}
           reload={reload}

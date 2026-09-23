@@ -86,3 +86,8 @@ export function useAppUser(): AppUserState {
   if (!state) throw new Error('useAppUser must be used inside AppUserProvider')
   return state
 }
+
+/** Like useAppUser, but null outside a provider (for optional, non-critical UI such as record tools). */
+export function useOptionalAppUser(): AppUserState | null {
+  return useContext(AppUserContext)
+}

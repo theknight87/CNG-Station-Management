@@ -312,6 +312,8 @@ export function GasDetectorsView() {
         </DataToolbar>
 
         <RegistryTable
+
+          record={(r) => (r.detector_id ? { table: 'gas_detectors', id: r.detector_id } : null)}
           label="Gas Detectors"
           state={state}
           reload={reload}

@@ -52,6 +52,7 @@ export function DetectorSection() {
 
   return (
     <EquipmentSection
+      record={(r) => (r.detector_id ? { table: 'gas_detectors', id: r.detector_id } : null)}
       title="Gas Detectors"
       state={state}
       reload={reload}

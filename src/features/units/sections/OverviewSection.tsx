@@ -1,4 +1,5 @@
 import { Link, useOutletContext } from 'react-router-dom'
+import { RecordAdminTools } from '@/features/record-tools/RecordAdminTools'
 
 import { Identifier } from '@/components/data/TechnicalText'
 import { NullValue, ValueOrNull } from '@/components/data/NullValue'
@@ -106,6 +107,9 @@ export function OverviewSection() {
             </div>
           ) : null}
         </div>
+      </section>
+      <section aria-label="Photos and editing" className="rounded border bg-card p-3">
+        <RecordAdminTools record={{ table: 'units', id: unit.unit_id }} />
       </section>
     </div>
   )

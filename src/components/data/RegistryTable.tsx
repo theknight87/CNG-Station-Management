@@ -8,6 +8,8 @@ import { EmptyState, ErrorState, LoadingState, NoResultsState, NotImplemented } 
 import { FactGrid } from '@/features/hierarchy/HierarchyPieces'
 import type { Loadable } from '@/features/hierarchy/useHierarchy'
 import { RecordDetailsDialog } from './RecordDetailsDialog'
+import { RecordAdminTools } from '@/features/record-tools/RecordAdminTools'
+import type { RecordRef } from '@/features/record-tools/recordTools'
 import { PaginationControls } from './PaginationControls'
 
 
@@ -60,6 +62,7 @@ export function RegistryTable<T>({
   emptyDescription,
   errorTitle,
   footnote,
+  record,
 }: {
   label: string
   state: Loadable<RegistryPage<T>>
@@ -78,6 +81,8 @@ export function RegistryTable<T>({
   emptyDescription: string
   errorTitle: string
   footnote?: ReactNode
+  /** The editable record behind a row, for admin editing and photos. Omit for read-only registries. */
+  record?: (row: T) => RecordRef | null
 }) {
   const [selected, setSelected] = useState<T | null>(null)
 
@@ -167,6 +172,9 @@ export function RegistryTable<T>({
         onClose={() => setSelected(null)}
       >
         {selected ? <FactGrid>{detail(selected)}</FactGrid> : null}
+        {selected && record && record(selected) ? (
+          <RecordAdminTools key={record(selected)!.id} record={record(selected)!} onSaved={reload} />
+        ) : null}
       </RecordDetailsDialog>
     </div>
   )

@@ -247,6 +247,8 @@ export function VesselRegistrySection({ assetType }: { assetType: VesselAssetTyp
       </DataToolbar>
 
       <RegistryTable
+
+        record={(r) => ({ table: r.asset_type === 'storage_vessel' ? 'storage_vessels' : 'recovery_tanks', id: r.id })}
         label={label.plural}
         state={state}
         reload={reload}

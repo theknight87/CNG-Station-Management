@@ -156,6 +156,8 @@ export function SrvSection() {
       </DataToolbar>
 
       <EquipmentSection
+
+        record={(r) => ({ table: 'installed_relief_valves', id: r.id })}
         title="Relief Valves"
         state={filteredState}
         reload={reload}

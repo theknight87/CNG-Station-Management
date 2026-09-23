@@ -70,6 +70,7 @@ export function HoseSection() {
 
   return (
     <EquipmentSection
+      record={(r) => ({ table: 'hoses', id: r.id })}
       title="Hoses"
       state={state}
       reload={reload}

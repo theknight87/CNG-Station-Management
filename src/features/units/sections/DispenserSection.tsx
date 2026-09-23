@@ -38,6 +38,7 @@ export function DispenserSection() {
 
   return (
     <EquipmentSection
+      record={(r) => ({ table: 'dispensers', id: r.id })}
       title="Dispensers"
       state={state}
       reload={reload}

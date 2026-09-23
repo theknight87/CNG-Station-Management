@@ -62,6 +62,7 @@ export function VesselSection({ kind }: { kind: 'storage_vessel' | 'recovery_tan
 
   return (
     <EquipmentSection
+      record={(r) => ({ table: r.asset_type === 'storage_vessel' ? 'storage_vessels' : 'recovery_tanks', id: r.id })}
       title={label}
       state={state}
       reload={reload}

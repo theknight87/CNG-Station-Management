@@ -269,6 +269,8 @@ export function InstalledSrvSection() {
       <SmartFilterBar id="installed-srv" stationLabel="Station" value={query.filters} onChange={(filters) => update({ filters })} />
 
       <RegistryTable
+
+        record={(r) => ({ table: 'installed_relief_valves', id: r.id })}
         label="Installed relief valves"
         state={state}
         reload={reload}
