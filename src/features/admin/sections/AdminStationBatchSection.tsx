@@ -4,8 +4,8 @@ import { SectionHeader } from '@/components/layout/PageContainer'
 import { ErrorState, LoadingState } from '@/components/states/AppStates'
 import { Button } from '@/components/ui/button'
 import {
-  APPROVED_BATCH, CONFIRM_PHRASE, useStationBatch,
-  type StationBatchPreview,
+  APPROVED_BATCH, useStationBatch,
+  type BatchConfig, type StationBatchPreview,
 } from '../useStationBatch'
 
 /**
@@ -29,16 +29,16 @@ function shortHash(hash: string | null): string {
   return `${hash.slice(0, 12)}…${hash.slice(-8)}`
 }
 
-function Facts({ preview }: { preview: StationBatchPreview | null }) {
+function Facts({ preview, batch }: { preview: StationBatchPreview | null; batch: BatchConfig }) {
   const rows: Array<[string, string]> = [
     ['Stage', 'Station confirmation'],
-    ['Station groups', String(APPROVED_BATCH.groups)],
-    ['Staged rows', String(APPROVED_BATCH.rows)],
-    ['Expected decisions', String(APPROVED_BATCH.rows)],
+    ['Station groups', String(batch.groups)],
+    ['Staged rows', String(batch.rows)],
+    ['Expected decisions', String(batch.rows)],
     ['Confirmed mapping status', 'Needs Unit Mapping'],
-    ['Import run', APPROVED_BATCH.importRunId],
-    ['Approved proposal', shortHash(APPROVED_BATCH.previewFingerprint)],
-    ['Approved source content', shortHash(APPROVED_BATCH.manifestFingerprint)],
+    ['Import run', batch.importRunId],
+    ['Approved proposal', shortHash(batch.previewFingerprint)],
+    ['Approved source content', shortHash(batch.manifestFingerprint)],
   ]
   if (preview) {
     rows.push(['Live proposal on the server', shortHash(preview.preview_fingerprint)])
@@ -61,21 +61,16 @@ function Facts({ preview }: { preview: StationBatchPreview | null }) {
   )
 }
 
-function Scope() {
+function Scope({ batch }: { batch: BatchConfig }) {
   return (
     <ul className="space-y-0.5 text-sm text-muted-foreground">
-      <li>Confirms the canonical Station for each staged row, and nothing else.</li>
-      <li>No Unit is assigned.</li>
-      <li>No equipment is mapped.</li>
-      <li>No canonical asset is imported.</li>
-      <li>No alias is created.</li>
-      <li>The remaining 823 unmatched rows are untouched.</li>
+      {batch.scope.map((line) => <li key={line}>{line}</li>)}
     </ul>
   )
 }
 
-export function AdminStationBatchSection() {
-  const { guard, run, execute, verify, refresh } = useStationBatch()
+export function AdminStationBatchSection({ batch = APPROVED_BATCH }: { batch?: BatchConfig } = {}) {
+  const { guard, run, execute, verify, refresh } = useStationBatch(batch)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [typed, setTyped] = useState('')
 
@@ -86,13 +81,13 @@ export function AdminStationBatchSection() {
   // The control is live ONLY while the server says ready and nothing has been
   // submitted from this page. Every later state is terminal here.
   const canOpenDialog = guard.kind === 'ready' && run.kind === 'idle'
-  const phraseMatches = typed === CONFIRM_PHRASE
+  const phraseMatches = typed === batch.confirmPhrase
 
   return (
-    <section aria-labelledby="station-batch-heading" className="space-y-4">
+    <section aria-labelledby={`${batch.key}-heading`} className="space-y-4">
       <SectionHeader
-        id="station-batch-heading"
-        title="Approved Station Mapping Batch"
+        id={`${batch.key}-heading`}
+        title={batch.title}
         description="A temporary control for one reviewed batch. It confirms Stations only, and is removed once the batch is committed."
       />
 
@@ -108,8 +103,8 @@ export function AdminStationBatchSection() {
 
       {preview && (
         <div className="space-y-4 rounded-md border p-4">
-          <Facts preview={preview} />
-          <Scope />
+          <Facts preview={preview} batch={batch} />
+          <Scope batch={batch} />
         </div>
       )}
 
@@ -156,25 +151,25 @@ export function AdminStationBatchSection() {
         <div
           role="dialog"
           aria-modal="true"
-          aria-labelledby="station-batch-confirm-heading"
+          aria-labelledby={`${batch.key}-confirm-heading`}
           className="space-y-3 rounded-md border-2 border-[--brand-strong] p-4"
         >
-          <h3 id="station-batch-confirm-heading" className="font-medium">
-            Confirm the Station mapping for {APPROVED_BATCH.rows} staged rows
+          <h3 id={`${batch.key}-confirm-heading`} className="font-medium">
+            Confirm the Station mapping for {batch.rows} staged rows
           </h3>
           <p className="text-sm">
-            This will create {APPROVED_BATCH.rows} mapping decisions and move those rows from
-            {' '}Needs Station Mapping to Needs Unit Mapping.
+            This will create {batch.rows} mapping decisions and move those rows from
+            {' '}{batch.fromStatus} to Needs Unit Mapping.
           </p>
           <p className="text-sm text-muted-foreground">
             This does not assign Units or equipment, and does not import canonical assets.
           </p>
 
-          <label htmlFor="station-batch-phrase" className="block text-sm font-medium">
-            Type <span className="font-mono">{CONFIRM_PHRASE}</span> to enable the final action
+          <label htmlFor={`${batch.key}-phrase`} className="block text-sm font-medium">
+            Type <span className="font-mono">{batch.confirmPhrase}</span> to enable the final action
           </label>
           <input
-            id="station-batch-phrase"
+            id={`${batch.key}-phrase`}
             type="text"
             autoComplete="off"
             spellCheck={false}

@@ -40,14 +40,14 @@ vi.mock('@/lib/supabase/client', () => ({
     },
     rpc: (fn: string, args: Record<string, unknown>) => {
       db.rpcCalls.push({ fn, args })
-      if (fn === 'cng_stage_b_station_preview') {
+      if (fn === 'cng_stage_b_station_preview' || fn === 'cng_stage_b2_station_preview') {
         const promise = Promise.resolve({ data: db.preview, error: db.previewError })
         return {
           maybeSingle: () => promise,
           then: (...a: unknown[]) => (promise.then as (...x: unknown[]) => unknown).apply(promise, a),
         }
       }
-      if (fn === 'cng_stage_b_station_commit') {
+      if (fn === 'cng_stage_b_station_commit' || fn === 'cng_stage_b2_station_commit') {
         if (db.commitThrows) return Promise.reject(db.commitThrows)
         return Promise.resolve({ data: db.commitResult, error: db.commitError })
       }
@@ -65,7 +65,7 @@ vi.mock('@/hooks/useAppUser', () => ({
 
 const { AdminStationBatchSection } = await import('@/features/admin/sections/AdminStationBatchSection')
 const { AdminView } = await import('@/features/admin/AdminView')
-const { APPROVED_BATCH, CONFIRM_PHRASE, classifyRpcError, evaluateGuard } =
+const { APPROVED_BATCH, CONFIRM_PHRASE, STAGE_B2_BATCH, classifyRpcError, evaluateGuard } =
   await import('@/features/admin/useStationBatch')
 
 /** The server state that matches the approved batch exactly. */
@@ -118,9 +118,9 @@ async function confirmAndSubmit(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('who can reach the control', () => {
-  it('removes the completed temporary Station Batch control from Admin navigation', () => {
+  it('offers the temporary Station Batch control in Admin navigation while Stage B2 is outstanding', () => {
     render(<MemoryRouter><AdminView /></MemoryRouter>)
-    expect(screen.queryByRole('link', { name: /station batch/i })).toBeNull()
+    expect(screen.getByRole('link', { name: /station batch/i }).getAttribute('href')).toBe('/admin/station-batch')
   })
 
   it.each(['manager', 'engineer', 'viewer'])('refuses the Admin area to a %s', (role) => {
@@ -400,3 +400,81 @@ describe('what the screen claims', () => {
   })
 })
 
+
+describe('Stage B2 batch (Phase 6)', () => {
+  function b2Preview(over: Record<string, unknown> = {}) {
+    return approvedPreview({
+      preview_fingerprint: STAGE_B2_BATCH.previewFingerprint,
+      candidate_groups: 62, candidate_rows: 308, deterministic_groups: 62,
+      storage_vessels: 141, recovery_tanks: 91, gas_detectors: 54, hoses: 22,
+      existing_decisions: 281, ...over,
+    })
+  }
+  const renderB2 = () => render(<MemoryRouter><AdminStationBatchSection batch={STAGE_B2_BATCH} /></MemoryRouter>)
+
+  it('B2-UI-1 is bound to the DEPLOYED B2 fingerprint and shape, distinct from Stage B', () => {
+    expect(STAGE_B2_BATCH.previewFingerprint).toBe('9ff0975c9e3c5a9fd09869cd91317183099610402bbc5449ccdbecea0616c990')
+    expect(STAGE_B2_BATCH.previewFingerprint).not.toBe(APPROVED_BATCH.previewFingerprint)
+    expect([STAGE_B2_BATCH.groups, STAGE_B2_BATCH.rows]).toEqual([62, 308])
+    expect(STAGE_B2_BATCH.confirmPhrase).toBe('CONFIRM 308 STATION MAPPINGS')
+  })
+
+  it('B2-UI-2 unlocks only when the live B2 preview matches, and reads the B2 preview function', async () => {
+    db.preview = b2Preview()
+    renderB2()
+    expect(await screen.findByRole('button', { name: /confirm station mapping…/i })).toBeDefined()
+    expect(db.rpcCalls.every((c) => c.fn === 'cng_stage_b2_station_preview')).toBe(true)
+    expect(evaluateGuard(b2Preview(), STAGE_B2_BATCH).kind).toBe('ready')
+    // A Stage B-shaped server state must never unlock B2, and vice versa.
+    expect(evaluateGuard(approvedPreview(), STAGE_B2_BATCH).kind).toBe('blocked')
+    expect(evaluateGuard(b2Preview(), APPROVED_BATCH).kind).toBe('blocked')
+  })
+
+  it('B2-UI-3 drift blocks execution and lists the mismatch', async () => {
+    db.preview = b2Preview({ preview_fingerprint: 'f'.repeat(64), candidate_rows: 307 })
+    renderB2()
+    expect(await screen.findByText(/APPROVED BATCH HAS CHANGED/)).toBeDefined()
+    expect(screen.getByText(/covers 307 staged rows, not 308/)).toBeDefined()
+    expect(screen.queryByRole('button', { name: /confirm station mapping…/i })).toBeNull()
+  })
+
+  it('B2-UI-4 requires the B2 phrase; the Stage B phrase does not enable it', async () => {
+    const user = userEvent.setup()
+    db.preview = b2Preview()
+    renderB2()
+    await user.click(await screen.findByRole('button', { name: /confirm station mapping…/i }))
+    await user.type(screen.getByLabelText(/type .* to enable/i), CONFIRM_PHRASE)
+    expect((screen.getByRole('button', { name: /^confirm station mapping$/i }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('B2-UI-5 commits through cng_stage_b2_station_commit with exactly the four approved parameters and no actor', async () => {
+    const user = userEvent.setup()
+    db.preview = b2Preview()
+    db.commitResult = [{ import_run_id: STAGE_B2_BATCH.importRunId, decisions_written: 308, rows_confirmed: 308, groups_confirmed: 62, preview_fingerprint: STAGE_B2_BATCH.previewFingerprint }]
+    renderB2()
+    await user.click(await screen.findByRole('button', { name: /confirm station mapping…/i }))
+    await user.type(screen.getByLabelText(/type .* to enable/i), STAGE_B2_BATCH.confirmPhrase)
+    await user.click(screen.getByRole('button', { name: /^confirm station mapping$/i }))
+    const call = db.rpcCalls.find((c) => c.fn.endsWith('_commit'))
+    expect(call?.fn).toBe('cng_stage_b2_station_commit')
+    expect(Object.keys(call!.args).sort()).toEqual(
+      ['p_expected_manifest_fingerprint', 'p_expected_preview_fingerprint', 'p_import_run_id', 'p_reason'])
+    expect(call!.args.p_expected_preview_fingerprint).toBe(STAGE_B2_BATCH.previewFingerprint)
+    expect(await screen.findByText(/Station Mapping Batch Completed/)).toBeDefined()
+    expect(db.tableWrites).toEqual([])
+  })
+
+  it('B2-UI-6 states that the staged Unit is discarded and absence rows never become detectors', async () => {
+    db.preview = b2Preview()
+    renderB2()
+    expect(await screen.findByText(/staged Unit is DISCARDED/)).toBeDefined()
+    expect(screen.getByText(/never become detector records/)).toBeDefined()
+  })
+
+  it('B2-UI-7 reads as already executed once all 308 rows carry a decision', async () => {
+    db.preview = b2Preview({ rows_with_existing_decision: 308, preview_fingerprint: 'e'.repeat(64) })
+    renderB2()
+    expect(await screen.findByText(/already been committed/)).toBeDefined()
+    expect(screen.queryByRole('button', { name: /confirm station mapping…/i })).toBeNull()
+  })
+})

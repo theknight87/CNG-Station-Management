@@ -283,3 +283,47 @@ Before: 3 FAIL. After: 9/9 PASS. All six fixture scripts still pass and unit tes
 - The CSP `connect-src` was narrowed from `*.supabase.co` to this project's own host (`ypkggegquetvpsflkaxg.supabase.co`,
   https and wss). Nothing else in `_headers` changed, and it contained no Clerk origin.
 - Found: **there is no password-reset flow** in the app (open item, `authentication.md` §6).
+
+## Phase 6a — Stage B2 Station batch (308 rows): deployed, awaiting the owner's click
+
+**Finding (production, read-only):** 1,307 four-family staged rows are not yet canonical. Applying the approved Stage B
+rule (exactly one same-Region Station by `cng_normalize_name`) to all of them reproduces the Prompt 26 figure exactly:
+**308 undecided rows**, staged `resolved` (268) and `needs_unit_mapping` (40), which Stage B never considered.
+- Their staged `station_id` / `unit_id` are 32-hex synthetic dry-run keys: 0 exist in `stations` or `units`.
+- **All 268 `resolved` rows sit under a one-Unit Station** with no Unit column in the source and no Unit reason, so their
+  Unit is the forbidden one-Unit inference (§4). They are confirmed at **Station level only**, following the 25C ruling.
+- 28 are gas-detector **absence** rows. They get a Station decision, and the unchanged asset import blocks them.
+- The other 999 undecided rows have no same-Region candidate (746 + 77 absence rows staged `needs_station_mapping`,
+  plus 174 staged `needs_unit_mapping`).
+
+**Migration `20260923150000_stage_b2_station_batch`** adds 4 functions and changes nothing else.
+- It is hosted as `20260923143224`, bringing production to 70 migrations. File SHA-256 `a86e27be…5a2c`.
+- The prosrc MD5 of all 4 functions equals the tested build. Deploying wrote 0 rows (write counter 25,097 before and after).
+- The same rules as Stage B apply:
+  - admin only, with the actor from `cng_require_admin()`
+  - content-bound to the manifest and preview fingerprints
+  - refuses rows that are already decided
+  - no dynamic SQL
+  - `confirmed_unit_id` is always NULL
+  - the staged status and the discarded Unit are kept as evidence
+- Suite `stage_b2_station_batch.sql`: 30/30 (in the gate).
+
+**Deployed preview**, read twice as the admin with RLS enforced, identical both times, 928 ms:
+- 308 rows in 62 groups, all deterministic
+- storage vessels 141, recovery tanks 91, gas detectors 54, hoses 22
+- resolved 268, needs_unit_mapping 40, absence 28, 0 already decided
+- **Preview fingerprint `9ff0975c9e3c5a9fd09869cd91317183099610402bbc5449ccdbecea0616c990`**, manifest `764d3c0f…b8f`
+
+**Execution surface:** `/admin/station-batch` is restored for **B2 only** (Stage B stays committed). The screen uses the same guarded
+flow as 22C.1:
+- the live preview must equal the constants
+- the admin must type `CONFIRM 308 STATION MAPPINGS`
+- the action locks after it is used
+- an uncertain result is never retried
+
+Remove the screen again once B2 is committed. Frontend tests 640 → **647**.
+
+**Next (6b):** once B2 is committed, the unchanged `cng_asset_import_*` (0049, service_role) will see **280** READY rows and
+28 BLOCKED absence rows. Its deployed preview fingerprint then needs a separate owner approval before the one-time import.
+
+**6c — 325 `unit_attributes` rows:** not started yet. This is a separate workflow and needs its own analysis.

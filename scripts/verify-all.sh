@@ -92,7 +92,7 @@ up_fail=0
 # deployed while 0054 is not (Prompt 27A). So the base is "every file except
 # these" and the upgrade replays exactly these. Update this list after each
 # deployment, checked against supabase_migrations.schema_migrations.
-UNDEPLOYED_MIGRATIONS=(20260923150000_stage_b2_station_batch.sql)
+UNDEPLOYED_MIGRATIONS=()
 is_undeployed() { local b; b="$(basename "$1")"; for u in "${UNDEPLOYED_MIGRATIONS[@]}"; do [ "$b" = "$u" ] && return 0; done; return 1; }
 base_count=0
 for f in supabase/migrations/*.sql; do

@@ -23,18 +23,86 @@ import { useSupabaseClient } from '@/lib/supabase/client'
  * so an accidental click cannot become a 281-row write.
  */
 
-/** The batch the owner approved in Prompt 22C. */
-export const APPROVED_BATCH = {
+/**
+ * One reviewed, content-bound batch. The screen and the hook are generic over
+ * it; the DATABASE re-derives and enforces every value regardless.
+ */
+export interface BatchConfig {
+  /** Stable key, used for element ids. */
+  key: string
+  title: string
+  previewRpc: 'cng_stage_b_station_preview' | 'cng_stage_b2_station_preview'
+  commitRpc: 'cng_stage_b_station_commit' | 'cng_stage_b2_station_commit'
+  importRunId: string
+  manifestFingerprint: string
+  previewFingerprint: string
+  groups: number
+  rows: number
+  reason: string
+  /** The exact phrase an Admin must type. Deliberately not paraphrasable. */
+  confirmPhrase: string
+  /** What the rows move FROM, in words, for the confirmation text. */
+  fromStatus: string
+  /** What the batch does and does not do, shown before confirmation. */
+  scope: readonly string[]
+}
+
+/** The batch the owner approved in Prompt 22C. Committed 2026-09-18 (Prompt 22D). */
+export const APPROVED_BATCH: BatchConfig = {
+  key: 'stage-b',
+  title: 'Approved Station Mapping Batch',
+  previewRpc: 'cng_stage_b_station_preview',
+  commitRpc: 'cng_stage_b_station_commit',
   importRunId: 'cdad1e5e-7faa-4f3b-9432-12a720f3dd64',
   manifestFingerprint: '764d3c0fbe09f3ac95b27ce235f0fb08cfd92711e2a4ec56defb227b5f091b8f',
   previewFingerprint: 'a014745dd823917027a082a2d61a57fc831ccd59d22c67dcd7145982e0cbe769',
   groups: 69,
   rows: 281,
   reason: 'Prompt 22C approved Stage B Station batch',
-} as const
+  confirmPhrase: 'CONFIRM 281 STATION MAPPINGS',
+  fromStatus: 'Needs Station Mapping',
+  scope: [
+    'Confirms the canonical Station for each staged row, and nothing else.',
+    'No Unit is assigned.',
+    'No equipment is mapped.',
+    'No canonical asset is imported.',
+    'No alias is created.',
+    'The remaining 823 unmatched rows are untouched.',
+  ],
+}
 
-/** The exact phrase an Admin must type. Deliberately not paraphrasable. */
-export const CONFIRM_PHRASE = 'CONFIRM 281 STATION MAPPINGS'
+/**
+ * Stage B2 (Phase 6, 2026-09-23): the 308 four-family rows whose PIPELINE-ERA
+ * status (`resolved` 268 / `needs_unit_mapping` 40) claimed more than the
+ * evidence proves. Their staged Unit came from the forbidden one-Unit
+ * inference, so they are confirmed at Station level only. The fingerprint is
+ * the DEPLOYED function's, read twice identically on 2026-09-23.
+ */
+export const STAGE_B2_BATCH: BatchConfig = {
+  key: 'stage-b2',
+  title: 'Station Mapping Batch B2 — rows with an unproven staged Unit',
+  previewRpc: 'cng_stage_b2_station_preview',
+  commitRpc: 'cng_stage_b2_station_commit',
+  importRunId: 'cdad1e5e-7faa-4f3b-9432-12a720f3dd64',
+  manifestFingerprint: '764d3c0fbe09f3ac95b27ce235f0fb08cfd92711e2a4ec56defb227b5f091b8f',
+  previewFingerprint: '9ff0975c9e3c5a9fd09869cd91317183099610402bbc5449ccdbecea0616c990',
+  groups: 62,
+  rows: 308,
+  reason: 'Phase 6 Stage B2 Station-only batch (staged Unit from one-Unit inference discarded)',
+  confirmPhrase: 'CONFIRM 308 STATION MAPPINGS',
+  fromStatus: 'their pipeline-era staged status (Resolved or Needs Unit Mapping)',
+  scope: [
+    'Confirms the canonical Station for each staged row, and nothing else.',
+    'The staged Unit is DISCARDED: it came from "the Station has one Unit", which is not evidence. No Unit is assigned.',
+    'No equipment is mapped.',
+    'No canonical asset is imported by this step.',
+    'No alias is created.',
+    '28 rows are recorded detector ABSENCE; they get a Station decision but will never become detector records.',
+  ],
+}
+
+/** Stage B's phrase, kept as a named export for existing callers. */
+export const CONFIRM_PHRASE = APPROVED_BATCH.confirmPhrase
 
 export interface StationBatchPreview {
   import_run_id: string
@@ -101,27 +169,27 @@ export type BatchRun =
  * Every mismatch is listed rather than the first one, because an Admin deciding
  * whether something drifted needs to see what drifted.
  */
-export function evaluateGuard(preview: StationBatchPreview): BatchGuard {
+export function evaluateGuard(preview: StationBatchPreview, batch: BatchConfig = APPROVED_BATCH): BatchGuard {
   // Already run? Every approved row now carries an active decision.
-  if (preview.rows_with_existing_decision >= APPROVED_BATCH.rows) {
+  if (preview.rows_with_existing_decision >= batch.rows) {
     return { kind: 'already_executed', preview }
   }
 
   const reasons: string[] = []
-  if (preview.import_run_id !== APPROVED_BATCH.importRunId) {
+  if (preview.import_run_id !== batch.importRunId) {
     reasons.push('The import run is not the approved one.')
   }
-  if (preview.manifest_fingerprint !== APPROVED_BATCH.manifestFingerprint) {
+  if (preview.manifest_fingerprint !== batch.manifestFingerprint) {
     reasons.push('The manifest fingerprint no longer matches the approved source content.')
   }
-  if (preview.preview_fingerprint !== APPROVED_BATCH.previewFingerprint) {
+  if (preview.preview_fingerprint !== batch.previewFingerprint) {
     reasons.push('The preview fingerprint no longer matches the approved proposal.')
   }
-  if (preview.candidate_groups !== APPROVED_BATCH.groups) {
-    reasons.push(`The batch now proposes ${preview.candidate_groups} Station groups, not ${APPROVED_BATCH.groups}.`)
+  if (preview.candidate_groups !== batch.groups) {
+    reasons.push(`The batch now proposes ${preview.candidate_groups} Station groups, not ${batch.groups}.`)
   }
-  if (preview.candidate_rows !== APPROVED_BATCH.rows) {
-    reasons.push(`The batch now covers ${preview.candidate_rows} staged rows, not ${APPROVED_BATCH.rows}.`)
+  if (preview.candidate_rows !== batch.rows) {
+    reasons.push(`The batch now covers ${preview.candidate_rows} staged rows, not ${batch.rows}.`)
   }
   if (preview.owner_review_groups > 0) {
     reasons.push(`${preview.owner_review_groups} groups now need owner review and are not part of an approved deterministic batch.`)
@@ -148,7 +216,7 @@ export function classifyRpcError(error: { code?: string | null; message?: string
   return /^[0-9A-Z]{5}$/.test(code) ? 'refused' : 'uncertain'
 }
 
-export function useStationBatch(): {
+export function useStationBatch(batch: BatchConfig = APPROVED_BATCH): {
   guard: BatchGuard
   run: BatchRun
   execute: () => Promise<void>
@@ -163,7 +231,7 @@ export function useStationBatch(): {
   const loadPreview = useCallback(async (): Promise<StationBatchPreview | null> => {
     if (!supabase) return null
     const { data, error } = await supabase
-      .rpc('cng_stage_b_station_preview', { p_import_run_id: APPROVED_BATCH.importRunId })
+      .rpc(batch.previewRpc, { p_import_run_id: batch.importRunId })
       .maybeSingle()
     if (error) {
       setGuard({ kind: 'load_error', message: error.message })
@@ -174,17 +242,17 @@ export function useStationBatch(): {
       return null
     }
     return data as StationBatchPreview
-  }, [supabase])
+  }, [supabase, batch])
 
   useEffect(() => {
     let cancelled = false
     void (async () => {
       const preview = await loadPreview()
       if (cancelled || !preview) return
-      setGuard(evaluateGuard(preview))
+      setGuard(evaluateGuard(preview, batch))
     })()
     return () => { cancelled = true }
-  }, [loadPreview, nonce])
+  }, [loadPreview, nonce, batch])
 
   const execute = useCallback(async () => {
     if (!supabase) return
@@ -192,11 +260,11 @@ export function useStationBatch(): {
     // happens by re-reading the server, never by a local flag.
     setRun({ kind: 'submitting' })
     try {
-      const { data, error } = await supabase.rpc('cng_stage_b_station_commit', {
-        p_import_run_id: APPROVED_BATCH.importRunId,
-        p_expected_manifest_fingerprint: APPROVED_BATCH.manifestFingerprint,
-        p_expected_preview_fingerprint: APPROVED_BATCH.previewFingerprint,
-        p_reason: APPROVED_BATCH.reason,
+      const { data, error } = await supabase.rpc(batch.commitRpc, {
+        p_import_run_id: batch.importRunId,
+        p_expected_manifest_fingerprint: batch.manifestFingerprint,
+        p_expected_preview_fingerprint: batch.previewFingerprint,
+        p_reason: batch.reason,
       })
       if (error) {
         if (classifyRpcError(error) === 'refused') {
@@ -218,25 +286,25 @@ export function useStationBatch(): {
       // have reached the database. NEVER retry from here.
       setRun({ kind: 'uncertain', detail: thrown instanceof Error ? thrown.message : 'The request did not complete.' })
     }
-  }, [supabase])
+  }, [supabase, batch])
 
   /** Read-only outcome check after an uncertain result. Writes nothing. */
   const verify = useCallback(async () => {
     const preview = await loadPreview()
     if (!preview) return
     const decided = preview.rows_with_existing_decision
-    if (decided >= APPROVED_BATCH.rows) {
+    if (decided >= batch.rows) {
       setRun({ kind: 'verified_committed', rows: decided })
-    } else if (decided === 0 && preview.preview_fingerprint === APPROVED_BATCH.previewFingerprint) {
+    } else if (decided === 0 && preview.preview_fingerprint === batch.previewFingerprint) {
       setRun({ kind: 'verified_not_executed' })
     } else {
       setRun({
         kind: 'verified_unexpected',
-        detail: `${decided} of ${APPROVED_BATCH.rows} rows carry a decision. This is neither a completed batch nor an untouched one.`,
+        detail: `${decided} of ${batch.rows} rows carry a decision. This is neither a completed batch nor an untouched one.`,
       })
     }
-    setGuard(evaluateGuard(preview))
-  }, [loadPreview])
+    setGuard(evaluateGuard(preview, batch))
+  }, [loadPreview, batch])
 
   const refresh = useCallback(() => setNonce((n) => n + 1), [])
 
