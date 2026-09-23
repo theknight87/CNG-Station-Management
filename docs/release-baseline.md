@@ -219,3 +219,43 @@ Not done here: an end-to-end removal of a real Supabase Auth account needs a dis
 
 Gate: `verify-all.sh` exit 0. Schema 344, RLS **703** (was 697, +6), rls_initplan_perf 25, 68 migrations from zero,
 production-equivalent 68 with nothing pending.
+
+## Phase 4 — layout fixes (sample-data harness, Chromium; not yet on `main`)
+
+**Root cause of most failures:** the Codex responsive pass made every `DataTable` `table-fixed`, with
+`break-words` cells, inside a `.table-scroll` set to `overflow-x: hidden`. Wide tables were therefore squeezed until text
+broke letter by letter (dashboard grid, serials, "MANUFACTURE/R"). Where squeezing was not enough, columns were
+**clipped out of reach**: at 390 px the grid lost Current / No exact date / Total, and the Region table lost Overdue onward. That
+contradicted CLAUDE.md §11.3 ("wide tables scroll rather than wrap") and §11.5 (never hide facts).
+
+**Fixes**
+- `DataTable` is back to its Prompt 7 shape: content-sized (`w-max min-w-full`), with `whitespace-nowrap` cells and headers. `.table-scroll`
+  is `overflow-x: auto`, so a table that cannot fit scrolls inside its own region. The page never scrolls
+  sideways. The registries' phone card layout (`responsive-records`) is unchanged.
+- Dashboard grid: one table, two densities. Below 640 px the five dated windows fold into one **Due ≤60d** column,
+  their exact sum, so each row still adds up to its total. From 640 px up, all buckets show on one line.
+- Region table: the decorative proportion bar is hidden below 640 px, and the Assets column carries the number.
+- `RecordDetailsDialog` (every registry's details):
+  - focus moves into the dialog on open
+  - Tab and Shift+Tab stay inside it
+  - Escape closes it and returns focus to the control that opened it
+  - the title wraps instead of being truncated, so Arabic names stay whole
+- `dev/supabaseStub.ts` now serves `v_alert_summary` and `v_hose_summary`, derived clause for clause from the view SQL.
+  Alerts and Hoses previously crashed in the harness.
+
+**Check updates (each one reflects the intended design, not a loosened standard)**
+- `verify-dashboard`: sums only visible cells, which covers the 5-cell phone row. It also gains **"no table columns are clipped out of
+  reach"**, proved to FAIL on the old CSS at 1024 and 390 px.
+- `verify-detectors`, `verify-hoses`, `verify-alerts`: facts that the compact registry moved into row details are read from the DOM or
+  by opening the details dialog as a user would, and the dialog is closed with Escape. Visible-only assertions still use visible text.
+- `verify-alerts`: the "Due date" header was renamed "Due". **"Several columns are sortable" was lowered from ≥5 to ≥4** because
+  the compact Alerts table defines 4 sortable columns (Subject moved into details). This is a justified decrease.
+
+**Results:** ui 32/32, dashboard 22/22, alerts 58/58, hoses 63/63, notifications 26/26, detectors 58/58, each exit 0.
+Before these fixes: 29/32, 17/19, crash, crash, crash, 57/58. Unit tests **640** (was 635):
+- MATRIX-5 checks the folded column
+- DIALOG-1..4 all fail against the old dialog
+Lint, typecheck and build all exit 0.
+
+**Not covered here:** Firefox and WebKit (not installed in this environment), authenticated production screens (need E2E
+credentials), and a 200% zoom pass.

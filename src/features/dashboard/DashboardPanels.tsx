@@ -1,3 +1,4 @@
+import { Fragment } from 'react'
 import { Link } from 'react-router-dom'
 
 import { EntityName } from '@/components/data/TechnicalText'
@@ -184,6 +185,9 @@ export function SummaryStrip({
  * bar only approximately. The buckets are mutually exclusive, so a row sums to
  * that asset kind's total.
  */
+/** The dated windows that fold into one column on a phone. */
+const WINDOW_STATUSES = new Set<string>(['due_today', 'due_7', 'due_15', 'due_30', 'due_60'])
+
 export function DueMatrix({ due }: { due: DueRow[] }) {
   const kinds = DUE_ASSET_KINDS.filter((k) => due.some((d) => d.asset_kind === k))
 
@@ -201,14 +205,28 @@ export function DueMatrix({ due }: { due: DueRow[] }) {
         </p>
       ) : (
         <TableScroll label="Inspection and calibration by asset type">
-          <DataTable caption="Asset types by due bucket. Buckets are mutually exclusive.">
+          {/* One table, two densities. Below 640px the five dated windows fold
+              into a single "Due ≤60 days" column (their exact sum), so the row
+              still adds up to its total without a ten-column micro-grid. The
+              full breakdown is one tap away on each asset type's page. */}
+          <DataTable className="table-auto" caption="Asset types by due bucket. Buckets are mutually exclusive.">
             <TableHead>
               <TableRow>
-                <TableHeader>Asset type</TableHeader>
+                <TableHeader className="whitespace-nowrap">Asset type</TableHeader>
                 {DUE_BUCKETS.map((b) => (
-                  <TableHeader key={b.status} align="right">
-                    <span title={b.description}>{b.label}</span>
-                  </TableHeader>
+                  <Fragment key={b.status}>
+                    <TableHeader
+                      align="right"
+                      className={cn('whitespace-nowrap', WINDOW_STATUSES.has(b.status) && 'hidden sm:table-cell')}
+                    >
+                      <span title={b.description}>{b.label}</span>
+                    </TableHeader>
+                    {b.status === 'overdue' && (
+                      <TableHeader align="right" className="whitespace-nowrap sm:hidden">
+                        <span title="due today or within 60 days">Due ≤60d</span>
+                      </TableHeader>
+                    )}
+                  </Fragment>
                 ))}
                 <TableHeader align="right">Total</TableHeader>
               </TableRow>
@@ -218,7 +236,7 @@ export function DueMatrix({ due }: { due: DueRow[] }) {
                 const rowTotal = DUE_BUCKETS.reduce((sum, b) => sum + dueFor(due, kind, b.status), 0)
                 return (
                   <TableRow key={kind}>
-                    <RowHeaderCell>
+                    <RowHeaderCell className="whitespace-nowrap">
                       {ASSET_ROUTES[kind] ? (
                         <Link to={ASSET_ROUTES[kind]!} className="underline-offset-4 hover:underline">
                           {ASSET_LABELS[kind]}
@@ -229,18 +247,33 @@ export function DueMatrix({ due }: { due: DueRow[] }) {
                     </RowHeaderCell>
                     {DUE_BUCKETS.map((b) => {
                       const n = dueFor(due, kind, b.status)
+                      const windowed = DUE_BUCKETS.filter((w) => WINDOW_STATUSES.has(w.status))
+                        .reduce((sum, w) => sum + dueFor(due, kind, w.status), 0)
                       return (
-                        <TableCell key={b.status} align="right" numeric>
-                          <span
-                            className={cn(
-                              n === 0 && 'text-muted-foreground',
-                              n > 0 && b.status === 'overdue' && 'font-semibold text-status-overdue',
-                              n > 0 && (b.status === 'due_today' || b.status === 'due_7') && 'font-medium text-status-due-soon',
-                            )}
+                        <Fragment key={b.status}>
+                          <TableCell
+                            align="right"
+                            numeric
+                            className={WINDOW_STATUSES.has(b.status) ? 'hidden sm:table-cell' : undefined}
                           >
-                            {n.toLocaleString()}
-                          </span>
-                        </TableCell>
+                            <span
+                              className={cn(
+                                n === 0 && 'text-muted-foreground',
+                                n > 0 && b.status === 'overdue' && 'font-semibold text-status-overdue',
+                                n > 0 && (b.status === 'due_today' || b.status === 'due_7') && 'font-medium text-status-due-soon',
+                              )}
+                            >
+                              {n.toLocaleString()}
+                            </span>
+                          </TableCell>
+                          {b.status === 'overdue' && (
+                            <TableCell align="right" numeric className="sm:hidden">
+                              <span className={windowed === 0 ? 'text-muted-foreground' : 'font-medium text-status-due-soon'}>
+                                {windowed.toLocaleString()}
+                              </span>
+                            </TableCell>
+                          )}
+                        </Fragment>
                       )
                     })}
                     <TableCell align="right" numeric className="font-medium">
@@ -285,7 +318,7 @@ export function RegionOverview({ regions }: { regions: RegionRow[] }) {
         </p>
       ) : (
         <TableScroll label="Regions">
-          <DataTable caption="Regions with their stations, units, assets and outstanding work">
+          <DataTable className="table-auto" caption="Regions with their stations, units, assets and outstanding work">
             <TableHead>
               <TableRow>
                 <TableHeader>Region</TableHeader>
@@ -300,7 +333,7 @@ export function RegionOverview({ regions }: { regions: RegionRow[] }) {
             <TableBody>
               {regions.map((r) => (
                 <TableRow key={r.region_id}>
-                  <RowHeaderCell>
+                  <RowHeaderCell className="whitespace-nowrap">
                     <div className="flex items-center gap-2">
                       <EntityName name={r.region_name} />
                       {/* Proportional bar: a visual aid beside the number, never
@@ -308,7 +341,7 @@ export function RegionOverview({ regions }: { regions: RegionRow[] }) {
                           which reads the Assets column instead. */}
                       <span
                         aria-hidden="true"
-                        className="h-1 w-12 overflow-hidden rounded-sm bg-muted"
+                        className="hidden h-1 w-12 overflow-hidden rounded-sm bg-muted sm:block"
                         title={`${r.assets} assets`}
                       >
                         <span

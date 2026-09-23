@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 
@@ -14,10 +14,46 @@ export function RecordDetailsDialog({
   actions?: ReactNode
   onClose: () => void
 }) {
+  const dialogRef = useRef<HTMLElement>(null)
+  // Held in a ref so a parent passing a fresh callback each render does not
+  // re-run the effect, which would bounce focus and lose the opener.
+  const onCloseRef = useRef(onClose)
+  useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
+
   useEffect(() => {
     if (!open) return
+    // A modal dialog owns focus: it moves in on open, Tab cycles inside it,
+    // and it returns to whatever opened the dialog on close. Without this a
+    // keyboard or screen-reader user stays behind the backdrop.
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const focusables = () => [...(dialogRef.current?.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ) ?? [])]
+    dialogRef.current?.focus()
+
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+      if (event.key === 'Escape') {
+        onCloseRef.current()
+        return
+      }
+      if (event.key !== 'Tab') return
+      const items = focusables()
+      if (items.length === 0) {
+        event.preventDefault()
+        return
+      }
+      const first = items[0]
+      const last = items[items.length - 1]
+      const active = document.activeElement
+      if (event.shiftKey && (active === first || active === dialogRef.current)) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault()
+        first.focus()
+      }
     }
     document.addEventListener('keydown', onKey)
     const previous = document.body.style.overflow
@@ -25,8 +61,9 @@ export function RecordDetailsDialog({
     return () => {
       document.removeEventListener('keydown', onKey)
       document.body.style.overflow = previous
+      if (opener?.isConnected) opener.focus()
     }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
   return createPortal(
@@ -35,12 +72,14 @@ export function RecordDetailsDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="record-dialog-title"
+        ref={dialogRef}
+        tabIndex={-1}
         className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg border bg-background shadow-2xl"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header className="flex items-start justify-between gap-4 border-b px-4 py-3 sm:px-5">
           <div className="min-w-0">
-            <h2 id="record-dialog-title" className="truncate text-lg font-semibold tracking-tight">{title}</h2>
+            <h2 id="record-dialog-title" className="break-words text-lg font-semibold tracking-tight">{title}</h2>
             {description ? <p className="mt-0.5 text-sm text-muted-foreground">{description}</p> : null}
           </div>
           <Button type="button" variant="ghost" size="icon" aria-label="Close details" onClick={onClose}>

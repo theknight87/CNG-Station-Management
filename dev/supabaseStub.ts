@@ -867,6 +867,48 @@ function builder(table: string) {
       if (head) return { data: null, error: null, count: list.length }
       return { data: list.slice(from, to + 1), error: null, count: list.length }
     }
+    // One-row page summaries (migration 20260921064917). Derived from the SAME
+    // fixture rows the list uses, clause for clause with the view SQL, so a
+    // summary figure can never disagree with the rows beside it.
+    if (table === 'v_alert_summary') {
+      let list: Record<string, unknown>[] = scenario === 'empty' ? [] : ALERT_INBOX.map((a) => ({
+        ...a,
+        is_read: ALERT_READS.has(String(a.id)) ? true : a.is_read,
+        acknowledged_at: ALERT_ACKS.has(String(a.id)) ? '2026-09-16T10:00:00Z' : a.acknowledged_at,
+      }))
+      if (scenario === 'scoped') list = list.filter((r) => r.region_id === 'r-east')
+      const n = (p: (r: Record<string, unknown>) => boolean) => list.filter(p).length
+      return {
+        data: [{
+          total: list.length,
+          overdue: n((r) => r.threshold === 'overdue'),
+          due_today: n((r) => r.threshold === 'due_today'),
+          due_7: n((r) => r.threshold === 'due_7'),
+          unread: n((r) => !r.is_read),
+          unacknowledged: n((r) => !r.acknowledged_at),
+          delivery_failed: n((r) => r.email_status === 'failed'),
+        }],
+        error: null,
+      }
+    }
+    if (table === 'v_hose_summary') {
+      let list: Record<string, unknown>[] = scenario === 'empty' ? [] : HOSE_REGISTRY.slice()
+      if (scenario === 'scoped') list = list.filter((r) => r.region_id === 'r-east')
+      const n = (p: (r: Record<string, unknown>) => boolean) => list.filter(p).length
+      const attention = new Set(['overdue', 'due_today', 'due_7', 'due_15', 'due_30', 'due_60'])
+      return {
+        data: [{
+          total: list.length,
+          overdue: n((r) => r.due_status === 'overdue'),
+          attention: n((r) => attention.has(String(r.due_status))),
+          needs_unit_mapping: n((r) => r.mapping_status === 'needs_unit_mapping'),
+          unknown_date: n((r) => r.due_status === 'unknown'),
+          serial_missing: n((r) => r.serial_number === null || r.serial_number === undefined),
+          serial_duplicate: n((r) => r.serial_number != null && r.serial_duplicate === true),
+        }],
+        error: null,
+      }
+    }
     // Global Hoses Management (Prompt 14). Reads v_hose_registry, which the
     // Prompt-10 Unit tab does not use - that tab still reads v_hose_management.
     if (table === 'v_hose_registry') {

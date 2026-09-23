@@ -90,6 +90,9 @@ await page.goto(url(), { waitUntil: 'networkidle' })
 await page.waitForSelector('table')
 
 const bodyText = () => page.evaluate(() => document.body.innerText)
+// Includes the compact registry's details cells (description, pressure),
+// which are rendered DOM but not visible columns in the collapsed row.
+const bodyAll = () => page.evaluate(() => document.body.textContent)
 
 async function selectFilter(label, value) {
   await page.locator(`label:has-text("${label}") select`).first().selectOption(value)
@@ -124,7 +127,7 @@ check('summary: says a duplicate is reported, never merged', /never merged/i.tes
 // --- identity ---------------------------------------------------------------
 const text = await bodyText()
 check('row: an Arabic station name renders', /شبرا 1|الماظة/.test(text))
-check('row: an Arabic description renders', /خرطوم/.test(text))
+check('row: an Arabic description renders', /خرطوم/.test(await bodyAll()))
 check('row: a NULL value reads as not recorded, never N/A or a 0 placeholder',
   /not recorded/i.test(text) && !/\bN\/A\b/.test(text))
 
@@ -151,7 +154,8 @@ check('serial: a not-yet-assigned serial is worded differently from an absent on
 await clearAll()
 
 // --- description stays free text --------------------------------------------
-const longDesc = await isolate('خرطوم تعبئة غاز طبيعي')
+await isolate('خرطوم تعبئة غاز طبيعي')
+const longDesc = await bodyAll()
 check('description: a long Arabic description renders', /خرطوم تعبئة غاز طبيعي/.test(longDesc))
 await clearAll()
 check('description: no Manufacturer or Model column is drawn',
@@ -177,7 +181,8 @@ check('date: preserved Arabic source status appears beside a missing date', /م�
 await clearAll()
 
 // --- pressure units ---------------------------------------------------------
-const psi = await isolate('HS-2024012')
+await isolate('HS-2024012')
+const psi = await bodyAll()
 check('pressure: a PSI hose shows PSI and is never converted to BAR',
   /PSI/.test(psi) && !/\b248\b/.test(psi))
 await clearAll()

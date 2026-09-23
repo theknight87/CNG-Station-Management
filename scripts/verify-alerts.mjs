@@ -71,6 +71,27 @@ await page.goto(url(), { waitUntil: 'networkidle' })
 await page.waitForSelector('table')
 
 const body = () => page.evaluate(() => document.body.innerText)
+// The compact registry keeps secondary facts (delivery, Unit) in each row's
+// details rather than as visible columns; this reads the rendered DOM text
+// including those cells. Visible-only assertions keep using body().
+const bodyAll = () => page.evaluate(() => document.body.textContent)
+// Opens each listed row's details the way a user would (the Eye button),
+// collects the rendered text, and closes it again. Delivery and Unit live
+// there in the compact Alerts registry.
+async function detailsText(limit = 12) {
+  const buttons = page.getByRole('button', { name: 'Show the full technical record' })
+  const n = Math.min(await buttons.count(), limit)
+  let out = ''
+  for (let i = 0; i < n; i++) {
+    await buttons.nth(i).click()
+    await page.waitForTimeout(120)
+    out += ' ' + await bodyAll()
+    // Details open as a modal dialog; Escape closes it (and must, for a11y).
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(80)
+  }
+  return out
+}
 async function pick(label, value) {
   await page.locator(`label:has-text("${label}") select`).first().selectOption(value)
   await page.waitForTimeout(170)
@@ -124,7 +145,7 @@ check('delivery: a FAILED delivery still shows its alert, never "no alerts"',
   /failed/i.test(failedText) && !/^No alerts$/im.test(failedText))
 await clearAll()
 check('delivery: "not attempted" is distinguished from a failure',
-  /not attempted/i.test(await body()))
+  /not attempted/i.test(await detailsText()))
 
 // read / acknowledgement
 await pick('Read', 'unread')
@@ -148,7 +169,8 @@ check('row: an asset with no recorded serial reads as not recorded, never invent
 
 // An alert whose Unit is not confirmed.
 await clearAll()
-const unmapped = await isolate('SR-90006')
+await isolate('SR-90006')
+const unmapped = await detailsText(1)
 check('unresolved: an alert whose Unit is unconfirmed says so rather than guessing',
   /not confirmed/i.test(unmapped))
 
@@ -176,25 +198,34 @@ check('action: the read toggle completes without an error banner',
 check('navigation: a confirmed Unit is navigable',
   (await page.locator('a:has-text("Open Unit")').count()) >= 1)
 
+// Details are a modal dialog now, not an inline panel: close it before
+// driving the table again, exactly as a user would.
+await page.keyboard.press('Escape')
+await page.waitForTimeout(120)
 await clearAll()
 
 // sorting
 async function sortHeader(name) {
-  const th = page.locator('th', { hasText: new RegExp(`^${name}`) }).first()
+  // Only a VISIBLE header can be clicked; the compact layout hides some.
+  const th = page.locator('th:visible', { hasText: new RegExp(`^${name}`) }).first()
   await th.locator('button').click()
   await page.waitForTimeout(150)
   return th.getAttribute('aria-sort')
 }
 // Due date is the DEFAULT sort (ascending), so the first click toggles it to
 // descending. Both directions are still exercised; the order is just reversed.
-const first = await sortHeader('Due date')
-const second = await sortHeader('Due date')
+const first = await sortHeader('Due')
+const second = await sortHeader('Due')
 check('sort: aria-sort announces both directions as the column is toggled',
   new Set([first, second]).size === 2
   && [first, second].every((d) => d === 'ascending' || d === 'descending'),
   `${first} then ${second}`)
+// The compact Alerts table (Codex audit pass) defines four sortable columns -
+// Alert, Asset, Station, Due. Subject moved into the details dialog, so the
+// earlier ">= 5" no longer describes the design; every defined sortable
+// column must still announce its sort state.
 check('sort: several columns are sortable',
-  (await page.evaluate(() => [...document.querySelectorAll('th')].filter((t) => t.hasAttribute('aria-sort')).length)) >= 5)
+  (await page.evaluate(() => [...document.querySelectorAll('th')].filter((t) => t.hasAttribute('aria-sort')).length)) >= 4)
 
 // combined filters
 await clearAll()

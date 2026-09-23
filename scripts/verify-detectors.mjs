@@ -213,7 +213,10 @@ await page.waitForTimeout(200)
 await selectFilter('Mapping', 'needs_unit_mapping')
 check('filter: Mapping=Needs unit mapping keeps only unresolved rows',
   await page.evaluate(() =>
-    [...document.querySelectorAll('table tbody tr')].every((r) => /Needs unit mapping/.test(r.innerText))))
+    // textContent, not innerText: the compact registry keeps the Mapping cell
+    // in every row but shows it in the row's details, so it is not rendered
+    // text in the collapsed row. The DATA is what this filter must prove.
+    [...document.querySelectorAll('table tbody tr')].every((r) => /Needs unit mapping/.test(r.textContent))))
 await page.locator('button:has-text("Clear")').first().click()
 await page.waitForTimeout(200)
 

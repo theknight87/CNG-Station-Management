@@ -43,6 +43,15 @@ for (const vp of VIEWPORTS) {
   check(`${vp.name}: page does not scroll horizontally`, overflow.s <= overflow.c + 1,
     `${overflow.s} vs ${overflow.c}`)
 
+  // No table content may be clipped out of reach: a table wider than its
+  // region must be scrollable there, never cut off by overflow:hidden.
+  const clipped = await page.evaluate(() =>
+    [...document.querySelectorAll('.table-scroll')]
+      .filter((el) => el.scrollWidth > el.clientWidth + 1
+        && !['auto', 'scroll'].includes(getComputedStyle(el).overflowX))
+      .map((el) => el.getAttribute('aria-label')))
+  check(`${vp.name}: no table columns are clipped out of reach`, clipped.length === 0, clipped.join(', '))
+
   // Dense rows survive at every width — the Prompt 7 regression, re-checked here.
   const rowHeights = await page.evaluate(() =>
     [...document.querySelectorAll('tbody tr')].map((r) => r.getBoundingClientRect().height))
@@ -54,10 +63,16 @@ for (const vp of VIEWPORTS) {
   const sums = await page.evaluate(() => {
     const out = []
     for (const row of document.querySelectorAll('tbody tr')) {
-      const cells = [...row.querySelectorAll('td')].map((c) => Number(c.textContent.replace(/[^\d]/g, '')) || 0)
-      if (cells.length === 9) {
-        const buckets = cells.slice(0, 8).reduce((a, b) => a + b, 0)
-        out.push({ buckets, total: cells[8] })
+      // Only VISIBLE cells count: below 640px the five dated windows are
+      // hidden and folded into one "Due ≤60d" column, so a phone row has 5
+      // cells and a wider row 9. Either way the visible buckets must sum to
+      // the total, which also proves the folded column is their exact sum.
+      const cells = [...row.querySelectorAll('td')]
+        .filter((c) => getComputedStyle(c).display !== 'none')
+        .map((c) => Number(c.textContent.replace(/[^\d]/g, '')) || 0)
+      if (cells.length === 9 || cells.length === 5) {
+        const buckets = cells.slice(0, -1).reduce((a, b) => a + b, 0)
+        out.push({ buckets, total: cells[cells.length - 1] })
       }
     }
     return out

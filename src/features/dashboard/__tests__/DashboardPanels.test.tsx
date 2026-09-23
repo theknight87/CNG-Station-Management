@@ -66,13 +66,28 @@ describe('due matrix', () => {
     at(<DueMatrix due={due} />)
     const row = screen.getByRole('row', { name: /Installed SRVs/ })
     // The asset-type cell is a rowheader, not a cell, so index 0 is Overdue.
-    // Column order follows DUE_BUCKETS: overdue, today, 1-7, 8-15, 16-30,
-    // 31-60, current, no-exact-date, then the row total.
+    // Index 1 is the phone-only "Due ≤60d" column (CSS-hidden from 640px up);
+    // then DUE_BUCKETS order: today, 1-7, 8-15, 16-30, 31-60, current,
+    // no-exact-date, then the row total.
     const cells = within(row).getAllByRole('cell')
     expect(cells[0].textContent).toBe('12')  // Overdue
-    expect(cells[6].textContent).toBe('0')   // Current — the 166 must NOT land here
-    expect(cells[7].textContent).toBe('166') // No exact date
-    expect(cells[8].textContent).toBe('181') // Total
+    expect(cells[7].textContent).toBe('0')   // Current — the 166 must NOT land here
+    expect(cells[8].textContent).toBe('166') // No exact date
+    expect(cells[9].textContent).toBe('181') // Total
+  })
+
+  it('MATRIX-5 the phone "Due ≤60d" column is the exact sum of the five dated windows', () => {
+    at(<DueMatrix due={due} />)
+    const row = screen.getByRole('row', { name: /Installed SRVs/ })
+    const cells = within(row).getAllByRole('cell')
+    const windows = cells.slice(2, 7).reduce((sum, c) => sum + Number(c.textContent), 0)
+    expect(Number(cells[1].textContent)).toBe(windows)
+    // Phone row: Overdue + Due ≤60d + Current + No exact date = Total.
+    expect(Number(cells[0].textContent) + windows + Number(cells[7].textContent)
+      + Number(cells[8].textContent)).toBe(Number(cells[9].textContent))
+    // It is shown only below 640px, and the windows only from 640px up.
+    expect(cells[1].className).toContain('sm:hidden')
+    expect(cells[2].className).toContain('hidden sm:table-cell')
   })
 
   it('MATRIX-4 says so plainly when nothing is visible, rather than showing an empty grid', () => {

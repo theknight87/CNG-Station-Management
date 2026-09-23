@@ -60,7 +60,7 @@ export function DataTable({
   className?: string
 }) {
   return (
-    <table className={cn('w-full table-fixed border-collapse text-sm', className)}>
+    <table className={cn('w-max min-w-full border-collapse text-sm', className)}>
       <caption className="sr-only">{caption}</caption>
       {children}
     </table>
@@ -108,7 +108,7 @@ export function SortableHeader({
       scope="col"
       aria-sort={onSort ? ariaSort : undefined}
       className={cn(
-        'break-words border-b px-[--table-cell-x] py-[--table-cell-y] text-xs font-semibold uppercase leading-tight tracking-wide text-muted-foreground',
+        'whitespace-nowrap border-b px-[--table-cell-x] py-[--table-cell-y] text-xs font-semibold uppercase leading-tight tracking-wide text-muted-foreground',
         align === 'right' ? 'text-right' : 'text-left',
         className,
       )}
@@ -195,7 +195,7 @@ export function TableCell({
     <td
       data-label={dataLabel}
       className={cn(
-        'min-w-0 break-words px-[--table-cell-x] py-[--table-cell-y] align-middle',
+        'h-[--table-row-height] whitespace-nowrap px-[--table-cell-x] py-[--table-cell-y] align-middle',
         align === 'right' ? 'text-right' : 'text-left',
         numeric && 'tabular',
         wrap && 'whitespace-normal',
@@ -214,7 +214,7 @@ export function RowHeaderCell({ children, className, dataLabel }: { children: Re
       scope="row"
       data-label={dataLabel}
       className={cn(
-        'min-w-0 break-words px-[--table-cell-x] py-[--table-cell-y] text-left align-middle font-medium text-foreground',
+        'h-[--table-row-height] whitespace-nowrap px-[--table-cell-x] py-[--table-cell-y] text-left align-middle font-medium text-foreground',
         className,
       )}
     >

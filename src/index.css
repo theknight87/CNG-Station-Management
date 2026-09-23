@@ -214,9 +214,13 @@
   }
 
   /* Tables fit the working canvas. Wide registries switch to vertical records
-   * on narrow screens rather than creating a second horizontal viewport. */
+   * on narrow screens rather than creating a second horizontal viewport.
+   * A compact table that still cannot fit (the Region table on a phone)
+   * scrolls INSIDE its own region: `hidden` here clipped columns such as
+   * Overdue and Total out of reach entirely, which hides facts (§11.5). The
+   * page itself never scrolls sideways either way. */
   .table-scroll {
-    overflow-x: hidden;
+    overflow-x: auto;
   }
 
   .compact-records :is(td, th) {
