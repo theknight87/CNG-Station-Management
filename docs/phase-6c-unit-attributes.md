@@ -143,3 +143,20 @@ Reconciliation, all zero-defect: Units 188 → 189, Stations 157; 183 Units now 
 from exactly one row; 0 wrong Region; 0 rows linked outside their Station; 0 stored values differing from the source text;
 0 Station values. فويل اب الدائرى 1 = OPEN, 3 dispensers; 2 = OPEN, no dispenser count (as in the source). One audit row.
 Replay blocked (0 rows left). Still held: 134 = Z 123 + N1 11 (both wait for the review workbook).
+
+## 6d compressors and 6e Unit names: deployed, awaiting fingerprint approval
+
+Owner: "yes import compressors and rename the units". Migration `20260923210000_compressors_and_unit_names_6d.sql`
+(deployed as `compressors_and_unit_names_6d`; all six prosrc MD5s identical to the tested build). Suite
+`compressors_unit_names_6d.sql`: 19 assertions.
+
+**6d preview (run twice, identical):** `2dcdae0c5c38762161d4c7f9b6c28eeff32ba4fb98bf4f49cddc2bdbc4ade0f9`.
+183 compressors, one per Unit linked in 6c-1/6c-2 (East 55, West 55, Delta 73); all 183 carry a model (as written, e.g.
+"GALLILEO" is not corrected), 182 total running hours. No serial, manufacturer or job number. `mapping_status = resolved`.
+
+**6e preview (run twice, identical):** `df490a289fffbfcee8e76b9ff033e8494e9f273414939a2b226c523c6a993627`.
+79 Units renamed: 75 one-Unit Stations get the Station's name (74 Delta address names, and West "الهرم 1" → "الهرم"),
+4 West Units "X" beside "X 2" become "X 1" (الخمايل, الصفوة, المحور المركزى, دائرى الهرم). One audit row per rename with old
+and new name. Earlier estimate of 81 counted differently; the exact figure is 79 + 1 left over:
+**West Station "الدولفن" has Units "الدولفين 1…4"**. The Station and its Units are spelled differently (ين vs ن), so it is
+not renamed; the owner decides which spelling is right.
