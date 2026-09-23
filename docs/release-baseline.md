@@ -399,6 +399,6 @@ scratchpad. Delta access for all three.
 | viewer | efares0+cng-viewer | pass (desktop, mobile) |
 | engineer | efares0+cng-engineer | pass (desktop, mobile) |
 | manager | efares0+cng-manager | pass (desktop, mobile) |
-| inactive | efares0+cng-inactive | **not yet created**: Supabase's built-in mailer allows 2 sign-up emails an hour |
+| inactive | efares0+cng-inactive (inactive viewer, never activated) | pass (desktop, mobile) |
 
-Run: 7 passed, 2 skipped (the inactive test on each project), 0 failed.
+Final run: **9 passed, 0 skipped, 0 failed** (setup + 4 roles × 2 projects). The Phase 2 multi-role item is closed.
