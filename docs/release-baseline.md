@@ -387,3 +387,18 @@ Multi-role browser authorization remains an open Phase 2 item, covered today onl
     the operator import reader (`src/import/readers/workbook.ts`), not in the browser bundle. The offered
     `npm audit fix --force` would downgrade exceljs to 3.4.0, which is worse. Revisit when exceljs updates.
 - Frontend tests 647 → **653** (+6 RESET).
+
+### Phase 2 role coverage (2026-09-23, production, chromium-desktop + chromium-mobile)
+
+Test accounts created by normal sign-up (inactive viewers), email confirmed through the Supabase MCP, then given roles
+through the audited admin functions while signed in as the E2E admin. Credentials exist only in the session
+scratchpad. Delta access for all three.
+
+| Role | Account | Result |
+| --- | --- | --- |
+| viewer | efares0+cng-viewer | pass (desktop, mobile) |
+| engineer | efares0+cng-engineer | pass (desktop, mobile) |
+| manager | efares0+cng-manager | pass (desktop, mobile) |
+| inactive | efares0+cng-inactive | **not yet created**: Supabase's built-in mailer allows 2 sign-up emails an hour |
+
+Run: 7 passed, 2 skipped (the inactive test on each project), 0 failed.
