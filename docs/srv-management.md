@@ -475,3 +475,17 @@ decisions 281, audit 285, aliases 0.
 - The deployed preview ran twice and gave identical results. It found 2,188 eligible rows and 0 excluded, already-imported or invalid rows. There are 2,188 distinct keys and 2,188 distinct hashes. Serial numbers are present on 2,187 rows, warehouse codes on 2,187 and part numbers on 2,167. A target Region is set on 1,775 rows and a target Station on none. A raw Station name is present on 1,774 rows. Exact next, last and issue dates are present on 1,854, 1,854 and 1,480 rows. All five availability values map to the enum, and there are 0 Region mismatches.
 - **Executable fingerprint (deployed): `9354a9c77ab22c92ee206eba34605c619d24b33207350c6f0be80b03a4de7f69`.**
 - **The commit has NOT been invoked. It waits for explicit owner approval of this fingerprint.**
+
+### Prompt 27A — warehouse import COMMITTED (owner-approved 2026-09-23)
+- Owner approved fingerprint `9354a9c7…4de7f69` for 2,188 rows. The pre-commit re-check was unchanged, and `cng_wrv_import_commit` was called exactly once:
+  2,188 created, 2,188 linked.
+- Reconciliation: 2,188 canonical rows. Target Station set on 0. Target Region set on 1,775, with 0 mismatches against the source's
+  `assigned_region`. Staging: 0 rows unlinked, 0 wrong entity kind, 2,188 distinct targets, 0 source key/hash mismatches, a single `committed_at`.
+  `assigned_station_raw` is kept in `source_raw` on 1,774 rows. There are 1,854 exact next dates and 0 dates stored at non-exact precision.
+- Unaffected: installed 2,662 (1,054 with Station), SV 100, RT 91, GD 62, hoses 26, stations 157, units 188,
+  decisions 281. Audit went 289 -> 290: one `import_executed` row, `service_role:warehouse_srv_import`, `actor_id` NULL,
+  with the pre-insert figures recorded.
+- Replay is blocked. The post-commit preview reports 0 eligible and 2,188 already imported, and its fingerprint is now `e3b0c442…` (the hash of empty input)
+  (empty), so the approved token fails closed. `v_warehouse_srv_management` returns 2,188 rows.
+- Still pending: owner browser check of `/manage/srvs/warehouse`, and mapping the 1,774 raw Station names, which needs its own
+  separately approved decision.
