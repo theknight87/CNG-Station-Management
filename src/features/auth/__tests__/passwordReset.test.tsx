@@ -88,3 +88,22 @@ describe('password reset', () => {
     expect(await screen.findByText('Dashboard')).toBeDefined()
   })
 })
+
+describe('Google sign-in', () => {
+  it('GOOGLE-1 is always offered and starts Supabase OAuth with the google provider', async () => {
+    const user = userEvent.setup()
+    const signInWithOAuth = vi.fn().mockResolvedValue({ error: null })
+    Object.assign(auth, { signInWithOAuth })
+    render(<MemoryRouter><SignInPage /></MemoryRouter>)
+    await user.click(screen.getByRole('button', { name: /sign in with google/i }))
+    expect(signInWithOAuth).toHaveBeenCalledWith({ provider: 'google', options: { redirectTo: `${window.location.origin}/dashboard` } })
+  })
+
+  it('GOOGLE-2 reports a failure to start without leaking the provider error', async () => {
+    const user = userEvent.setup()
+    Object.assign(auth, { signInWithOAuth: vi.fn().mockResolvedValue({ error: { message: 'provider is not enabled' } }) })
+    render(<MemoryRouter><SignInPage /></MemoryRouter>)
+    await user.click(screen.getByRole('button', { name: /sign in with google/i }))
+    expect((await screen.findByRole('alert')).textContent).toMatch(/Google sign-in could not be started/)
+  })
+})

@@ -43,3 +43,55 @@ Total: 52 + 51 + 4 + 76 + 11 + 123 + 8 = **325**.
 
 On approval, the build follows the Stage A/B pattern: a deployed preview function with a content-bound
 fingerprint (run twice), a separate owner approval of that fingerprint, one commit, then reconciliation.
+
+## Owner rulings (2026-09-23) and 6c-1 build
+
+| Class | Ruling | Result |
+| --- | --- | --- |
+| U1 (52) | approved | attach to the named Unit |
+| SU (51) | approved | attach to the Unit that shares the Station's name |
+| SU2 (4) | Units are numbered: "X" is the first Unit, "X 2" the second | "X" attaches to Unit "X"; every case is Station X with Units "X" and "X 2", and the source has a separate "X 2" row (a U1 row) |
+| X (8) | remove | marked `outcome = rejected` with a reason; never deleted, `source_raw` intact |
+| S1, N1 | examples requested | see below; still held |
+| Z (123) | build the Stations from all sheets; leave unknown values empty | review workbook produced; see below |
+
+U1, SU and SU2 are one evidence test: the row's name equals exactly one Unit name in the same Region.
+Migration `20260923180000_unit_attributes_6c.sql` (deployed as `unit_attributes_6c`, prosrc MD5s: proposal
+`9d071ec4…`, preview `5c12b888…`, commit `9e6154ea…`, identical to the tested local build). Suite
+`supabase/tests/unit_attributes_6c.sql`: 29 assertions. It checks that S1 is **not** pushed down to its only Unit,
+that the same name in West is not used for an East row, that no value is overwritten, and that replay is refused.
+
+**Deployed preview (run twice, identical):** fingerprint
+`1999534744d7e8f8c993bf8a587af1bf1be90ecd22fe896aa498a7890003a8d0`. 107 rows → 107 distinct Units
+(East 55, West 52), 8 blank rows to reject, 1 row whose count is not a plain number (kept as raw text, number
+empty), 0 bay-status values unrecognised. **Not committed:** it needs a separate owner approval of this fingerprint.
+
+## Examples for S1 (76 rows) — name is a Station only
+
+| Row | Source name | Station's Units | Why it is held |
+| --- | --- | --- | --- |
+| Delta 252 | وطنيــة / الســادات 1 | 1 Unit: "مدينة السادات بجوار الجامعة" | Delta Units are named by address, so the row names the Station, not the Unit |
+| Delta 243 | شــعلان / قويســنا 2 | 1 Unit: "شارع مصر اسكندرية الزراعى - قويسنا …" | same |
+| Delta 279 | بيلا/كفر الشيخ | **0 Units** | nothing to attach counts to |
+| West 63 | الهرم | 1 Unit: "الهرم 1" | the row says "الهرم", the Unit is "الهرم 1" |
+| West 111 and 112 | فويل اب الدائرى (twice) | 2 Units: "…الدائرى 1", "…الدائرى 2" | two rows, two Units, but no row says which is which |
+
+73 of the 76 are Delta Stations with exactly one Unit. **Options:** (a) put bay status on the Station and counts on
+its single Unit (this is the one-Unit rule CLAUDE.md §4 forbids unless you rule it explicitly for this workbook);
+(b) Station bay status only (recommended); (c) hold everything.
+
+## N1 (11 rows) — Delta names with no Station anywhere in the hierarchy
+
+الخانكة · العبور المنطقة الصناعية · بهتيم · الحلمية أبو حماد · عزبة مختار · العاشر من رمضان 1 · العاشر من رمضان 2 ·
+العاشر من رمضان (A1) · الزاهد · موبيل-العاشر الجديدة · آل حكيم العاشر.
+These are sites the structural workbook (`Assets DataBase`) does not list. **Options:** create them as new Delta
+Stations the same way as Z (below), or hold.
+
+## Z — Stations for Alex, Canal and Upper
+
+Every name for these Regions in all four workbooks was collected: 276 names, 1,770 rows. The same site is spelled
+differently from sheet to sheet (e.g. `محرم بك 1` / `محرم بيك 1` / `محرم بك1`, `الادبيه` / `الادبيه - السويس`), so the
+Stations cannot be created automatically without guessing. `deliverables/phase-6c-zero-station-regions-review.xlsx`
+lists every name with the files it appears in, a proposed Station and Unit (spelling folded, governorate suffix
+removed, trailing number read as the Unit), and yellow columns for the owner's Station and Unit. Once it is filled in,
+the Stations and Units are created from it with the same preview → approve → commit steps. Unknown values stay empty.

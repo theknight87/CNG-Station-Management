@@ -19,7 +19,7 @@ history: [`authentication-clerk-history.md`](./authentication-clerk-history.md)
 | Provider | Supabase Auth of project `cng-station-management` (`ypkggegquetvpsflkaxg`) |
 | Browser client | `src/lib/supabase/client.ts`: one `supabase-js` client, **publishable key only**, `persistSession`, `autoRefreshToken`, `detectSessionInUrl` |
 | Session state | `src/features/auth/AuthProvider.tsx`, gated by `AuthGate.tsx` |
-| Sign in | `/sign-in`: email + password (`signInWithPassword`); optional **Google** (`signInWithOAuth`) only when `VITE_ENABLE_GOOGLE_AUTH=true` |
+| Sign in | `/sign-in`: email + password (`signInWithPassword`); **Sign in with Google** (`signInWithOAuth({ provider: 'google' })`), always shown |
 | Sign up | `/sign-up`: `signUp` with `emailRedirectTo = <origin>/dashboard` |
 | Sign out | account control in the header |
 | Password reset | `/forgot-password` sends `resetPasswordForEmail` (same reply whether or not the account exists); `/reset-password` sets the new password (min 8) from the recovery session |
@@ -75,7 +75,6 @@ Frontend (Cloudflare Pages build variables; publishable only):
 | --- | --- |
 | `VITE_SUPABASE_URL` | project URL |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | publishable (anon-equivalent) key |
-| `VITE_ENABLE_GOOGLE_AUTH` | `true` shows the Google button; the provider must also be enabled in Supabase |
 
 Supabase dashboard (Authentication), which the owner maintains:
 - **URL configuration**: Site URL `https://cng-station-management.pages.dev`. Redirect URLs must include

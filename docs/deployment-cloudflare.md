@@ -89,7 +89,6 @@ use preview deployments — a preview build without these will render an unconfi
 | `VITE_SUPABASE_URL` | `https://ypkggegquetvpsflkaxg.supabase.co` |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | from Supabase project `cng-station-management` → API keys |
 | `VITE_VAPID_PUBLIC_KEY` | **the PUBLIC half** of this project's dedicated VAPID pair |
-| `VITE_ENABLE_GOOGLE_AUTH` | `true` only if the Google provider is configured in Supabase Auth; otherwise `false` |
 | `NODE_VERSION` | `22` |
 
 Paste each value straight into the Cloudflare form. **Do not paste any of them into chat, into a

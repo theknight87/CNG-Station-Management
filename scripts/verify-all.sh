@@ -62,9 +62,9 @@ run "report contract" npx tsx scripts/verify-report-contract.mjs "$DB"
 # runs but asserts nothing (a failed connection, a renamed file, a truncated
 # run) must FAIL rather than report a cheerful zero - that is precisely the
 # silent coverage loss this gate exists to stop.
-declare -A MIN=( [schema_scenarios]=344 [rls_authorization]=703 [rls_initplan_perf]=25 [stage_b2_station_batch]=30 )
+declare -A MIN=( [schema_scenarios]=344 [rls_authorization]=703 [rls_initplan_perf]=25 [stage_b2_station_batch]=30 [unit_attributes_6c]=29 )
 
-for suite in schema_scenarios rls_authorization rls_initplan_perf stage_b2_station_batch; do
+for suite in schema_scenarios rls_authorization rls_initplan_perf stage_b2_station_batch unit_attributes_6c; do
   out="$(sudo -n -u postgres psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "supabase/tests/$suite.sql" 2>&1)"
   count="$(printf '%s' "$out" | grep -c 'PASS ')"
   min="${MIN[$suite]}"
@@ -129,7 +129,7 @@ fi
 # The upgraded database must pass the same suites as one built from zero: an
 # upgrade that "works" but leaves different behaviour behind is not an upgrade.
 if [ $up_fail -eq 0 ]; then
-  for suite in schema_scenarios rls_authorization rls_initplan_perf stage_b2_station_batch; do
+  for suite in schema_scenarios rls_authorization rls_initplan_perf stage_b2_station_batch unit_attributes_6c; do
     out="$(sudo -n -u postgres psql -d "$UDB" -v ON_ERROR_STOP=1 -q -f "supabase/tests/$suite.sql" 2>&1)"
     count="$(printf '%s' "$out" | grep -c 'PASS ')"
     if printf '%s' "$out" | grep -q 'FAILED:'; then
