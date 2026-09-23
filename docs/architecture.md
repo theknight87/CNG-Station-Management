@@ -14,7 +14,7 @@ Companion documents: [`../CLAUDE.md`](../CLAUDE.md) (isolation rule, data princi
 ## 1. System overview
 
 A single-page React application served statically from Cloudflare Pages, talking directly
-to Supabase PostgreSQL over PostgREST, with Clerk as the identity provider and Supabase RLS
+to Supabase PostgreSQL over PostgREST, with Supabase Auth as the identity provider (Clerk until 2026-09-20) and Supabase RLS
 as the authorization boundary. Scheduled work (due-date scanning, notification dispatch)
 runs in Supabase Edge Functions triggered by Supabase Cron.
 
@@ -53,6 +53,9 @@ escape hatch (an Edge Function acting as an RPC endpoint) exists when needed.
 ---
 
 ## 2. Authentication and authorization
+
+> **Superseded 2026-09-20:** identity is first-party **Supabase Auth** (migration 0056); see
+> [`authentication.md`](./authentication.md). The Clerk design below is kept as history.
 
 ### Identity: Clerk
 

@@ -69,15 +69,15 @@ duplicate a repository-managed one, and the two would drift.
 - immutable one-year browser caching for fingerprinted `/assets/*` files;
 - revalidation/no-store behavior for HTML and `sw.js`;
 - clickjacking, MIME-sniffing, referrer, feature, opener, and transport controls; and
-- a Content Security Policy covering only the Clerk, Supabase, Cloudflare challenge, and local
-  origins required by the application.
+- a Content Security Policy whose `connect-src` allows only `'self'` and **this project's own** Supabase host,
+  `https://ypkggegquetvpsflkaxg.supabase.co` / `wss://…` (narrowed from `*.supabase.co` on 2026-09-23 so the
+  site cannot talk to any other Supabase project). Clerk origins were removed when Clerk was retired.
 
 The policy is live-verified on the public site. The root sends the CSP and supporting browser
 headers; the deployed hashed JavaScript sends `public, max-age=31536000, immutable`; and `sw.js`
-sends `no-store, must-revalidate, no-cache`. Clerk sign-in renders without a browser error. Full
-authenticated Supabase and Web Push verification still needs approved credentials. Tighten Clerk
-wildcards to the production Frontend API origins after the production instance and custom domain
-are final.
+sends `no-store, must-revalidate, no-cache`. If the Supabase project ever moves (or a custom Auth
+domain is added), update `connect-src` in `public/_headers` in the same change, or every API call will
+be blocked by the browser.
 
 ## 5. Environment variables
 
@@ -86,10 +86,10 @@ use preview deployments — a preview build without these will render an unconfi
 
 | Variable | Value |
 | --- | --- |
-| `VITE_CLERK_PUBLISHABLE_KEY` | from the Clerk application **`CNG Station Management`** — the publishable key, `pk_...` |
 | `VITE_SUPABASE_URL` | `https://ypkggegquetvpsflkaxg.supabase.co` |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | from Supabase project `cng-station-management` → API keys |
 | `VITE_VAPID_PUBLIC_KEY` | **the PUBLIC half** of this project's dedicated VAPID pair |
+| `VITE_ENABLE_GOOGLE_AUTH` | `true` only if the Google provider is configured in Supabase Auth; otherwise `false` |
 | `NODE_VERSION` | `22` |
 
 Paste each value straight into the Cloudflare form. **Do not paste any of them into chat, into a
@@ -98,8 +98,8 @@ file, or into this repository.**
 ### What must never be added here
 
 `VAPID_PRIVATE_KEY` · `RESEND_API_KEY` · `CNG_ALERT_INVOKE_SECRET` ·
-`CNG_ALERT_TEST_RECIPIENT` · the Clerk **secret** key · the Clerk webhook signing secret · the
-Supabase **service-role** key.
+`CNG_ALERT_TEST_RECIPIENT` · the Supabase **service-role** key · the Supabase JWT secret · any Google
+OAuth client **secret** (that lives only in Supabase → Authentication → Providers).
 
 Those are Supabase Edge Function secrets and stay server-side. Marking a Cloudflare variable
 "encrypted" does not make it private: this is a static site, so whatever the build inlines is
@@ -120,9 +120,10 @@ not configured for this deployment"* — which is the code being honest, not a b
 1. Open the generated `https://cng-station-management.pages.dev`.
 2. **SPA routing:** open `/`, `/dashboard`, `/alerts` and `/regions` **directly in the address
    bar**, not by clicking through. A 404 means `_redirects` did not reach `dist/`.
-3. **Clerk:** sign in. It must be the **CNG Station Management** Clerk application. A new account
-   is created inactive with the least privilege and an administrator must activate it — that is
-   CLAUDE.md §10 working, not a failure.
+3. **Supabase Auth:** sign in at `/sign-in`. A new account is created as an INACTIVE viewer and an
+   administrator must activate it in Admin → Users — that is CLAUDE.md §10 working, not a failure.
+   Supabase → Authentication → URL configuration must list `https://cng-station-management.pages.dev/**`
+   as a redirect URL, or sign-up confirmation and Google sign-in cannot return to the app.
 4. **Supabase target:** in DevTools → Network, confirm every API call goes to
    `ypkggegquetvpsflkaxg.supabase.co` and nothing else.
 5. **No Coding System dependency:** no request to `coding-system-new.pages.dev` or any Coding

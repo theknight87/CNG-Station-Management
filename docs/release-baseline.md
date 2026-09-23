@@ -259,3 +259,27 @@ Lint, typecheck and build all exit 0.
 
 **Not covered here:** Firefox and WebKit (not installed in this environment), authenticated production screens (need E2E
 credentials), and a 200% zoom pass.
+
+## Phase 4 (cont.) — 200% zoom, Chromium only
+
+Browser scope is **Chromium only**, by owner decision (2026-09-23). The Firefox and WebKit Playwright projects are not
+required. `scripts/verify-zoom.mjs` checks 9 preview views at 720×450 CSS px (1440×900 at 200%). It found and proved
+two defects:
+- a search field collapsing to an icon-sized box in a crowded filter row (Alerts, Hoses, Detectors)
+- the Alerts "push not configured" note running past the right edge, because the page header's actions area was `shrink-0`
+
+Fixes:
+- a global `min-width: 12rem` on search labels
+- the header actions area may shrink and wrap
+- page `<h1>` titles wrap instead of being truncated with an ellipsis, since they include Arabic Station names (§11.3)
+
+Before: 3 FAIL. After: 9/9 PASS. All six fixture scripts still pass and unit tests stay at 640.
+
+## Phase 5 — Supabase Auth documentation and response policy
+
+- `docs/authentication.md` has been rewritten for first-party Supabase Auth. The Clerk-era document is kept as
+  `docs/authentication-clerk-history.md`. `CLAUDE.md` (§1–3 and §10), `architecture.md`, `deployment-cloudflare.md` and `README`
+  no longer describe Clerk as current. The historical prompt records are unchanged.
+- The CSP `connect-src` was narrowed from `*.supabase.co` to this project's own host (`ypkggegquetvpsflkaxg.supabase.co`,
+  https and wss). Nothing else in `_headers` changed, and it contained no Clerk origin.
+- Found: **there is no password-reset flow** in the app (open item, `authentication.md` §6).

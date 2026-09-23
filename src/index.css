@@ -232,6 +232,12 @@
     max-width: 100%;
   }
 
+  /* A search field never collapses to an icon when a filter row gets crowded
+   * (seen at 200% zoom, where 1440px becomes 720 CSS px). */
+  [role='search'] label:has(input[type='search']) {
+    min-width: 12rem;
+  }
+
   @media (max-width: 639px) {
     /* Search must own a complete row before the narrower filters wrap below it;
      * this prevents a flexible label collapsing to an icon-sized field. */

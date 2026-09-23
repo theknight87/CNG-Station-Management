@@ -47,7 +47,7 @@ src/
 ├── features/       one folder per domain area; feature UI lives here
 ├── pages/          thin route entry points that render a feature view
 ├── hooks/          shared React hooks
-├── lib/            clerk/ and supabase/ configuration and clients
+├── lib/            supabase/ configuration and client (Supabase Auth)
 ├── types/          domain vocabulary; generated DB types land here later
 └── utils/          pure helpers (date arithmetic, deterministic normalization)
 

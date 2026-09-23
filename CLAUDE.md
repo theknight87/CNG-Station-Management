@@ -24,7 +24,7 @@ Never reuse, from any other project:
 - Supabase Organization
 - Supabase project
 - Cloudflare Pages project
-- Clerk Application
+- Supabase Auth configuration (and, historically, the Clerk Application)
 - VAPID keys (Web Push)
 - Resend configuration, domains, or API keys
 - Database tables
@@ -37,13 +37,13 @@ Consequences of this rule, in practice:
 
 1. A **new Supabase Organization** is created specifically for this project; the Supabase
    project `cng-station-management` lives inside it and nowhere else.
-2. A **new Clerk Application** named `CNG Station Management` is created; no existing
+2. *(Historical — Clerk was retired 2026-09-20; identity is now this project's own Supabase Auth.)* A **new Clerk Application** named `CNG Station Management` was created; no existing
    instance, JWT template, or key is reused.
 3. **New VAPID keys** are generated for this project alone.
 4. Resend uses its **own API key** and its own verified sending identity for this project.
 5. All environment variables are defined fresh in this repository's `.env.example`; values
    are never copied from another project's dashboard.
-6. Before any operation that touches a hosted resource (Supabase, Cloudflare, Clerk,
+6. Before any operation that touches a hosted resource (Supabase, Cloudflare,
    Resend), **verify the target resource name/ID belongs to this project**. If the target
    is ambiguous, stop and ask.
 7. This project must remain **independently deployable** and **independently recoverable** —
@@ -58,7 +58,7 @@ Consequences of this rule, in practice:
 | Frontend | React + TypeScript + Vite | — |
 | Routing | React Router | — |
 | UI | Tailwind CSS + shadcn/ui | — |
-| Authentication | Clerk | App: `CNG Station Management` |
+| Authentication | Supabase Auth (first-party, since migration 0056) | same Supabase project; Clerk retired 2026-09-20 |
 | Database | Supabase PostgreSQL | Project: `cng-station-management` (new org) |
 | Authorization | Supabase Row Level Security | — |
 | Hosting | Cloudflare Pages | Project: `cng-station-management` |
@@ -1816,13 +1816,13 @@ history**. `source_raw` is never altered by a mapping decision.
 
 ## 10. Security rules (durable)
 
-*Status: implemented and verified end to end in a real browser on 2026-09-14 (Prompt 5). The
-temporary routes `/sign-in`, `/sign-up` and `/auth-test` are retained for acceptance testing and
-must be removed before production — see `docs/authentication.md` §11.*
+*Status: identity moved from Clerk to first-party Supabase Auth on 2026-09-20 (migration 0056). `/sign-in`
+and `/sign-up` are the permanent Supabase Auth pages; the Clerk-era `/auth-test` route no longer exists.
+Current design and open items (leaked-password protection, password reset): `docs/authentication.md`.*
 
 These hold for every future phase.
 
-- **The database is the authorization authority.** Clerk establishes identity; roles, region
+- **The database is the authorization authority.** Supabase Auth establishes identity; roles, region
   access and every row decision live in PostgreSQL and are enforced by RLS. A frontend check is
   UX, never security. Hiding a button is not protection.
 - **Closed by default.** `anon` receives no privileges. `authenticated` receives only the specific
@@ -1833,7 +1833,7 @@ These hold for every future phase.
 - **Raw source text is never an authorization boundary.** `source_station_name_raw`,
   unconfirmed `region_id` on an unmapped record, and fuzzy matches are evidence, not permission.
   An SRV awaiting station confirmation is admin/manager only.
-- **Authorization is never synchronized from Clerk.** No webhook, profile edit or Clerk metadata
+- **Authorization is never synchronized from the identity provider.** No webhook, profile edit or Auth metadata
   value may set `role`, `is_active` or region access. Identity sync and authorization management
   are separate concerns.
 - **Signing up grants nothing.** New accounts are created inactive with the least-privileged role;
@@ -1843,8 +1843,10 @@ These hold for every future phase.
   Audit tables are append-only and their actor column cannot be forged.
 - **`SECURITY DEFINER` only where genuinely required**, with a pinned `search_path`, no
   user-supplied identity parameter, and EXECUTE granted to `authenticated` only.
-- **Use the current Clerk-Supabase third-party auth integration.** The deprecated JWT-template
-  approach must not be reintroduced, and this project's JWT secret is never shared with Clerk.
+- **Identity is first-party Supabase Auth** (`docs/authentication.md`). `app_users.auth_user_id` is the identity
+  key; a new Auth user becomes an INACTIVE `viewer` via the `cng_auth_user_sync` trigger and an admin activates it.
+  No service-role key, JWT secret or Auth admin credential ever reaches the browser or the repository.
+  (Historical: Clerk third-party auth, Prompts 5–25, retired 2026-09-20; see `docs/authentication-clerk-history.md`.)
 
 ---
 
