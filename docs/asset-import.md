@@ -510,3 +510,19 @@ rule was invented merely because a field is NULL. Staged layer: 281 `staged_deci
 Production unchanged: 49 migrations, 6 / 157 / 188, 281 decisions, 100 / 91 / 62 / 26,
 aliases 0, Unit mappings 0, `gas_detector_presence` 0, asset lineage 279. No row was created,
 updated or deleted by this review. Gate exit 0 — frontend 617, schema 261, authorization 624.
+
+## Phase 6b — Stage B2 asset import (2026-09-23)
+
+Owner approval: "Approve asset import 77349feb…4a454b88, 280 rows". Pre-commit guard re-ran the
+deployed preview and matched every approved value (run `cdad1e5e…`, manifest `764d3c0f…`,
+fingerprint `77349feb…4a454b88`, 280 eligible = sv 141 / rt 91 / gd 26 / hoses 22, 30 blocked,
+279 already imported, 0 rows with a Unit). `cng_asset_import_commit` was invoked **exactly once**
+as `service_role`.
+
+Result: 280 created, 280 linked. Canonical totals now sv 241, rt 182, gd 88, hoses 48 (559).
+Reconciliation, all zero-defect: 0 assets with a Unit, 0 with a status other than
+`needs_unit_mapping`, 0 Stations differing from the active decision, 0 decisions carrying a Unit,
+0 assets without lineage, 0 absence rows imported, `gas_detector_presence` 0. Lineage 559 across
+2 commit timestamps (23C and this run). Audit +1 (`service_role:asset_import`, now 2 in total).
+Hierarchy unchanged (157 Stations / 188 Units); compressors, dispensers and installed SRVs
+untouched. Replay blocked: preview now `e3b0c442…` with 0 eligible.
