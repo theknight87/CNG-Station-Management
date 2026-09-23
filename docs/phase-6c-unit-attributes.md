@@ -133,3 +133,13 @@ Measured against the rule "one Unit = X; several = X 1, X 2, …": East 42/42 fo
 1 one-Unit Station has a Unit named otherwise (e.g. الهرم → Unit "الهرم 1"), and 6 two-Unit Stations are named "X" and "X 2"
 instead of "X 1" and "X 2". Delta: all 74 one-Unit Stations have address-style Unit names. **81 Units could be renamed**
 to the rule, with the old name kept in provenance. Not done; it needs an owner decision.
+
+## 6c-2 committed (2026-09-23)
+
+Owner approval: "Approve 6c-2 45ff448e…ca1d3985a, 76 rows". Guard re-ran the preview and matched. Commit ran **once**:
+1 Unit created (بيلا / كفر الشيخ, under its own Station), 76 Units updated, 76 rows linked.
+
+Reconciliation, all zero-defect: Units 188 → 189, Stations 157; 183 Units now carry workbook values (107 + 76), each linked
+from exactly one row; 0 wrong Region; 0 rows linked outside their Station; 0 stored values differing from the source text;
+0 Station values. فويل اب الدائرى 1 = OPEN, 3 dispensers; 2 = OPEN, no dispenser count (as in the source). One audit row.
+Replay blocked (0 rows left). Still held: 134 = Z 123 + N1 11 (both wait for the review workbook).
