@@ -60,28 +60,28 @@ export function SignInPage() {
   }
 
   return (
-    <main className="min-h-dvh overflow-x-hidden bg-slate-100 lg:fixed lg:inset-0 lg:grid lg:min-h-0 lg:grid-cols-[minmax(21rem,0.9fr)_minmax(32rem,1.1fr)] lg:overflow-hidden">
-      <section className="relative hidden min-h-0 overflow-hidden bg-brand-deep px-12 py-6 text-brand-deep-fg lg:flex lg:h-full lg:flex-col" aria-label="CNG Station Management">
+    <main className="min-h-dvh overflow-x-hidden bg-slate-100 lg:grid lg:grid-cols-[minmax(18rem,0.9fr)_minmax(28rem,1.1fr)]">
+      <section className="relative hidden min-h-0 overflow-hidden bg-brand-deep px-10 py-5 text-brand-deep-fg lg:flex lg:min-h-dvh lg:flex-col" aria-label="CNG Station Management">
         <div className="absolute inset-x-0 top-0 h-1 bg-brand-yellow" aria-hidden="true" />
         <div className="absolute -bottom-36 -right-36 h-96 w-96 rounded-full border border-white/10" aria-hidden="true" />
         <div className="absolute -bottom-20 -right-20 h-64 w-64 rounded-full border border-brand-yellow/20" aria-hidden="true" />
 
         <div className="relative flex items-center gap-5">
-          <div className="flex h-28 w-24 shrink-0 items-center justify-center bg-white p-2 shadow-xl shadow-black/15">
-            <BrandMark variant="full" className="h-24 w-auto" />
+          <div className="flex h-20 w-[4.5rem] shrink-0 items-center justify-center bg-white p-2 shadow-xl shadow-black/15">
+            <BrandMark variant="full" className="h-16 w-auto" />
           </div>
           <div>
-            <p className="text-xl font-semibold tracking-tight">CNG Station Management</p>
-            <p className="text-sm text-white/65">Cargas NGV Operations</p>
+            <p className="text-lg font-semibold tracking-tight">CNG Station Management</p>
+            <p className="text-xs text-white/65">Cargas NGV Operations</p>
           </div>
         </div>
 
-        <div className="relative my-auto max-w-lg py-12">
+        <div className="relative my-auto max-w-md py-8">
           <p className="mb-4 text-xs font-semibold uppercase tracking-[0.2em] text-brand-yellow">Operations portal</p>
-          <h1 className="text-4xl font-semibold leading-tight tracking-tight">One secure view of every station and asset.</h1>
-          <p className="mt-5 max-w-md text-base leading-7 text-white/70">Monitor inspections, calibration dates and operational readiness across the Regions assigned to you.</p>
+          <h1 className="text-3xl font-semibold leading-tight tracking-tight">One secure view of every station and asset.</h1>
+          <p className="mt-4 max-w-md text-sm leading-6 text-white/70">Monitor inspections, calibration dates and operational readiness across the Regions assigned to you.</p>
 
-          <ul className="mt-7 space-y-3 text-sm text-white/85">
+          <ul className="mt-5 space-y-2.5 text-sm text-white/85">
             <li className="flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-brand-yellow" aria-hidden="true" />Live operational records</li>
             <li className="flex items-center gap-3"><ShieldCheck className="h-5 w-5 text-brand-yellow" aria-hidden="true" />Role and Region controlled access</li>
             <li className="flex items-center gap-3"><LockKeyhole className="h-5 w-5 text-brand-yellow" aria-hidden="true" />Protected company information</li>
@@ -90,41 +90,41 @@ export function SignInPage() {
 
       </section>
 
-      <section className="flex min-h-dvh items-center justify-center px-5 py-8 sm:px-10 lg:h-full lg:min-h-0 lg:px-16 lg:py-6" aria-labelledby="sign-in-title">
-        <div className="w-full max-w-md">
-          <div className="mb-8 flex flex-col items-center text-center lg:hidden">
-            <BrandMark variant="full" className="h-32 w-auto" />
+      <section className="flex min-h-dvh items-center justify-center px-4 py-6 sm:px-8 lg:px-12" aria-labelledby="sign-in-title">
+        <div className="w-full max-w-sm">
+          <div className="mb-6 flex flex-col items-center text-center lg:hidden">
+            <BrandMark variant="full" className="h-24 w-auto" />
             <p className="mt-3 text-lg font-semibold tracking-tight">CNG Station Management</p>
             <p className="text-sm text-muted-foreground">Cargas NGV Operations</p>
           </div>
 
-          <div className="border border-slate-200 bg-white p-6 shadow-[0_18px_55px_-30px_rgba(15,23,42,0.35)] sm:p-8">
-            <div className="mb-7">
+          <div className="border border-slate-200 bg-white p-5 shadow-[0_18px_55px_-30px_rgba(15,23,42,0.35)] sm:p-6">
+            <div className="mb-5">
               <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-brand-strong">Secure access</p>
-              <h2 id="sign-in-title" className="text-3xl font-semibold tracking-tight text-slate-950">Welcome back</h2>
+              <h2 id="sign-in-title" className="text-2xl font-semibold tracking-tight text-slate-950">Welcome back</h2>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">Sign in with your approved company account to continue.</p>
             </div>
 
-            <form className="space-y-5" onSubmit={submit}>
+            <form className="space-y-4" onSubmit={submit}>
               <label className="block text-sm font-semibold text-slate-800" htmlFor="sign-in-email">Email address</label>
-              <input id="sign-in-email" name="sign-in-email" className="-mt-3 h-12 w-full rounded-md border border-slate-300 bg-white px-3.5 text-base shadow-sm transition-colors placeholder:text-slate-400 hover:border-slate-400 focus:border-brand-strong" type="email" inputMode="email" autoComplete="email" placeholder="name@company.com" required value={email} onChange={(e) => setEmail(e.target.value)} />
+              <input id="sign-in-email" name="sign-in-email" className="-mt-2.5 h-10 w-full rounded-md border border-slate-300 bg-white px-3.5 text-base shadow-sm transition-colors placeholder:text-slate-400 hover:border-slate-400 focus:border-brand-strong" type="email" inputMode="email" autoComplete="email" placeholder="name@company.com" required value={email} onChange={(e) => setEmail(e.target.value)} />
 
               <label className="block text-sm font-semibold text-slate-800" htmlFor="sign-in-password">Password</label>
-              <input id="sign-in-password" name="sign-in-password" className="-mt-3 h-12 w-full rounded-md border border-slate-300 bg-white px-3.5 text-base shadow-sm transition-colors placeholder:text-slate-400 hover:border-slate-400 focus:border-brand-strong" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+              <input id="sign-in-password" name="sign-in-password" className="-mt-2.5 h-10 w-full rounded-md border border-slate-300 bg-white px-3.5 text-base shadow-sm transition-colors placeholder:text-slate-400 hover:border-slate-400 focus:border-brand-strong" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
               <p className="-mt-2 text-right text-sm"><Link className="font-semibold text-brand-strong underline decoration-brand/35 underline-offset-4 hover:text-brand-deep" to="/forgot-password">Forgot password?</Link></p>
 
               {error ? <p role="alert" className="border-l-2 border-destructive bg-red-50 px-3 py-2 text-sm text-destructive">{error}</p> : null}
-              <Button className="h-12 w-full bg-brand-strong text-base font-semibold text-brand-strong-fg hover:bg-brand-deep" type="submit" disabled={busy || authLoading}>{busy ? 'Signing in…' : 'Sign in'}</Button>
+              <Button className="h-10 w-full bg-brand-strong text-sm font-semibold text-brand-strong-fg hover:bg-brand-deep" type="submit" disabled={busy || authLoading}>{busy ? 'Signing in…' : 'Sign in'}</Button>
             </form>
 
-            <div className="mt-5 space-y-5">
+            <div className="mt-4 space-y-4">
               <div className="flex items-center gap-3 text-xs text-muted-foreground"><div className="h-px flex-1 bg-border" /><span>or</span><div className="h-px flex-1 bg-border" /></div>
-              <Button className="h-12 w-full gap-2 text-base" type="button" variant="outline" disabled={busy || authLoading} onClick={() => void signInWithGoogle()}>
+              <Button className="h-10 w-full gap-2 text-sm" type="button" variant="outline" disabled={busy || authLoading} onClick={() => void signInWithGoogle()}>
                 <GoogleIcon />Sign in with Google
               </Button>
             </div>
 
-            <p className="mt-7 text-center text-sm text-muted-foreground">Need an account? <Link className="font-semibold text-brand-strong underline decoration-brand/35 underline-offset-4 hover:text-brand-deep" to="/sign-up">Request access</Link></p>
+            <p className="mt-5 text-center text-sm text-muted-foreground">Need an account? <Link className="font-semibold text-brand-strong underline decoration-brand/35 underline-offset-4 hover:text-brand-deep" to="/sign-up">Request access</Link></p>
           </div>
 
           <p className="mt-5 flex items-center justify-center gap-2 text-center text-xs text-slate-500"><LockKeyhole className="h-3.5 w-3.5" aria-hidden="true" />Your session is encrypted and access controlled.</p>

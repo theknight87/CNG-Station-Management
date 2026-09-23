@@ -160,3 +160,10 @@ Owner: "yes import compressors and rename the units". Migration `20260923210000_
 and new name. Earlier estimate of 81 counted differently; the exact figure is 79 + 1 left over:
 **West Station "الدولفن" has Units "الدولفين 1…4"**. The Station and its Units are spelled differently (ين vs ن), so it is
 not renamed; the owner decides which spelling is right.
+
+## 6d committed (2026-09-23)
+
+Owner approval "Approve 6d 2dcdae0c…4ade0f9, 183 compressors". Guard matched; commit ran once: 183 compressors created,
+one per Unit, 0 on the wrong Unit/Station/Region, all `resolved`, 0 invented serial/manufacturer/job number, model stored
+exactly as written. بيلا / كفر الشيخ: GALLILEO, 1694 running hours. One audit row. Replay blocked (0 left).
+6e (Unit names) is still awaiting its own approval.
