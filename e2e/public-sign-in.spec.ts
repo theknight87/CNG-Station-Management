@@ -59,7 +59,9 @@ test('sign in has an identifiable, keyboard-accessible form without overflow', a
     await expect(requestAccess).toBeFocused()
   }
 
-  test.skip(!baseURL || !isLocalPreview(baseURL), 'Invalid-credential coverage is restricted to the local preview.')
+  // Keep the public form assertions counted on hosted deployments. Only the
+  // simulated invalid-password request belongs to the isolated local preview.
+  if (!baseURL || !isLocalPreview(baseURL)) return
   await email.fill('e2e-invalid@example.test')
   await password.fill('not-a-real-password')
   await page.getByRole('button', { name: /^sign in$/i }).click()
