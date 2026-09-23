@@ -174,3 +174,15 @@ files (everything deployed), then the upgrade applies this migration, and all th
 - Timings as admin with RLS on: alert inbox **347.5 ms -> 38–62 ms**, audit log **98.5 ms -> 0.7–3.5 ms**.
 - 0 rows changed (the write counter was 25,097 before and after). Non-admin roles are covered by `rls_initplan_perf.sql`
   (25/25), because production has no non-admin test accounts.
+
+## Known production-only bootstrap migration (owner decision 2026-09-23)
+
+`20260920204210 bootstrap_initial_admin` is a **known, intentional, production-only** migration. It was a one-off step that
+bootstrapped the first production admin account during the Supabase Auth cutover. It is deliberately left untouched:
+- no repository file is recreated
+- the migration history is not repaired
+- the initial admin account is not modified
+
+The rebuild requirement is **schema and permission equivalence** with production, which the gate verifies. It is not a
+reproduction of how the initial admin was created. A clean rebuild creates its own first admin as part of environment setup.
+Any hosted-vs-repository migration comparison should expect exactly this one extra hosted record.
