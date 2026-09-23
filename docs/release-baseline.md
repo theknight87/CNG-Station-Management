@@ -366,3 +366,24 @@ the environment:
 
 **Still NOT covered:** manager, engineer, viewer and inactive roles in the browser. The suite uses one admin account only.
 Multi-role browser authorization remains an open Phase 2 item, covered today only by the SQL suites.
+
+## Phase 2 / 5 / 6 follow-up (2026-09-23)
+
+- **Phase 6b:** 280 assets imported and reconciled (docs/asset-import.md). The temporary
+  `/admin/station-batch` route and nav link were removed again; the guarded section, hook and tests stay.
+- **Phase 6c:** ruling packet written (docs/phase-6c-unit-attributes.md). Nothing written to production.
+- **Phase 2:** `e2e/role-access.spec.ts` covers viewer, station engineer, regional manager and inactive
+  accounts, read-only. Each role skips until its own `E2E_<ROLE>_EMAIL/PASSWORD` are supplied, so the
+  multi-role item stays **open until those accounts exist and the spec passes**.
+- **Phase 5:**
+  - Password reset built (`/forgot-password`, `/reset-password`, RESET-1..6). Owner must add the redirect URL
+    (docs/authentication.md).
+  - CI: `.github/workflows/verify.yml` runs `scripts/verify-all.sh` against a fresh PostgreSQL on every push,
+    plus `npm audit --omit=dev --audit-level=high`.
+  - Runbook: docs/operations-runbook.md (manual dumps, since the Free plan has no backups; restore; health
+    checks; monitoring).
+  - **Advisory triage — uuid < 11.1.1 via exceljs (2 moderate): accepted, not exploitable.** The flaw needs
+    `v3/v5/v6` called with a `buf` argument. exceljs only calls `v4()` without one, and exceljs runs only in
+    the operator import reader (`src/import/readers/workbook.ts`), not in the browser bundle. The offered
+    `npm audit fix --force` would downgrade exceljs to 3.4.0, which is worse. Revisit when exceljs updates.
+- Frontend tests 647 → **653** (+6 RESET).

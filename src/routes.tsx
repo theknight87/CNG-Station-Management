@@ -6,6 +6,7 @@ import { AppLayout } from '@/components/layout/AppLayout'
 import { AuthGate } from '@/features/auth/AuthGate'
 import { SignInPage } from '@/features/auth/SignInPage'
 import { SignUpPage } from '@/features/auth/SignUpPage'
+import { ForgotPasswordPage, ResetPasswordPage } from '@/features/auth/PasswordResetPages'
 
 // Keep the authentication shell eager, then split every authenticated workspace
 // by route. A signed-out visit no longer downloads admin, reports, registry,
@@ -62,6 +63,8 @@ const VesselsManagementPage = lazy(() => import('@/pages/VesselsManagementPage')
 export const router = createBrowserRouter([
   { path: '/sign-in/*', element: <SignInPage /> },
   { path: '/sign-up/*', element: <SignUpPage /> },
+  { path: '/forgot-password', element: <ForgotPasswordPage /> },
+  { path: '/reset-password', element: <ResetPasswordPage /> },
   {
     path: '/',
     element: (

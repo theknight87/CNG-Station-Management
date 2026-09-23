@@ -22,7 +22,7 @@ history: [`authentication-clerk-history.md`](./authentication-clerk-history.md)
 | Sign in | `/sign-in`: email + password (`signInWithPassword`); optional **Google** (`signInWithOAuth`) only when `VITE_ENABLE_GOOGLE_AUTH=true` |
 | Sign up | `/sign-up`: `signUp` with `emailRedirectTo = <origin>/dashboard` |
 | Sign out | account control in the header |
-| Password reset | **not implemented**: there is no `resetPasswordForEmail` flow in the app (open item, §6) |
+| Password reset | `/forgot-password` sends `resetPasswordForEmail` (same reply whether or not the account exists); `/reset-password` sets the new password (min 8) from the recovery session |
 
 No service-role key, JWT secret or Auth admin credential exists anywhere in the frontend or the repository.
 
@@ -86,10 +86,9 @@ Supabase dashboard (Authentication), which the owner maintains:
 
 ## 6. Open items
 
-1. **Leaked-password protection is off.** Owner action in the dashboard.
-2. **No password-reset flow in the app.** Users cannot reset a forgotten password themselves.
-   An admin can remove the user and have them sign up again, but that loses their app_users identity (a
-   new row). A reset page (`resetPasswordForEmail` plus a `/reset-password` route handling
-   `PASSWORD_RECOVERY`) is a recommended follow-up.
+1. **Leaked-password protection is off.** It needs the Pro plan; the owner accepted this and set an 8-character minimum with complexity.
+2. **Password reset is built (Phase 5)** but needs one owner setting: Dashboard → Authentication → URL
+   Configuration → add `https://cng-station-management.pages.dev/reset-password` to Redirect URLs. Without it
+   Supabase sends users to the Site URL instead. Not yet live-verified (needs a real reset email).
 3. **Signed-in browser verification from the build environment** needs the environment's network policy to allow
    `ypkggegquetvpsflkaxg.supabase.co` and `cng-station-management.pages.dev`.

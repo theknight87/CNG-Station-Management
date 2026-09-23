@@ -100,6 +100,7 @@ export function SignInPage() {
 
               <label className="block text-sm font-semibold text-slate-800" htmlFor="sign-in-password">Password</label>
               <input id="sign-in-password" name="sign-in-password" className="-mt-3 h-12 w-full rounded-md border border-slate-300 bg-white px-3.5 text-base shadow-sm transition-colors placeholder:text-slate-400 hover:border-slate-400 focus:border-brand-strong" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+              <p className="-mt-2 text-right text-sm"><Link className="font-semibold text-brand-strong underline decoration-brand/35 underline-offset-4 hover:text-brand-deep" to="/forgot-password">Forgot password?</Link></p>
 
               {error ? <p role="alert" className="border-l-2 border-destructive bg-red-50 px-3 py-2 text-sm text-destructive">{error}</p> : null}
               <Button className="h-12 w-full bg-brand-strong text-base font-semibold text-brand-strong-fg hover:bg-brand-deep" type="submit" disabled={busy || authLoading}>{busy ? 'Signing in…' : 'Sign in'}</Button>
