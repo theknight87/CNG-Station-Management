@@ -8,8 +8,10 @@ import { Button } from '@/components/ui/button'
 import { Fact } from '@/features/hierarchy/HierarchyPieces'
 import { DueBadge, PrecisionDate, PressureRange, Serial, SourceStatus, Text } from '@/features/units/assetDisplay'
 import { Metric } from '@/features/relief-valves/SrvPieces'
+import { SmartFilterBar } from '@/features/relief-valves/SrvPieces'
 import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
 import {
+  hasSmartFilters,
   DEFAULT_WAREHOUSE_QUERY, useWarehouseSrvs,
   type WarehouseQuery, type WarehouseSrvRow, type WarehouseSort,
 } from '@/features/relief-valves/useSrvManagement'
@@ -127,7 +129,7 @@ export function WarehouseSrvSection() {
   }, [])
 
   const clearFilters = useCallback(() => setQuery(DEFAULT_WAREHOUSE_QUERY), [])
-  const hasFilters = Boolean(query.search.trim()) || query.availability !== null || query.due !== 'all'
+  const hasFilters = Boolean(query.search.trim()) || query.availability !== null || query.due !== 'all' || hasSmartFilters(query.filters)
 
   const rows = state.status === 'ready' ? state.data.rows : []
   const total = state.status === 'ready' ? state.data.total : null
@@ -203,6 +205,7 @@ export function WarehouseSrvSection() {
           </Button>
         ) : null}
       </DataToolbar>
+      <SmartFilterBar id="warehouse-srv" stationLabel="Destination Station" value={query.filters} onChange={(filters) => update({ filters })} />
 
       <RegistryTable
         label="Warehouse relief valves"

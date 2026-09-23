@@ -74,6 +74,9 @@ export interface InstalledSrvRow {
   source_file: string | null
   source_sheet: string | null
   source_row: number | null
+  /** Recorded code, else the code of the single warehouse record with the same serial. */
+  warehouse_code: string | null
+  warehouse_code_source: 'recorded' | 'serial_match' | null
 }
 
 export interface WarehouseSrvRow {
@@ -121,7 +124,7 @@ const INSTALLED_COLUMNS =
   'set_pressure_raw, pressure_min, pressure_max, pressure_unit, last_calibration_date, ' +
   'last_calibration_precision, last_calibration_display, next_calibration_date, ' +
   'next_calibration_precision, next_calibration_display, days_left, due_status, source_status_raw, ' +
-  'needs_review, notes, source_file, source_sheet, source_row'
+  'needs_review, notes, source_file, source_sheet, source_row, warehouse_code, warehouse_code_source'
 
 const WAREHOUSE_COLUMNS =
   'id, availability_status, warehouse_code, serial_number, serial_number_raw, serial_status, part_number, ' +
@@ -131,6 +134,37 @@ const WAREHOUSE_COLUMNS =
   'last_calibration_display, next_calibration_date, next_calibration_precision, ' +
   'next_calibration_display, days_left, due_status, calibration_location, source_status_raw, ' +
   'needs_review, notes'
+
+/**
+ * Dedicated filters (owner request): each narrows ONE column, independently of the
+ * free-text search, and they combine with AND. Set pressure matches valves whose
+ * recorded range contains the value (pressure_min <= v <= pressure_max) in the chosen unit.
+ */
+export interface SrvSmartFilters {
+  serial: string
+  station: string
+  size: string
+  pressure: string
+  pressureUnit: '' | 'BAR' | 'PSI'
+}
+export const EMPTY_SMART_FILTERS: SrvSmartFilters = { serial: '', station: '', size: '', pressure: '', pressureUnit: '' }
+
+export function hasSmartFilters(f: SrvSmartFilters): boolean {
+  return Boolean(f.serial.trim() || f.station.trim() || f.size.trim() || f.pressure.trim() || f.pressureUnit)
+}
+
+/** Applies the dedicated filters to a PostgREST builder. `stationColumn` differs per dataset. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function applySmartFilters<B extends { ilike: any; lte: any; gte: any; eq: any }>(b: B, f: SrvSmartFilters, stationColumn: string): B {
+  const clean = (v: string) => v.trim().replace(/[%*,()]/g, ' ').trim()
+  if (clean(f.serial)) b = b.ilike('serial_number', `%${clean(f.serial)}%`)
+  if (clean(f.station)) b = b.ilike(stationColumn, `%${clean(f.station)}%`)
+  if (clean(f.size)) b = b.ilike('inlet_size', `%${clean(f.size)}%`)
+  const v = Number(f.pressure.trim())
+  if (f.pressure.trim() && Number.isFinite(v)) b = b.lte('pressure_min', v).gte('pressure_max', v)
+  if (f.pressureUnit) b = b.eq('pressure_unit', f.pressureUnit)
+  return b
+}
 
 export type MappingFilter = 'all' | 'resolved' | 'needs_equipment_mapping' | 'needs_unit_mapping' | 'needs_station_mapping' | 'conflict'
 /** 'attention' is overdue OR any due bucket — stated, never left ambiguous. */
@@ -143,6 +177,7 @@ export interface InstalledQuery {
   mapping: MappingFilter
   due: DueFilter
   parentKind: 'all' | 'compressor' | 'storage_vessel' | 'dispenser'
+  filters: SrvSmartFilters
   sort: InstalledSort
   direction: 'asc' | 'desc'
   page: number
@@ -150,7 +185,7 @@ export interface InstalledQuery {
 }
 
 export const DEFAULT_INSTALLED_QUERY: InstalledQuery = {
-  search: '', regionId: null, mapping: 'all', due: 'all', parentKind: 'all',
+  search: '', regionId: null, mapping: 'all', due: 'all', parentKind: 'all', filters: EMPTY_SMART_FILTERS,
   sort: 'next_due', direction: 'asc', page: 0, pageSize: 50,
 }
 
@@ -207,6 +242,7 @@ export function useInstalledSrvs(query: InstalledQuery): {
         if (q.due === 'overdue') b = b.eq('due_status', 'overdue')
         if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
         if (q.due === 'attention') b = b.in('due_status', ATTENTION_BUCKETS)
+        b = applySmartFilters(b, q.filters, 'station_display')
         if (term) {
           // Retrieval, never resolution: matching a station name here does not
           // map anything. The folded form is offered too so an Arabic query
@@ -243,7 +279,7 @@ export function useInstalledSrvs(query: InstalledQuery): {
       const rows = (data ?? []) as unknown as InstalledSrvRow[]
       const total = count ?? 0
       let filtered = false
-      const hasFilters = Boolean(term || q.regionId || q.mapping !== 'all' || q.due !== 'all' || q.parentKind !== 'all')
+      const hasFilters = Boolean(term || q.regionId || q.mapping !== 'all' || q.due !== 'all' || q.parentKind !== 'all' || hasSmartFilters(q.filters))
       if (total === 0 && hasFilters) {
         const { count: unfiltered } = await supabase!
           .from('v_installed_srv_management')
@@ -269,6 +305,7 @@ export interface WarehouseQuery {
   search: string
   availability: string | null
   due: DueFilter
+  filters: SrvSmartFilters
   sort: WarehouseSort
   direction: 'asc' | 'desc'
   page: number
@@ -276,7 +313,7 @@ export interface WarehouseQuery {
 }
 
 export const DEFAULT_WAREHOUSE_QUERY: WarehouseQuery = {
-  search: '', availability: null, due: 'all', sort: 'serial', direction: 'asc', page: 0, pageSize: 50,
+  search: '', availability: null, due: 'all', filters: EMPTY_SMART_FILTERS, sort: 'serial', direction: 'asc', page: 0, pageSize: 50,
 }
 
 const WAREHOUSE_SORT: Record<WarehouseSort, string[]> = {
@@ -322,6 +359,7 @@ export function useWarehouseSrvs(query: WarehouseQuery): {
       if (q.due === 'overdue') b = b.eq('due_status', 'overdue')
       if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
       if (q.due === 'attention') b = b.in('due_status', ATTENTION_BUCKETS)
+      b = applySmartFilters(b, q.filters, 'target_station_name')
       if (term) {
         const raw = term.replace(/[,()]/g, ' ')
         b = b.or(
@@ -347,7 +385,7 @@ export function useWarehouseSrvs(query: WarehouseQuery): {
       const rows = (data ?? []) as unknown as WarehouseSrvRow[]
       const total = count ?? 0
       let filtered = false
-      const hasFilters = Boolean(term || q.availability || q.due !== 'all')
+      const hasFilters = Boolean(term || q.availability || q.due !== 'all' || hasSmartFilters(q.filters))
       if (total === 0 && hasFilters) {
         const { count: unfiltered } = await supabase!
           .from('v_warehouse_srv_management')

@@ -8,9 +8,10 @@ import { Button } from '@/components/ui/button'
 import { Fact } from '@/features/hierarchy/HierarchyPieces'
 import { useRegions } from '@/features/hierarchy/useHierarchy'
 import { DueBadge, PrecisionDate, PressureRange, Serial, SourceStatus, Text } from '@/features/units/assetDisplay'
-import { HierarchyCell, MappingBadge, Metric, ParentCell, SourceContext } from '@/features/relief-valves/SrvPieces'
+import { SmartFilterBar, HierarchyCell, MappingBadge, Metric, ParentCell, SourceContext } from '@/features/relief-valves/SrvPieces'
 import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
 import {
+  hasSmartFilters,
   DEFAULT_INSTALLED_QUERY, useInstalledSrvs, useInstalledSummary,
   type InstalledQuery, type InstalledSrvRow, type InstalledSort,
 } from '@/features/relief-valves/useSrvManagement'
@@ -58,7 +59,7 @@ const COLUMNS: RegistryColumn<InstalledSrvRow>[] = [
     key: 'last_calibration', header: 'Last calibration',
     render: (r) => <PrecisionDate display={r.last_calibration_display} precision={r.last_calibration_precision} />,
   },
-  { key: 'warehouse', header: 'Warehouse code', render: () => <span className="text-muted-foreground">Not applicable</span> },
+  { key: 'warehouse', header: 'Warehouse code', render: (r) => <WarehouseCode row={r} /> },
   { key: 'station', header: 'Station', sort: 'station', render: (r) => <HierarchyCell row={r} /> },
   {
     key: 'unit', header: 'Unit', sort: 'unit',
@@ -85,6 +86,19 @@ const COLUMNS: RegistryColumn<InstalledSrvRow>[] = [
     render: (r) => (r.days_left === null ? <NullValue /> : <span>{r.days_left.toLocaleString()}</span>),
   },
 ]
+
+/** A recorded code, or the code of the single warehouse record with the same serial, labelled as such. */
+function WarehouseCode({ row }: { row: InstalledSrvRow }) {
+  if (!row.warehouse_code) return <NullValue />
+  return (
+    <span className="inline-flex items-center gap-1 whitespace-nowrap">
+      <Identifier value={row.warehouse_code} />
+      {row.warehouse_code_source === 'serial_match' ? (
+        <span className="text-[0.7rem] text-muted-foreground" title="Found by matching the serial to exactly one warehouse record">by serial</span>
+      ) : null}
+    </span>
+  )
+}
 
 function ValveSize({ type, inlet, outlet }: { type: string | null; inlet: string | null; outlet: string | null }) {
   const prefix = type?.toLowerCase() === 'male' ? 'M' : type?.toLowerCase() === 'female' ? 'F' : type
@@ -116,7 +130,7 @@ export function InstalledSrvSection() {
   const clearFilters = useCallback(() => setQuery(DEFAULT_INSTALLED_QUERY), [])
   const hasFilters =
     Boolean(query.search.trim()) || query.regionId !== null || query.mapping !== 'all' ||
-    query.due !== 'all' || query.parentKind !== 'all'
+    query.due !== 'all' || query.parentKind !== 'all' || hasSmartFilters(query.filters)
 
   const total = state.status === 'ready' ? state.data.total : null
 
@@ -252,6 +266,7 @@ export function InstalledSrvSection() {
           </Button>
         ) : null}
       </DataToolbar>
+      <SmartFilterBar id="installed-srv" stationLabel="Station" value={query.filters} onChange={(filters) => update({ filters })} />
 
       <RegistryTable
         label="Installed relief valves"
@@ -276,6 +291,7 @@ export function InstalledSrvSection() {
               {r.serial_number_raw ? <Identifier value={r.serial_number_raw} /> : <NullValue />}
             </Fact>
             <Fact label="Part number">{r.part_number ? <Identifier value={r.part_number} /> : <NullValue />}</Fact>
+            <Fact label="Warehouse code"><WarehouseCode row={r} /></Fact>
             <Fact label="Tag number">{r.tag_number ? <Identifier value={r.tag_number} /> : <NullValue />}</Fact>
             <Fact label="Manufacturer"><Text value={r.manufacturer} /></Fact>
             <Fact label="Size type"><Text value={r.size_type} /></Fact>

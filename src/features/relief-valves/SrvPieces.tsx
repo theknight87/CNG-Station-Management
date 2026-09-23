@@ -4,7 +4,7 @@ import { StatusBadge } from '@/components/data/StatusBadge'
 import { Identifier } from '@/components/data/TechnicalText'
 import { NullValue } from '@/components/data/NullValue'
 import { cn } from '@/lib/utils'
-import type { InstalledSrvRow } from '@/features/relief-valves/useSrvManagement'
+import type { InstalledSrvRow, SrvSmartFilters } from '@/features/relief-valves/useSrvManagement'
 
 /**
  * Presentation shared by the installed and warehouse tables. The technical
@@ -145,6 +145,56 @@ export function Metric({
         {value}
       </div>
       {hint ? <div className="text-xs text-muted-foreground">{hint}</div> : null}
+    </div>
+  )
+}
+
+/**
+ * The dedicated SRV filters: serial, Station, size and set pressure. Each input
+ * narrows one column server-side; they combine with each other and with search.
+ */
+export function SmartFilterBar({ id, value, onChange, stationLabel = 'Station' }: {
+  id: string
+  value: SrvSmartFilters
+  onChange: (next: SrvSmartFilters) => void
+  stationLabel?: string
+}) {
+  const set = (patch: Partial<SrvSmartFilters>) => onChange({ ...value, ...patch })
+  const input = 'h-7 rounded border bg-background px-2 text-sm placeholder:text-muted-foreground'
+  return (
+    <div role="group" aria-label="Filter by serial, station, size and set pressure" className="flex flex-wrap items-end gap-2">
+      <label className="flex flex-col gap-0.5 text-xs text-muted-foreground" htmlFor={`${id}-serial`}>
+        Serial
+        <input id={`${id}-serial`} className={cn(input, 'w-32 font-technical')} value={value.serial} placeholder="contains…"
+               onChange={(e) => set({ serial: e.target.value })} />
+      </label>
+      <label className="flex flex-col gap-0.5 text-xs text-muted-foreground" htmlFor={`${id}-station`}>
+        {stationLabel}
+        <input id={`${id}-station`} dir="auto" className={cn(input, 'w-40')} value={value.station} placeholder="name contains…"
+               onChange={(e) => set({ station: e.target.value })} />
+      </label>
+      <label className="flex flex-col gap-0.5 text-xs text-muted-foreground" htmlFor={`${id}-size`}>
+        Inlet size
+        <input id={`${id}-size`} list={`${id}-sizes`} className={cn(input, 'w-24 font-technical')} value={value.size} placeholder='e.g. 1/2"'
+               onChange={(e) => set({ size: e.target.value })} />
+        <datalist id={`${id}-sizes`}>
+          {['1/4"', '1/2"', '3/4"', '7/8"', '1"'].map((s) => <option key={s} value={s} />)}
+        </datalist>
+      </label>
+      <label className="flex flex-col gap-0.5 text-xs text-muted-foreground" htmlFor={`${id}-pressure`}>
+        Set pressure
+        <input id={`${id}-pressure`} inputMode="decimal" className={cn(input, 'w-24 text-right tabular')} value={value.pressure}
+               placeholder="value" onChange={(e) => set({ pressure: e.target.value.replace(/[^\d.]/g, '') })} />
+      </label>
+      <label className="flex flex-col gap-0.5 text-xs text-muted-foreground" htmlFor={`${id}-unit`}>
+        Unit
+        <select id={`${id}-unit`} className={cn(input, 'px-1.5 text-foreground')} value={value.pressureUnit}
+                onChange={(e) => set({ pressureUnit: e.target.value as SrvSmartFilters['pressureUnit'] })}>
+          <option value="">Any</option>
+          <option value="BAR">BAR</option>
+          <option value="PSI">PSI</option>
+        </select>
+      </label>
     </div>
   )
 }

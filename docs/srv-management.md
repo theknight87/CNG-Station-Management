@@ -489,3 +489,19 @@ decisions 281, audit 285, aliases 0.
   (empty), so the approved token fails closed. `v_warehouse_srv_management` returns 2,188 rows.
 - Still pending: owner browser check of `/manage/srvs/warehouse`, and mapping the 1,774 raw Station names, which needs its own
   separately approved decision.
+
+## Warehouse code on installed SRVs and dedicated filters (2026-09-23)
+
+Owner request: warehouse code for every SRV, shown in the table; smarter filters (set pressure, size, Station, serial).
+
+- **Warehouse stock** already had `warehouse_code` from the source (2,188 / 2,188) and already showed it.
+- **Installed SRVs** have no code in any source file. Migration `20260923220000_installed_srv_warehouse_code.sql`
+  (deployed as `installed_srv_warehouse_code`) adds a nullable `installed_relief_valves.warehouse_code` for a code an
+  administrator records (0 today, nothing back-filled), and the view shows the code of the **single** warehouse
+  record with the same serial when there is exactly one (1,297 of 2,662 in production; a serial held by two
+  warehouse records gives nothing). `warehouse_code_source` is `recorded` or `serial_match`; the table labels the
+  second "by serial". View columns were appended only and `security_invoker` restated; 0 owner-rights views in
+  production; filtered page 7.6 ms as an authenticated admin. Suite `installed_srv_warehouse_code.sql`: 8 assertions.
+- **Dedicated filters** on both SRV tables: serial (contains), Station (installed: Station or source name; warehouse:
+  destination Station), inlet size, set pressure (matches valves whose recorded range contains the value) and unit
+  (BAR/PSI). Each filters one column server-side, under RLS, and combines with search and the other filters.

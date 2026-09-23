@@ -344,8 +344,10 @@ describe('Identifiers and technical values', () => {
   it('shows a pressure with its stored unit and never invents one', async () => {
     replies.installed = { data: [installed()], error: null, count: 1 }
     renderSrv()
-    expect(await screen.findByText('BAR')).toBeDefined()
-    expect(screen.queryByText('PSI')).toBeNull()
+    // Scoped to the table: BAR and PSI are also options of the set-pressure unit filter.
+    const table = await screen.findByRole('table')
+    expect(await within(table).findByText('BAR')).toBeDefined()
+    expect(within(table).queryByText('PSI')).toBeNull()
   })
 
   it('labels source Location as context, never as an equipment identity', async () => {
@@ -510,5 +512,44 @@ describe('Installed SRV attention summary (25J-B)', () => {
     renderSrv()
     expect(await screen.findByText(/attention summary could not be loaded/i)).toBeDefined()
     expect(calls.list.some((c) => c.startsWith('v_installed_srv_management.range:'))).toBe(true)
+  })
+})
+
+describe('smart filters and warehouse code', () => {
+  it('FILTER-1 serial, station, size and set pressure narrow the server query, one column each', async () => {
+    const { applySmartFilters } = await import('@/features/relief-valves/useSrvManagement')
+    const calls: Array<[string, string, unknown]> = []
+    const b = {
+      ilike(c: string, v: unknown) { calls.push(['ilike', c, v]); return b },
+      lte(c: string, v: unknown) { calls.push(['lte', c, v]); return b },
+      gte(c: string, v: unknown) { calls.push(['gte', c, v]); return b },
+      eq(c: string, v: unknown) { calls.push(['eq', c, v]); return b },
+    }
+    applySmartFilters(b, { serial: ' 0003,262 ', station: 'الهرم', size: '1/2"', pressure: '316', pressureUnit: 'BAR' }, 'station_display')
+    expect(calls).toEqual([
+      ['ilike', 'serial_number', '%0003 262%'],
+      ['ilike', 'station_display', '%الهرم%'],
+      ['ilike', 'inlet_size', '%1/2"%'],
+      ['lte', 'pressure_min', 316],
+      ['gte', 'pressure_max', 316],
+      ['eq', 'pressure_unit', 'BAR'],
+    ])
+  })
+
+  it('FILTER-2 empty filters add nothing', async () => {
+    const { applySmartFilters, EMPTY_SMART_FILTERS, hasSmartFilters } = await import('@/features/relief-valves/useSrvManagement')
+    const b = { ilike: vi.fn(), lte: vi.fn(), gte: vi.fn(), eq: vi.fn() }
+    applySmartFilters(b, EMPTY_SMART_FILTERS, 'station_display')
+    expect(b.ilike).not.toHaveBeenCalled()
+    expect(b.eq).not.toHaveBeenCalled()
+    expect(hasSmartFilters(EMPTY_SMART_FILTERS)).toBe(false)
+  })
+
+  it('WHCODE-1 a serial-matched warehouse code is shown and labelled as a lookup', async () => {
+    replies.installed = { data: [installed({ warehouse_code: 'acc 794', warehouse_code_source: 'serial_match' })], error: null, count: 1 }
+    renderSrv()
+    const table = await screen.findByRole('table')
+    expect(await within(table).findByText('acc 794')).toBeDefined()
+    expect(within(table).getByText('by serial')).toBeDefined()
   })
 })
