@@ -167,3 +167,11 @@ Owner approval "Approve 6d 2dcdae0c…4ade0f9, 183 compressors". Guard matched; 
 one per Unit, 0 on the wrong Unit/Station/Region, all `resolved`, 0 invented serial/manufacturer/job number, model stored
 exactly as written. بيلا / كفر الشيخ: GALLILEO, 1694 running hours. One audit row. Replay blocked (0 left).
 6e (Unit names) is still awaiting its own approval.
+
+## 6e committed and الدولفين corrected (2026-09-23)
+
+Owner approval "Approve 6e df490a28…c6a993627, 79 units". Guard matched; commit ran once: 79 Units renamed, 79 audit
+rows (old and new name each). Owner ruling on the leftover: the West Station "الدولفن" is spelled "الدولفين", like its
+Units; the Station name was corrected with one audit row (`service_role:owner_ruling`). After both: 0 Units left to
+rename, 0 Stations not following the naming rule, 0 one-Unit Stations whose Unit name differs from the Station.
+Counts unchanged: 157 Stations, 189 Units, 183 compressors.
