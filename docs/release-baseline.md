@@ -186,3 +186,36 @@ bootstrapped the first production admin account during the Supabase Auth cutover
 The rebuild requirement is **schema and permission equivalence** with production, which the gate verifies. It is not a
 reproduction of how the initial admin was created. A clean rebuild creates its own first admin as part of environment setup.
 Any hosted-vs-repository migration comparison should expect exactly this one extra hosted record.
+
+## Phase 1 — database safety and authorization (local; no production change)
+
+**Security Advisor (production, 2026-09-23):**
+- 14 × `authenticated_security_definer_function_executable`. Every one is an intended browser RPC that checks authority
+  internally: 11 through `cng_require_admin()` or the caller's own grant, and `cng_current_role` / `cng_has_region_grant` answer only
+  for the caller. None was revoked, because each has a live frontend caller.
+- 1 × **leaked-password protection disabled** (Supabase Auth). This is a dashboard setting and an owner action. It is not a migration.
+
+**14-function matrix:** it already exists as `rls_authorization.sql` workstream H. It covers:
+- anon, no app user, inactive, viewer, engineer, manager and admin callers against all 14 functions
+- identity helpers answering only for the caller
+- fail-closed batch commits
+
+**Removal (Phase 1.1):** 6 new assertions, `P1-REMOVE`. They check that:
+- a stale precondition is refused (40001)
+- a missing target is refused (42704)
+- a second removal of a tombstone is refused (42704)
+- refusals change no row and write no audit entry
+- an inactive pending user is removable, with exactly one audit row
+- that user's retained legacy subject then resolves to no identity, role or data
+
+The last-active-admin guard is **unreachable by construction**: the actor is always another active admin and
+self-removal is refused first. It remains as defence in depth.
+
+**Observation (no change made):** `cng_admin_remove_user` clears `auth_user_id` but **keeps a legacy `clerk_user_id`**
+on the tombstone. It grants nothing, because the row is inactive and removed, and the test above proves the subject resolves to nothing. It is
+recorded only because the constraint comment says tombstones "may clear both identities".
+
+Not done here: an end-to-end removal of a real Supabase Auth account needs a disposable staging account. It is not run against production.
+
+Gate: `verify-all.sh` exit 0. Schema 344, RLS **703** (was 697, +6), rls_initplan_perf 25, 68 migrations from zero,
+production-equivalent 68 with nothing pending.

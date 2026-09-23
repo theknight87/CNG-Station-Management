@@ -4721,6 +4721,51 @@ BEGIN
 END
 $workstream_h_remove$;
 
+-- Phase 1.1 — removal edge cases: stale precondition, missing target, repeat
+-- removal of a tombstone, and removal of an already-inactive (pending) user.
+DO $phase1_remove$
+DECLARE
+  v_pending uuid := 'a0000000-0000-0000-0000-00000000000f';
+  v_tomb    uuid := 'a0000000-0000-0000-0000-000000000010';
+  v_audit   integer;
+  v_row     text;
+BEGIN
+  SELECT count(*) INTO v_audit FROM audit_logs WHERE action = 'admin_action' AND entity_table = 'app_users';
+  SELECT to_jsonb(u)::text INTO v_row FROM app_users u WHERE id = v_pending;
+  PERFORM pg_temp.become('clerk_admin');
+  PERFORM pg_temp.ok(pg_temp.rejected_sqlstate(
+      format('SELECT cng_admin_remove_user(%L, %L)', v_pending, '2000-01-01 00:00:00+00'), '40001'),
+    'P1-REMOVE a stale expected_updated_at is refused');
+  PERFORM pg_temp.ok(pg_temp.rejected_sqlstate(
+      format('SELECT cng_admin_remove_user(%L, NULL)', gen_random_uuid()), '42704'),
+    'P1-REMOVE a target that does not exist is refused');
+  PERFORM pg_temp.ok(pg_temp.rejected_sqlstate(
+      format('SELECT cng_admin_remove_user(%L, NULL)', v_tomb), '42704'),
+    'P1-REMOVE an already-removed tombstone cannot be removed again');
+  RESET ROLE;
+  PERFORM pg_temp.ok((SELECT to_jsonb(u)::text FROM app_users u WHERE id = v_pending) = v_row
+                     AND (SELECT count(*) FROM audit_logs WHERE action = 'admin_action' AND entity_table = 'app_users') = v_audit,
+    'P1-REMOVE refused removals change no user row and write no audit row');
+
+  PERFORM pg_temp.become('clerk_admin');
+  PERFORM cng_admin_remove_user(v_pending, NULL);
+  RESET ROLE;
+  -- The removal clears auth_user_id only; a legacy clerk_user_id is retained on
+  -- the inactive tombstone (see docs/release-baseline.md). Access is what matters:
+  -- the retained subject must resolve to nothing.
+  PERFORM pg_temp.ok((SELECT NOT is_active AND removed_at IS NOT NULL
+                        AND auth_user_id IS NULL FROM app_users WHERE id = v_pending)
+                     AND (SELECT count(*) FROM audit_logs WHERE action = 'admin_action'
+                            AND entity_id = v_pending) = 1,
+    'P1-REMOVE an inactive pending user is removable to an inactive tombstone with one audit row');
+  PERFORM pg_temp.become('clerk_pending');
+  PERFORM pg_temp.ok(cng_current_app_user_id() IS NULL AND cng_current_role() IS NULL
+                     AND (SELECT count(*) FROM stations) = 0,
+    'P1-REMOVE a removed user''s retained legacy subject resolves to no identity, role or data');
+  RESET ROLE;
+END
+$phase1_remove$;
+
 DO $$ BEGIN RAISE EXCEPTION 'RLS_SUITE_ROLLBACK'; END $$;
 
 ROLLBACK;

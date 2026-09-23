@@ -62,7 +62,7 @@ run "report contract" npx tsx scripts/verify-report-contract.mjs "$DB"
 # runs but asserts nothing (a failed connection, a renamed file, a truncated
 # run) must FAIL rather than report a cheerful zero - that is precisely the
 # silent coverage loss this gate exists to stop.
-declare -A MIN=( [schema_scenarios]=344 [rls_authorization]=697 [rls_initplan_perf]=25 )
+declare -A MIN=( [schema_scenarios]=344 [rls_authorization]=703 [rls_initplan_perf]=25 )
 
 for suite in schema_scenarios rls_authorization rls_initplan_perf; do
   out="$(sudo -n -u postgres psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "supabase/tests/$suite.sql" 2>&1)"
