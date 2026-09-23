@@ -92,3 +92,74 @@ always aborts. Times are in ms (run 1, run 2, run 3). The cumulative `pg_stat_st
 `(SELECT cng_is_admin())` and `(SELECT cng_can_access_unmapped_srv())`. The standard Supabase RLS pattern evaluates them once per statement. These
 functions take no row argument, so the semantics are identical. It would be one forward migration replacing two policies, plus RLS
 suite assertions and a before/after EXPLAIN.
+
+## 0054 DEPLOYED (owner-approved 2026-09-23)
+
+- Recorded once as `20260923121100 irv_station_batch_audit_fix`. Hosted migrations 67 -> **68**.
+- The deployed `cng_irv_station_batch_commit` prosrc MD5 is `e54789f5bdc2f93b14f000af17259197` (8,077 chars), **identical** to
+  the locally tested build. It is still SECURITY DEFINER with a pinned search_path, EXECUTE authenticated (admin-gated inside) / anon none.
+- **0 production rows changed.** The public-schema write counter (ins+upd+del) was 25,097 before and after. Content hashes of `audit_logs`
+  (`cfd81ec0…`) and of installed SRVs' id/station/status (`2194d71a…`) were identical before and after. The historical 25J audit row
+  still reads `byte_exact_rows: 0`, untouched by design. The installed-SRV Station batch was NOT re-run.
+
+## Finding — one hosted migration has no repository file
+
+`20260920204210 bootstrap_initial_admin` exists in `supabase_migrations.schema_migrations` but not in
+`supabase/migrations/`. It was presumably a one-off data step creating the first admin (Supabase Auth cutover). The repository
+therefore cannot rebuild production identically (CLAUDE.md §2.7). It was not touched. Recording it (without any
+personal identifiers) or documenting it as intentionally environment-specific is an owner decision for Phase 5.
+
+## E2E coverage status
+
+The signed-in suite uses **one** dedicated active admin account (`E2E_EMAIL` / `E2E_PASSWORD`, supplied through the environment
+only, never committed). It does not change that account's role and runs no destructive user-management operation.
+**The existing suite provides NO manager / engineer / viewer / inactive role coverage.** Multi-role browser
+authorization testing remains an open Phase 2 item and is not complete. Role boundaries are covered only by the SQL suites
+(`rls_authorization.sql`, `rls_initplan_perf.sql`).
+
+## Alerts / audit-log RLS performance fix — built locally, NOT deployed
+
+Migration: `supabase/migrations/20260923130000_rls_initplan_alerts_audit.sql`. It changes two policy USING clauses (`ALTER POLICY`).
+Name, command, roles and permissive mode are unchanged:
+
+- `alerts_select`: `ELSE cng_can_access_unmapped_srv()` -> `ELSE (SELECT cng_can_access_unmapped_srv())`
+- `audit_logs_select`: `cng_is_admin() OR actor_id = cng_current_app_user_id()` ->
+  `(SELECT cng_is_admin()) OR actor_id = (SELECT cng_current_app_user_id())`
+
+**Local benchmark** (all migrations; 157 Stations, 5,000 alerts of which 1,500 have no Station, 5,000 audit rows; RLS enforced as admin):
+
+| | before (ms, 5 runs) | after (ms, 5 runs) |
+| --- | --- | --- |
+| `count(*) v_alert_inbox` | 167, 149, 174, 155, 143 | 17, 18, 18, 15, 15 |
+| `count(*) v_admin_audit_log` | 420, 375, 356, 360, 358 | 2.1, 1.5, 1.5, 1.3, 1.3 |
+| audit log page (50, newest first) | 355, 376, 342, 348, 343 | 1.9, 1.8, 1.7, 1.8, 1.7 |
+
+**Function calls for ONE statement** (from `pg_stat_user_functions`, `track_functions = all`):
+
+| statement | before | after |
+| --- | --- | --- |
+| `count(*) FROM alerts` | `cng_can_access_unmapped_srv` = **1,500** | = **1** |
+| `count(*) FROM audit_logs` | `cng_is_admin` = **5,000** | = **1** |
+
+`cng_can_read_region` stays at 157 (one per Station in the hashed subplan). It is row-dependent and deliberately unchanged.
+
+**Plan shape:** the Filter now reads `(InitPlan n).col1` instead of calling the function. For example, production's audit scan was
+`Filter: (cng_is_admin() OR (actor_id = cng_current_app_user_id()))` at 68.9 ms for 290 rows.
+
+**Authorization identical.** The visible id set (count + MD5 of ordered ids) of `alerts`, `audit_logs`, `v_alert_inbox` and
+`v_admin_audit_log` for admin, manager, engineer, viewer, inactive admin and no-subject callers was **24/24 identical**
+before and after.
+
+**Regression suite** `supabase/tests/rls_initplan_perf.sql` has **25 assertions**, now part of `verify-all.sh`:
+- catalog shape (1-4)
+- plan shape, with no per-row Filter call for any of the three functions (5-7)
+- an exact visibility matrix over both tables and both views for 8 callers: admin, manager, East/West engineer, East viewer,
+  inactive admin, no subject, unknown subject (8-23)
+- the unmapped alert is hidden from a Region-scoped engineer (24)
+- other users' and service audit rows are hidden from a non-admin (25)
+
+**Proved to detect the defect:** against a database WITHOUT the migration it gives 20 pass / **5 fail**. The failures are exactly
+the shape checks 2, 4, 5, 6 and 7; every authorization check passes both ways.
+
+**Gate:** `verify-all.sh` exit 0. There are 68 migrations from zero. Schema 344, RLS 697, rls_initplan_perf 25. The production-equivalent base is 67
+files (everything deployed), then the upgrade applies this migration, and all three suites re-pass.

@@ -62,9 +62,9 @@ run "report contract" npx tsx scripts/verify-report-contract.mjs "$DB"
 # runs but asserts nothing (a failed connection, a renamed file, a truncated
 # run) must FAIL rather than report a cheerful zero - that is precisely the
 # silent coverage loss this gate exists to stop.
-declare -A MIN=( [schema_scenarios]=344 [rls_authorization]=697 )
+declare -A MIN=( [schema_scenarios]=344 [rls_authorization]=697 [rls_initplan_perf]=25 )
 
-for suite in schema_scenarios rls_authorization; do
+for suite in schema_scenarios rls_authorization rls_initplan_perf; do
   out="$(sudo -n -u postgres psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "supabase/tests/$suite.sql" 2>&1)"
   count="$(printf '%s' "$out" | grep -c 'PASS ')"
   min="${MIN[$suite]}"
@@ -92,7 +92,7 @@ up_fail=0
 # deployed while 0054 is not (Prompt 27A). So the base is "every file except
 # these" and the upgrade replays exactly these. Update this list after each
 # deployment, checked against supabase_migrations.schema_migrations.
-UNDEPLOYED_MIGRATIONS=(0054_irv_station_batch_audit_fix.sql)
+UNDEPLOYED_MIGRATIONS=(20260923130000_rls_initplan_alerts_audit.sql)
 is_undeployed() { local b; b="$(basename "$1")"; for u in "${UNDEPLOYED_MIGRATIONS[@]}"; do [ "$b" = "$u" ] && return 0; done; return 1; }
 base_count=0
 for f in supabase/migrations/*.sql; do
@@ -129,7 +129,7 @@ fi
 # The upgraded database must pass the same suites as one built from zero: an
 # upgrade that "works" but leaves different behaviour behind is not an upgrade.
 if [ $up_fail -eq 0 ]; then
-  for suite in schema_scenarios rls_authorization; do
+  for suite in schema_scenarios rls_authorization rls_initplan_perf; do
     out="$(sudo -n -u postgres psql -d "$UDB" -v ON_ERROR_STOP=1 -q -f "supabase/tests/$suite.sql" 2>&1)"
     count="$(printf '%s' "$out" | grep -c 'PASS ')"
     if printf '%s' "$out" | grep -q 'FAILED:'; then
