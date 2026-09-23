@@ -135,7 +135,6 @@ export function SrvCalibrationSection() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [certDate, setCertDate] = useState('')
   const [certNo, setCertNo] = useState('')
-  const [nextDate, setNextDate] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
   const [open, setOpen] = useState<CalibrationRow | null>(null)
@@ -154,7 +153,7 @@ export function SrvCalibrationSection() {
     <div className="flex min-w-0 flex-col gap-3">
       <p className="text-sm text-muted-foreground">
         Valves sent from the store to the calibration company. With the certificate they return to the warehouse as
-        available — calibrated, dated by the certificate. Send a valve here with the + beside it in Warehouse SRVs.
+        available — calibrated, dated by the certificate and due again one year later. Send a valve here with the + beside it in Warehouse SRVs.
       </p>
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-0.5 text-xs text-muted-foreground">
@@ -183,13 +182,10 @@ export function SrvCalibrationSection() {
             Certificate no. (optional)
             <input className="h-8 w-32 rounded border bg-background px-2 text-sm" value={certNo} onChange={(e) => setCertNo(e.target.value)} />
           </label>
-          <label className="flex flex-col gap-0.5 text-xs text-muted-foreground">
-            Next calibration (optional)
-            <input type="date" className="h-8 rounded border bg-background px-2 text-sm" value={nextDate} onChange={(e) => setNextDate(e.target.value)} />
-          </label>
+          <p className="self-center text-xs text-muted-foreground">Next calibration: one year after the certificate date.</p>
           <Button size="sm" disabled={busy || !certDate || picked.some((r) => r.status === 'certified')}
                   onClick={() => void act('cng_srv_calibration_certify', {
-                    p_certificate_date: certDate, p_certificate_number: certNo.trim() || null, p_next_calibration_date: nextDate || null,
+                    p_certificate_date: certDate, p_certificate_number: certNo.trim() || null, p_next_calibration_date: null,
                   }, `${picked.length} certified; back in the warehouse as available — calibrated.`)}>
             Returned with certificate ({picked.length})
           </Button>

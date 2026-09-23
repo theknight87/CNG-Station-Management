@@ -194,11 +194,16 @@ SELECT pg_temp.ck('CAL-4 a future certificate date is refused',
 SELECT pg_temp.try_as('sw_admin', format('SELECT cng_srv_calibration_certify(ARRAY[%L::uuid, %L::uuid], %L::date, %L)',
     :'job3', :'job5', '2026-09-01', 'CERT-1')) AS cert \gset
 SELECT pg_temp.ck('CAL-5 certifying both (one still "sent") works in one step', :'cert' = 'OK');
-SELECT pg_temp.ck('CAL-6 certified valves are back in stock as calibrated, dated by the certificate, codes get C, next due unknown',
-  (SELECT string_agg(availability_status::text || '/' || last_calibration_date || '/' || warehouse_code || '/' || next_calibration_precision, ',' ORDER BY id)
+SELECT pg_temp.ck('CAL-6 certified valves are back in stock as calibrated, dated by the certificate, codes get C, next due one year later',
+  (SELECT string_agg(availability_status::text || '/' || last_calibration_date || '/' || warehouse_code || '/' || next_calibration_date, ',' ORDER BY id)
      FROM warehouse_relief_valves WHERE id IN ('5f400000-0000-0000-0000-000000000003','5f400000-0000-0000-0000-000000000005'))
-  = 'available_calibrated/2026-09-01/mbc 9/unknown,available_calibrated/2026-09-01/sbc 2/unknown'
+  = 'available_calibrated/2026-09-01/mbc 9/2027-09-01,available_calibrated/2026-09-01/sbc 2/2027-09-01'
   AND (SELECT count(*) FROM v_srv_warehouse_stock WHERE id IN ('5f400000-0000-0000-0000-000000000003','5f400000-0000-0000-0000-000000000005')) = 2);
+
+SELECT pg_temp.ck('CAL-7 the one-year due date is exact, so it drives Days Left and alerts',
+  (SELECT bool_and(next_calibration_precision = 'exact_date') FROM warehouse_relief_valves
+    WHERE id IN ('5f400000-0000-0000-0000-000000000003','5f400000-0000-0000-0000-000000000005'))
+  AND (SELECT bool_and(next_calibration_date = '2027-09-01') FROM srv_calibration_jobs WHERE id IN (:'job3', :'job5')));
 
 -- ------------------------------------------------------------------ history
 SELECT pg_temp.ck('HIST-1 a valve''s history follows it across warehouse and installed records',

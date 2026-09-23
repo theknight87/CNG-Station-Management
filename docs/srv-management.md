@@ -531,3 +531,9 @@ owner auto-approval): 36 codes corrected to the rule; of 1,483 sent-to-station v
 with the same serial at the Station they were sent to (nothing logged), 55 were sent to a Station that
 records a different valve and 338 to a Station name with no valves recorded — those 393 are in the SRV Log
 as *location unconfirmed*. Store stock after the step: 705. Gate: frontend 671, `srv_warehouse_workflow` 43.
+
+**Calibration interval (owner ruling 2026-09-23, migration 20260925100000):** fixed at one year. Recording a
+certificate sets last calibration = certificate date and next calibration = certificate date + 1 year, both
+exact, so Days Left, due windows and alerts apply. Deployed byte-exact (`cng_srv_calibration_certify`
+md5 `9a79075c…`); no data changed (the one job in production was still at the calibration company).
+Gate: `srv_warehouse_workflow` 44.
