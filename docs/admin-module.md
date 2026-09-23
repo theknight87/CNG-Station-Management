@@ -228,3 +228,15 @@ field; stale save 409 PT409; raw-field save 403; viewer form 403; viewer photo u
 **Known pre-existing issue:** functions from 0038/0039/0041 (user role/active/region changes, staged mapping
 decisions) also signal a stale write with 40001, so through the API they would retry instead of refusing. Not
 changed here.
+
+### Stale writes answer HTTP 409 everywhere (migration `20260924090000_stale_write_http409.sql`, NOT DEPLOYED)
+
+Every browser-callable function whose production body contained 40001 was found from the catalog: only
+`cng_check_precondition` (the shared row-version guard used by set_user_role, set_user_active, remove_user,
+set_alert_rule_enabled, map_srv, set_channel_policy and decide_staged_mapping) and `cng_admin_decide_staged_mapping`
+(which also raised 40001 directly). Both are replaced with their current production bodies, changed only from 40001
+to PT409. The production body of the second is the 0041 body without its three comment lines, verified by hash.
+The frontend matches stale writes by message (`stale_write`, "a decision already exists"), which is unchanged, so
+no screen code changed. Tests: P1-REMOVE now expects PT409; STALE409-1 (stale role change → PT409) and STALE409-2
+(no browser-callable function contains 40001) added; authorization 703 → 705. Proved to fail without the migration.
+The service_role-only 6c/6d/6e commit functions keep 40001 (called from SQL, never through the API).

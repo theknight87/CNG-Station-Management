@@ -4734,8 +4734,12 @@ BEGIN
   SELECT to_jsonb(u)::text INTO v_row FROM app_users u WHERE id = v_pending;
   PERFORM pg_temp.become('clerk_admin');
   PERFORM pg_temp.ok(pg_temp.rejected_sqlstate(
-      format('SELECT cng_admin_remove_user(%L, %L)', v_pending, '2000-01-01 00:00:00+00'), '40001'),
+      format('SELECT cng_admin_remove_user(%L, %L)', v_pending, '2000-01-01 00:00:00+00'), 'PT409'),
     'P1-REMOVE a stale expected_updated_at is refused');
+  -- 40001 would make PostgREST retry the stale write in a loop; PT409 answers HTTP 409 at once.
+  PERFORM pg_temp.ok(pg_temp.rejected_sqlstate(
+      format('SELECT cng_admin_set_user_role(%L, %L, %L)', v_pending, 'viewer', '2000-01-01 00:00:00+00'), 'PT409'),
+    'STALE409-1 a stale role change is refused with PT409 (HTTP 409), not a retryable 40001');
   PERFORM pg_temp.ok(pg_temp.rejected_sqlstate(
       format('SELECT cng_admin_remove_user(%L, NULL)', gen_random_uuid()), '42704'),
     'P1-REMOVE a target that does not exist is refused');
@@ -4765,6 +4769,17 @@ BEGIN
   RESET ROLE;
 END
 $phase1_remove$;
+
+DO $stale409$
+BEGIN
+  PERFORM pg_temp.ok(NOT EXISTS (
+      SELECT 1 FROM pg_proc p
+       WHERE p.pronamespace = 'public'::regnamespace
+         AND p.prosrc LIKE '%ERRCODE = ''40001''%'
+         AND has_function_privilege('authenticated', p.oid, 'EXECUTE')),
+    'STALE409-2 no browser-callable function signals a stale write with the retryable 40001');
+END
+$stale409$;
 
 DO $$ BEGIN RAISE EXCEPTION 'RLS_SUITE_ROLLBACK'; END $$;
 

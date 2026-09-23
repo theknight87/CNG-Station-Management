@@ -62,7 +62,7 @@ run "report contract" npx tsx scripts/verify-report-contract.mjs "$DB"
 # runs but asserts nothing (a failed connection, a renamed file, a truncated
 # run) must FAIL rather than report a cheerful zero - that is precisely the
 # silent coverage loss this gate exists to stop.
-declare -A MIN=( [schema_scenarios]=344 [rls_authorization]=703 [rls_initplan_perf]=25 [stage_b2_station_batch]=30 [unit_attributes_6c]=29 [unit_attributes_6c2]=19 [compressors_unit_names_6d]=19 [installed_srv_warehouse_code]=8 [admin_editing_photos]=24 )
+declare -A MIN=( [schema_scenarios]=344 [rls_authorization]=705 [rls_initplan_perf]=25 [stage_b2_station_batch]=30 [unit_attributes_6c]=29 [unit_attributes_6c2]=19 [compressors_unit_names_6d]=19 [installed_srv_warehouse_code]=8 [admin_editing_photos]=24 )
 
 for suite in schema_scenarios rls_authorization rls_initplan_perf stage_b2_station_batch unit_attributes_6c unit_attributes_6c2 compressors_unit_names_6d installed_srv_warehouse_code admin_editing_photos; do
   out="$(sudo -n -u postgres psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "supabase/tests/$suite.sql" 2>&1)"
@@ -92,7 +92,7 @@ up_fail=0
 # deployed while 0054 is not (Prompt 27A). So the base is "every file except
 # these" and the upgrade replays exactly these. Update this list after each
 # deployment, checked against supabase_migrations.schema_migrations.
-UNDEPLOYED_MIGRATIONS=()
+UNDEPLOYED_MIGRATIONS=( 20260924090000_stale_write_http409.sql )
 is_undeployed() { local b; b="$(basename "$1")"; for u in "${UNDEPLOYED_MIGRATIONS[@]}"; do [ "$b" = "$u" ] && return 0; done; return 1; }
 base_count=0
 for f in supabase/migrations/*.sql; do
