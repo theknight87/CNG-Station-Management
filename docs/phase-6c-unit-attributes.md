@@ -354,3 +354,15 @@ Migration `20260925020000_srv_serial_identity_6p.sql`.
 
 Preview `c90ec403…1b237dce` twice identical, committed once. Result: 2,683 active (unchanged); 97 new + 97 archived;
 7 moved; replay proposes 0. Active: resolved 1,699, needs equipment 660, needs Unit 143, needs Station 181.
+
+## Phase 6q — عزبة مختار moves to Delta (owner ruling 2026-09-24)
+
+Migration `20260925030000_station_region_move_6q.sql` adds a generic, content-bound Station Region move. Every child
+table carries `(station_id, region_id)` under NON-deferrable composite FKs, so the Station and all rows under it move
+in one statement (data-modifying CTEs), then active SRVs in the new Region waiting for a Station with the same
+normalized raw name are linked to it. Production: preview `161f085b…fc95de34c` twice identical, committed once:
+Station + 1 Unit + 1 compressor + 1 gas detector moved (4 rows), 7 SRVs relinked. The owner's 6l and 6m rulings were
+then re-run: 7 got the Station's one Unit, 4 Stage valves got its one compressor (3 Storage valves wait, the Unit has
+no storage vessel). Replay refused; 0 Units in another Region than their Station.
+
+Installed SRVs now: resolved 1,703, needs equipment 663, needs Unit 143, needs Station 174 (2,683 active).
