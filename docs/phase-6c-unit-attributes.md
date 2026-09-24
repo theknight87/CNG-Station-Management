@@ -366,3 +366,14 @@ then re-run: 7 got the Station's one Unit, 4 Stage valves got its one compressor
 no storage vessel). Replay refused; 0 Units in another Region than their Station.
 
 Installed SRVs now: resolved 1,703, needs equipment 663, needs Unit 143, needs Station 174 (2,683 active).
+
+## Phase 6r — equipment for Units that had none (owner ruling 2026-09-24)
+
+Migration `20260925040000_placeholder_equipment_6r.sql`. (1) Every Unit has one compressor: 45 Units with Stage SRVs
+waiting and no compressor record got one compressor (model/serial NULL). (2) Temporarily, 55 Units with Storage SRVs
+waiting and no vessel got ONE placeholder vessel standing for the Unit's storage, flagged `needs_review` with the reason
+(replace with the real vessels later and re-parent). Preview `5a7fea28…7007462c` twice identical, committed once; then
+6m re-run parented 447 SRVs (260 on compressors, 187 on placeholders). 0 parents in another Unit; replay proposes 0.
+
+Installed SRVs now: resolved 2,150, needs equipment 216 (Units with 2-6 vessels; `srv-equipment-review.xlsx`),
+needs Unit 143, needs Station 174.
