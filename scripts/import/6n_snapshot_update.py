@@ -44,14 +44,17 @@ fl = [r for r in fl if r['row'] not in used_f]; sl = [d for d in sl if d['id'] n
 G2f = collections.defaultdict(list); G2s = collections.defaultdict(list)
 for r in fl: G2f[fk(r) + (n(fp(r)),)].append(r)
 for d in sl: G2s[sk(d) + (n(d['pressure']),)].append(d)
-blank = ambiguous = 0
+blank = ambiguous = 0; amb_f = set(); amb_s = set()
 for k in G2f:
     a, b = G2f[k], G2s.get(k, [])
     if not b: continue
     if len(a) == 1 and len(b) == 1:
-        if fs(a[0]) or a[0]['serial_norm']['partNumber']: upd.append(('serial', b[0], a[0])); used_f.add(a[0]['row']); used_s.add(b[0]['id'])
-        else: blank += 1
-    else: ambiguous += min(len(a), len(b))
+        if not (fs(a[0]) or a[0]['serial_norm']['partNumber']): blank += 1
+        upd.append(('serial', b[0], a[0])); used_f.add(a[0]['row']); used_s.add(b[0]['id'])
+    else:
+        ambiguous += min(len(a), len(b))
+        for r in a: amb_f.add(r['row'])
+        for d in b: amb_s.add(d['id'])
 fl = [r for r in fl if r['row'] not in used_f]; sl = [d for d in sl if d['id'] not in used_s]
 c = collections.Counter(u[0] for u in upd)
 print('same', same, dict(c), 'held: pressure groups uneven', held_p, 'serial-blank-in-file', blank, 'ambiguous', ambiguous,
@@ -64,3 +67,6 @@ json.dump([{'id': d['id'], 'kind': k, 'file_row': r['row'],
             **({'last_calibration_date': r['last_norm']['value'], 'last_calibration_precision': r['last_norm']['precision'], 'last_calibration_raw': r['last_norm']['raw'],
                 'next_calibration_date': r['next_norm']['value'], 'next_calibration_precision': r['next_norm']['precision'], 'next_calibration_raw': r['next_norm']['raw']} if k == 'serial' else {})}
            for k, d, r in sorted(upd, key=lambda u: u[1]['id'])], open('6n_payload.json', 'w'), ensure_ascii=False, sort_keys=True)
+
+json.dump({'amb_f': sorted(amb_f), 'amb_s': sorted(amb_s), 'file_only': [r['row'] for r in fl if r['row'] not in amb_f],
+           'sys_only': [d['id'] for d in sl if d['id'] not in amb_s]}, open('6n_leftovers.json', 'w'))

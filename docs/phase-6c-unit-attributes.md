@@ -311,3 +311,9 @@ several unmatched valves on each side (which one is which is unknown), and 337 s
 travelled compact (md5 `bf63da95…` both ends) and rebuilt to md5 `d3662533…` identically locally and in production.
 Preview `710b880a…aef339f4` identical twice, committed once: 108 updated, one audit row holding every old value,
 reconciled 108/108. Replay is refused because every row now already holds its snapshot value.
+
+**6n second batch (owner ruling "سيبهم فاضيين"):** the 7 valves whose snapshot row has no serial now have no serial
+(`serial_status = unknown`; the old serial is in the audit row). Their calibration dates were **kept**: the snapshot
+row carries none, and clearing them would silently stop their alerts. Preview `b0d84328…f602b00a` twice identical,
+committed once, 7 updated, reconciled 7/7. The rest (30 file / 29 system valves in ambiguous groups, 300 file-only,
+281 system-only) went to the owner as `srv-snapshot-leftovers.xlsx` for information only; nothing was changed for them.
