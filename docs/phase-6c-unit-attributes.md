@@ -339,3 +339,18 @@ owner.
 
 Result: **2,683 active installed SRVs = the snapshot's 2,683 rows**; resolved 1,703, needs equipment 663, needs Unit
 143, needs Station 174. 0 parents in another Unit, 0 Units under another Station.
+
+## Phase 6p — a valve is its serial (owner ruling 2026-09-24)
+
+Migration `20260925020000_srv_serial_identity_6p.sql`.
+
+- **Split (97):** the records 6n rewrote with a different serial became two valves. A new active record, an exact copy
+  of the current one under a new id, carries the new serial. The original record got its pre-6n serial, pressure and
+  dates back (read server-side from the 6n audit row) and was archived, so each valve keeps its own history. The 7
+  records whose serial 6n emptied were not split.
+- **Move (7):** عزبة مختار's 7 valves are East in the system and Delta in the snapshot; the owner said follow the file.
+  They are now in Delta with no Station (`needs_station_mapping`, raw name kept), because the canonical Station of that
+  name exists only in East. Whether the Station itself belongs in Delta is still the owner's question.
+
+Preview `c90ec403…1b237dce` twice identical, committed once. Result: 2,683 active (unchanged); 97 new + 97 archived;
+7 moved; replay proposes 0. Active: resolved 1,699, needs equipment 660, needs Unit 143, needs Station 181.
