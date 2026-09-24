@@ -294,3 +294,20 @@ administrator, the owner account. Nothing was written by the refused attempt.
 Production: preview `f4e33360…af375c2` twice identical, committed once. 1,703 resolved (1,385 compressor, 318
 storage vessel), `resolved_by` = the owner. Reconciled: 0 parents in another Unit, replay 0. Installed SRVs now:
 resolved 1,703, needs equipment 659, needs Unit 146, needs Station 155.
+
+## Phase 6n — serial / set-pressure changes from the 24/9/2026 station snapshot (owner ruling 2026-09-24)
+
+Owner: "any change in serial or pressure, take the file's value". The snapshot (`رصيد المحطات`) was normalized with the
+import pipeline's own functions (`scripts/import/6n_normalize.ts`) and paired to the system
+(`scripts/import/6n_snapshot_update.py`) only where unambiguous:
+
+- **pressure change (11):** same Region/Station/Location and serial, different set pressure (all 3976 → 4000 PSI).
+- **serial change (97):** same Region/Station/Location and pressure, exactly one unmatched valve on each side. This means
+  a different valve now sits there, so its calibration dates were taken from the snapshot too.
+
+Not changed: 7 pairs where the snapshot has no serial (taking it would erase a recorded serial), 29 in groups with
+several unmatched valves on each side (which one is which is unknown), and 337 snapshot-only / 317 system-only valves
+(new or removed — not covered by the ruling). Migration `20260925000000_srv_snapshot_update_6n.sql`; the payload
+travelled compact (md5 `bf63da95…` both ends) and rebuilt to md5 `d3662533…` identically locally and in production.
+Preview `710b880a…aef339f4` identical twice, committed once: 108 updated, one audit row holding every old value,
+reconciled 108/108. Replay is refused because every row now already holds its snapshot value.
