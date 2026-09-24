@@ -261,3 +261,10 @@ Station), 128 compressors created (6d rules). 4 rows held (no Station, or a mult
 Reconciliation: Stations 365, Units 354, compressors 311; 0 Units in another Region; 0 compressors under another Station;
 0 Units with two compressors; 0 created Units misnamed; replay 0. Stations still without a Unit: Alex 19, Canal 12,
 Upper 44, East 3 (no Station-database row describes them).
+
+## 6k committed (2026-09-24): a Unit for every Station without one
+
+Owner: "yes apply the rule". Migration `20260924180000_one_unit_stations_6k.sql` (deployed byte-exact; suite 5).
+Preview `b838dd31…951119af` twice, identical; committed once: 78 Units, each named as its Station (Alex 19, Canal 12,
+Upper 44, East 3). No attribute, compressor or asset was attached. Every Station now has at least one Unit; 307 of 365
+have exactly one.
