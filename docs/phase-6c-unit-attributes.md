@@ -268,3 +268,15 @@ Owner: "yes apply the rule". Migration `20260924180000_one_unit_stations_6k.sql`
 Preview `b838dd31…951119af` twice, identical; committed once: 78 Units, each named as its Station (Alex 19, Canal 12,
 Upper 44, East 3). No attribute, compressor or asset was attached. Every Station now has at least one Unit; 307 of 365
 have exactly one.
+
+## 6l committed (2026-09-24): records at one-Unit Stations linked to that Unit
+
+Owner ruling, asked explicitly because CLAUDE.md §4 forbids this inference otherwise: "أيوه، اربطهم كلهم". Migration
+`20260924200000_one_unit_asset_link_6l.sql` (deployed byte-exact; suite 6). Preview `c02f65ed…7239eedf` twice, identical;
+committed once: **2,623 records** - storage vessels 350, recovery tanks 357, gas detectors 135, hoses 48 (now `resolved`)
+and installed SRVs 1,733 (now `needs_equipment_mapping`; no equipment parent set). Each carries a mapping note naming the
+ruling; one audit row lists every id.
+
+State after: storage vessels 449 resolved / 84 need a Unit; recovery tanks 423 / 54; gas detectors 161 / 1; hoses 48 / 0;
+installed SRVs 2,362 need equipment / 146 need a Unit / 155 need a Station. 0 Units under another Station; replay 0.
+Records still without a Unit sit at Stations with several Units.
