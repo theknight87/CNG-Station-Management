@@ -244,3 +244,20 @@ Owner: "accept the proposals" for `deliverables/unlinked-stations-review.xlsx` (
 
 Reconciliation: 1,220 assets, all with lineage; 0 SRVs whose Station is in another Region; 0 SRVs whose Unit is under another
 Station; replay 0. **Still unlinked:** 88 staged rows and 155 installed SRVs.
+
+## Remaining-names review (2026-09-24)
+
+`deliverables/remaining-stations-review.xlsx` (41 names, 240 records) was produced; the owner chose to leave them unlinked
+for now.
+
+## 6j committed (2026-09-24): Station-database attributes and compressors for the held rows
+
+Owner: apply the one-Unit rule (a Station with one Unit has that Unit named as the Station; 6c-2/SU2) to Stations with no
+Unit yet. Migration `20260924160000_station_db_attributes_6j.sql` (deployed byte-exact). Suite: 13 assertions.
+Preview `e622be11…ce20be84` twice, identical; committed once:
+130 rows attached (38 to the Unit their name gives, 1 to a Station's only Unit, 91 to a Unit **created** named as its
+Station), 128 compressors created (6d rules). 4 rows held (no Station, or a multi-Unit Station the name does not resolve).
+
+Reconciliation: Stations 365, Units 354, compressors 311; 0 Units in another Region; 0 compressors under another Station;
+0 Units with two compressors; 0 created Units misnamed; replay 0. Stations still without a Unit: Alex 19, Canal 12,
+Upper 44, East 3 (no Station-database row describes them).
