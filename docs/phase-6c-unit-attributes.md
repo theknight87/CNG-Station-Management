@@ -280,3 +280,17 @@ ruling; one audit row lists every id.
 State after: storage vessels 449 resolved / 84 need a Unit; recovery tanks 423 / 54; gas detectors 161 / 1; hoses 48 / 0;
 installed SRVs 2,362 need equipment / 146 need a Unit / 155 need a Station. 0 Units under another Station; replay 0.
 Records still without a Unit sit at Stations with several Units.
+
+## Phase 6m — installed SRVs on the only equipment of their kind (owner ruling 2026-09-24)
+
+The owner ruled that an installed SRV at `needs_equipment_mapping` whose source Location is Stage belongs to its Unit's
+compressor when the Unit has exactly one, and one whose Location is Storage belongs to its Unit's storage vessel when
+the Unit has exactly one. Units with two or more vessels (216 SRVs) and Units with no compressor or vessel (442 SRVs)
+were held by the owner's choice. Migrations `20260924220000_single_equipment_srv_link_6m.sql` and
+`20260924230000_6m_owner_attribution.sql`. The first commit attempt was refused by the "exactly one active admin"
+guard, because production also holds an E2E test admin. The follow-up attributes the ruling to the first active
+administrator, the owner account. Nothing was written by the refused attempt.
+
+Production: preview `f4e33360…af375c2` twice identical, committed once. 1,703 resolved (1,385 compressor, 318
+storage vessel), `resolved_by` = the owner. Reconciled: 0 parents in another Unit, replay 0. Installed SRVs now:
+resolved 1,703, needs equipment 659, needs Unit 146, needs Station 155.
