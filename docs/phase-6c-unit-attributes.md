@@ -175,3 +175,28 @@ rows (old and new name each). Owner ruling on the leftover: the West Station "ا
 Units; the Station name was corrected with one audit row (`service_role:owner_ruling`). After both: 0 Units left to
 rename, 0 Stations not following the naming rule, 0 one-Unit Stations whose Unit name differs from the Station.
 Counts unchanged: 157 Stations, 189 Units, 183 compressors.
+
+## 6g committed (2026-09-24): Stations and Units for Alex, Canal, Upper and the 11 East sites
+
+Owner: "accept the proposals" for `deliverables/phase-6c-zero-station-regions-review.xlsx`
+(sha256 `2ef74f49…97c26b5`). Migration `20260924100000_owner_station_rulings_6g.sql` (deployed; the three function
+bodies' MD5s match the tested build). Suite `owner_station_rulings_6g.sql`: 16 assertions.
+
+- `owner_station_rulings` holds the rulings as data: one row per source spelling, with its other spelling, Station,
+  Unit and workbook row. They were generated from the file by `scripts/import/6g_rulings_sql.py`, never retyped, and
+  the loaded rows reproduce the generator's md5 (`59c4d26c…`, 269 rows).
+- **7 proposals held, not created**: workbook rows 23, 24, 61–64 and 201. The trailing-number rule misread a number
+  that belongs to the name (`الكيلو 21- 1`, `شل اوت محور التعمير ك/1/21`, `الروافع 1&2`) and would have produced
+  Stations ending in `-`, `/` or `&`. They need the owner's Station name.
+- The 11 N1 names became East rulings, generated in SQL from their own staging rows (the same trailing-number rule).
+- Preview, run twice with identical results: `8296e0a7…c760678b`, 280 rulings, **207 Stations** (Alex 64, Canal 47,
+  Upper 86, East 10) and **72 Units**, 0 existing, 0 spelling conflicts. Committed once.
+
+Reconciliation: Stations 157 → **364**, Units 189 → **261**; 0 duplicate identities, 0 Units in another Region,
+0 names ending in a separator, 169 new Stations with no Unit (none named one; D7), replay blocked, one audit row,
+0 aliases and 0 mapping decisions written. Station names use the proposal's folded spelling (e.g. ة → ه), with every
+source spelling kept in `source_raw` and in the rulings.
+
+**Unlocked for the next batch (read-only count):** 630 of the 823 staged vessels, recovery tanks and detectors now
+match exactly one Station through the rulings (0 match more than one; 65 of them are detector-absence rows, which
+create no asset), and 1,058 of the 1,608 Station-less installed SRVs.
