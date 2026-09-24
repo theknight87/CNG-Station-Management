@@ -51,8 +51,8 @@ grants Regions in **Admin → Users**. Role, activation and Region access are ne
 an email domain or sign-up order.
 
 The very first production admin was created by the one-off, production-only migration
-`20260920204210 bootstrap_initial_admin`. It is intentionally not in the repository (see `release-baseline.md`).
-A clean rebuild creates its own first admin during environment setup.
+`20260920204210 bootstrap_initial_admin`. The repository holds a no-op placeholder under the same version (the
+original named a personal email). A clean rebuild creates its first admin with `docs/operations-runbook.md` §2a.
 
 ## 4. Authorization (unchanged by the provider switch)
 

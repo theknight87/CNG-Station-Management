@@ -1,0 +1,12 @@
+-- 20260920204210 bootstrap_initial_admin — PLACEHOLDER (intentionally a no-op).
+--
+-- In production this version was a one-off step that activated the very first administrator: it set
+-- role = 'admin' and is_active = true on the app_users row of ONE confirmed Supabase Auth account, chosen
+-- by that account's email, and refused unless exactly one row changed. The email is personal data, and
+-- replaying the step on any other database would fail (the account does not exist there), so the
+-- statement is not reproduced here.
+--
+-- This file exists so the repository's migration list matches production's exactly
+-- (CLAUDE.md §2.7: independently rebuildable). It changes nothing. On a fresh project, create the first
+-- administrator with the operator step in docs/operations-runbook.md §2a.
+SELECT 1;

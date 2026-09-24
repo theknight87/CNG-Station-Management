@@ -430,3 +430,10 @@ this measurement path, not query time; no duplicate requests were found. Only th
 target here, because its content waits for 6 parallel calls through the proxy. That cannot be judged from this
 environment: it should be re-measured from a normal office connection before changing anything. CLS is below 0.05
 everywhere except Gas Detectors (0.065) and Hoses in one run (0.052), both small. Not changed.
+
+## Phase 5 — production-only migration closed (2026-09-24)
+
+`supabase/migrations/20260920204210_bootstrap_initial_admin.sql` is a no-op placeholder for production's one-off
+first-admin step (the original named a personal email, so it is not reproduced). The repository and production now
+list the same **79** migrations by name. A fresh project creates its first admin with docs/operations-runbook.md §2a.
+Gate: 79 migrations from zero, 79 in the production-equivalent base, all suites pass.
