@@ -225,3 +225,22 @@ are never set. Preview `d2790d07…101dc5f7` twice, identical; committed once:
 Reconciliation: assets 489 / 447 / 144 / 48, 1,128 in all, each with lineage; 0 Units under another Station; 0 SRVs with
 a Station in another Region; 0 equipment parents set; 0 absence rows imported; replay 0; one audit row listing every id.
 **Still unlinked:** 187 staged rows and 547 installed SRVs whose names match no ruling.
+
+## 6i committed (2026-09-24): the unlinked-names review
+
+Owner: "accept the proposals" for `deliverables/unlinked-stations-review.xlsx` (sha256 `a57b1b93…`; 122 names,
+724 records, built by `scripts/import/unlinked_review_xlsx.py` from md5-verified production exports).
+
+- Migration `20260924140000_ruling_target_region_6i.sql` (deployed byte-exact): `owner_station_rulings.target_region_id`
+  lets a ruling name a Station in another Region (the N1 sites' assets were staged as Delta; the owner ruled them East).
+  The record then takes its Station's Region; the source Region stays in `source_raw` / `source_region_raw`.
+  Suite `ruling_target_region_6i.sql`: 4 assertions.
+- **81 rulings** loaded byte-exact (`scripts/import/6i_rulings_sql.py`, md5 `1010f7a7…`). **33 names had no suggestion**
+  and stay unlinked. **8 suggestions held** because they name a different place: rows 13 (السادات 2 → 3), 19 (شبين الكوم,
+  5 Stations), 45 (العبور), 65 (موبيل العاشر → موبيل المعادي), 72 (البراجيل القديمة → الجديدة), 105/107/108 (فويل أب vs
+  فويل اب الدائرى).
+- Preview `e27ea36d…dcea1056` twice, identical; committed once: **92 assets** (40 with their Unit) and **392 installed SRVs**
+  (315 with their Unit). 30 assets and 7 SRVs moved from Delta to East under the ruling.
+
+Reconciliation: 1,220 assets, all with lineage; 0 SRVs whose Station is in another Region; 0 SRVs whose Unit is under another
+Station; replay 0. **Still unlinked:** 88 staged rows and 155 installed SRVs.
