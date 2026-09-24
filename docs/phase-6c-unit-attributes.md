@@ -317,3 +317,25 @@ reconciled 108/108. Replay is refused because every row now already holds its sn
 row carries none, and clearing them would silently stop their alerts. Preview `b0d84328…f602b00a` twice identical,
 committed once, 7 updated, reconciled 7/7. The rest (30 file / 29 system valves in ambiguous groups, 300 file-only,
 281 system-only) went to the owner as `srv-snapshot-leftovers.xlsx` for information only; nothing was changed for them.
+
+## Phase 6o — the 24/9/2026 station snapshot becomes the installed-SRV reference (owner ruling 2026-09-24)
+
+Owner: "take the file; the serial identifies the valve in the end" (a vessel or compressor can carry 2, 3 or 6 valves
+of one pressure with different serials). So after 6n every snapshot valve still unmatched is **added** and every system
+valve still unmatched is **archived** (`archived_at`, reason in `review_reason`; nothing deleted). Migration
+`20260925010000_srv_snapshot_add_archive_6o.sql`, scripts `scripts/import/6o_normalize.ts` (the pipeline's own
+normalizers) and `scripts/import/6o_snapshot_add_archive.py`.
+
+Station of an added valve is never guessed: the Station already recorded on active valves with the same Region and
+normalized source name, else the one canonical Station of that name in the Region, else NULL (`needs_station_mapping`).
+Unit only when all those valves carry the same one. The additions went first (the archive would have removed the
+evidence), in four content-bound chunks (payload md5 checked both ends): 82 + 82 + 82 + 77 = **323 added**; then
+**303 archived**. Then the owner's 6l and 6m rulings were re-run on the new rows: 8 got their one-Unit Station's Unit,
+166 got the only compressor/vessel of their Unit.
+
+**Held (7):** seven serials sit under East / عزبة مختار in the system and under Delta / عزبة مختار in the snapshot. By
+the serial rule they are the same valves, so they were neither archived nor re-added; the Region question goes to the
+owner.
+
+Result: **2,683 active installed SRVs = the snapshot's 2,683 rows**; resolved 1,703, needs equipment 663, needs Unit
+143, needs Station 174. 0 parents in another Unit, 0 Units under another Station.
