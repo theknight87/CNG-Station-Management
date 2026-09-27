@@ -377,3 +377,14 @@ waiting and no vessel got ONE placeholder vessel standing for the Unit's storage
 
 Installed SRVs now: resolved 2,150, needs equipment 216 (Units with 2-6 vessels; `srv-equipment-review.xlsx`),
 needs Unit 143, needs Station 174.
+
+## Phase 6s — Storage SRVs parented to vessels in order (owner ruling 2026-09-27)
+
+Owner context: EKC / Vitkovice / CMV storage is a skid of cylinders with one serial for the whole skid and 2-3 valves on
+it; other makes are large cylinders, each with its own serial and valve. The snapshot does not say which valve sits on
+which vessel, so the owner ruled: in Units with several vessels, pair SRVs and vessels in serial order (wrapping), and
+write **no note on the records** — the owner knows it is positional and will review it on site. Migration
+`20260927090000_storage_order_link_6s.sql`; preview `d081b9e0…ef20c76af` twice identical, committed once: 216 SRVs in
+68 Units resolved. 0 parents in another Unit; replay 0. The single audit row lists every pairing.
+
+Installed SRVs now (2,683): resolved 2,366, needs Unit 143, needs Station 174, needs equipment 0.
