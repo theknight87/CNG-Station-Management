@@ -417,3 +417,14 @@ needs Unit 165, needs Station 9. 0 Units under another Station; replay 0.
   identical, committed once: 17 resolved.
 
 Installed SRVs now (2,683): resolved 2,535, needs Unit 148, needs Station 0. 0 parents or Units out of place.
+
+## Phase 6v — owner Unit rulings (2026-09-27)
+
+Migration `20260927120000_unit_rulings_srv_6v.sql`, suite `unit_rulings_srv_6v` (7 assertions). Rulings are
+`[station_id, md5(raw source name), unit_id]` — the raw name is matched by its md5 read from the data, never retyped.
+First use: at فويل اب الدائرى the raw names "دائري الهرم 1/2 فويل أب" carry the number mid-name, so 6t's trailing-number
+rule missed them; the owner ruled them to Units فويل اب الدائرى 1 and 2. Deployed byte-exact (prosrc md5 proposal
+`8f6ee235…`, preview `bf6f9f96…`, commit `cd0e9fec…`); preview `c4ed0f7b…` identical twice; commit linked 10. 6m then
+parented all 10 to their Unit's only compressor (preview `a8c61e46…` twice, linked 10). Production after: 2,545 resolved,
+138 awaiting a Unit (the 3 Storage valves at فويل اب still await theirs), 0 parents in another Unit, 0 Units under
+another Station.
