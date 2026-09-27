@@ -403,3 +403,17 @@ the owner says its three "Units" are three Stations.
 Preview `dc771330…db20a00c` twice identical, committed once: 8 Stations / 9 Units created, 165 SRVs given a Station
 (143 also a Unit). Then 6r (11 compressors, 11 placeholder vessels) and 6m (143 parented). Now: resolved 2,509,
 needs Unit 165, needs Station 9. 0 Units under another Station; replay 0.
+
+## Phase 6t (again) and 6u — الشهداء 1 and النوبارية (owner rulings 2026-09-27)
+
+- **الشهداء 1** → الشــهداء القديمة 1 through `cng_6t_commit` (one ruling, md5 `70ec0329…`, preview `900fa742…` twice
+  identical): 9 SRVs, then 6m (6) and 6s (3) parented them.
+- **النوبارية** — migration `20260927110000_nubaria_split_6u.sql`. The owner: two Stations, one Unit each. النوبارية 59
+  was created (Unit, Kwangshin compressor, EKC skid) and holds the 5 DK-LOK Stage SRVs and 3 EKC Storage SRVs.
+  النوبارية 81 is the Station recorded as "النوباريه 81 خيري النجار" (its EKC vessel); the SAFE compressor recorded
+  under Unit "النوباريه 81" of Station "النوباريه" moved to it, and it holds the 6 Technical Stage SRVs and 3 EKC
+  Storage SRVs. The six EKC SRVs have no serial, so they were split by id order. 57 and 79 (out of service) were left
+  as recorded. The Station name was built in SQL from the file's own spelling. Preview `d5779113…7969087a` twice
+  identical, committed once: 17 resolved.
+
+Installed SRVs now (2,683): resolved 2,535, needs Unit 148, needs Station 0. 0 parents or Units out of place.
