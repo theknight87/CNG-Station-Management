@@ -388,3 +388,18 @@ write **no note on the records** — the owner knows it is positional and will r
 68 Units resolved. 0 parents in another Unit; replay 0. The single audit row lists every pairing.
 
 Installed SRVs now (2,683): resolved 2,366, needs Unit 143, needs Station 174, needs equipment 0.
+
+## Phase 6t — owner Station rulings for SRVs awaiting a Station (2026-09-27)
+
+Migration `20260927100000_station_rulings_srv_6t.sql`; rulings built from the data by
+`scripts/import/6t_station_rulings.py` (26 rulings, md5 `f7ab15ed…` both ends). Owner rulings: new Stations named as
+in the file — البراجيل القديمة, الودي الصف, عزبة السلام, مساكن أبو بكر, العيادية / شربين, بلبيس الحصان,
+حي الورش/ السادات 4, and حدائق اكتوبر (Units 1 and 2); الشيخ زايد → زايد, الصفوه أكتوبر → الصفوة,
+دائري الهرم فويل أب → فويل اب الدائرى (each with Units 1 and 2, numbered names take the matching Unit);
+شربين القديمة → شربين; قطور / امال → امل / قطور renamed to the file's spelling; the rest per the review file's first
+suggestion. Held: الشهداء 1 (9 SRVs) — the first suggestion was the wrong-numbered Station; النوباريه (17 SRVs) —
+the owner says its three "Units" are three Stations.
+
+Preview `dc771330…db20a00c` twice identical, committed once: 8 Stations / 9 Units created, 165 SRVs given a Station
+(143 also a Unit). Then 6r (11 compressors, 11 placeholder vessels) and 6m (143 parented). Now: resolved 2,509,
+needs Unit 165, needs Station 9. 0 Units under another Station; replay 0.
