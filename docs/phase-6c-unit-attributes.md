@@ -428,3 +428,14 @@ rule missed them; the owner ruled them to Units فويل اب الدائرى 1 a
 parented all 10 to their Unit's only compressor (preview `a8c61e46…` twice, linked 10). Production after: 2,545 resolved,
 138 awaiting a Unit (the 3 Storage valves at فويل اب still await theirs), 0 parents in another Unit, 0 Units under
 another Station.
+
+## Phase 6w — owner Unit rulings by SRV type (2026-09-27)
+
+Migration `20260927130000_unit_type_rulings_srv_6w.sql`, suite `unit_type_rulings_srv_6w` (8 assertions). As 6v, with an
+optional manufacturer: `[station_id, md5(raw), manufacturer|null, unit_id]`. Owner ruling: at a multi-Unit Station each
+SRV type belongs to one Unit; Storage SRVs stay on the Station. Applied: the 26 numbered-name suggestions (الخمايل 1/2,
+الدولفين 1/2/3) and المعصرة Anderson (6) -> المعصرة 1, because DK-LOK already sits on المعصرة 2. Deployed byte-exact
+(proposal `c2607caa…`, preview `250e7235…`, commit `c114c882…`); preview `817c0734…` identical twice; 32 linked; 6m
+parented all 32 to their Unit's only compressor (`ce1e29ea…`). Held for the owner: الشهداء COI 5 / DK-LOK 5 (no valve
+on either Unit yet, so which type goes where is not proven), and Technical 2 each at شبين and عز الدين (a third type).
+Production after: 2,577 resolved, 106 awaiting a Unit (92 Storage on their Station, 14 Stage).
