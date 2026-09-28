@@ -85,4 +85,22 @@ SELECT pg_temp.ck('AC-8 an empty Station is archived with its Units (kept, audit
   AND (SELECT bool_and(u.archived_at IS NOT NULL) FROM units u JOIN stations s ON s.id = u.station_id WHERE s.station_name = 'TAC NEW')
   AND NOT EXISTS (SELECT 1 FROM v_station_summary WHERE station_name = 'TAC NEW')
   AND (SELECT archived_at IS NULL FROM stations WHERE station_name = 'TAC BUSY'));
+INSERT INTO stations (id, region_id, station_name) SELECT '7e100000-0000-0000-0000-00000000000a', id, 'TAC UA' FROM east;
+INSERT INTO units (id, station_id, region_id, unit_name) SELECT '7e200000-0000-0000-0000-00000000000a', '7e100000-0000-0000-0000-00000000000a', id, 'TAC UA 1' FROM east;
+INSERT INTO r VALUES ('ua_c', pg_temp.try_as('ac_admin', $q$SELECT cng_admin_add_unit_asset('compressor', '7e200000-0000-0000-0000-00000000000a', '{"manufacturer":"FORNOVO","serial_number":"C-1"}')$q$));
+INSERT INTO r VALUES ('ua_sv', pg_temp.try_as('ac_admin', $q$SELECT cng_admin_add_unit_asset('storage_vessel', '7e200000-0000-0000-0000-00000000000a', '{"last_date":"2025-01-01"}')$q$));
+INSERT INTO r VALUES ('ua_h', pg_temp.try_as('ac_admin', $q$SELECT cng_admin_add_unit_asset('hose', '7e200000-0000-0000-0000-00000000000a', '{"working_pressure_value":"250","working_pressure_unit":"BAR"}')$q$));
+INSERT INTO r VALUES ('ua_srv', pg_temp.try_as('ac_admin', $q$SELECT cng_admin_add_unit_asset('srv', '7e200000-0000-0000-0000-00000000000a', '{"serial_number":"TUA-S","pressure_min":"275","pressure_unit":"BAR","last_date":"2026-03-01"}')$q$));
+INSERT INTO r VALUES ('ua_bad', pg_temp.try_as('ac_admin', $q$SELECT cng_admin_add_unit_asset('boiler', '7e200000-0000-0000-0000-00000000000a', '{}')$q$));
+INSERT INTO r VALUES ('ua_eng', pg_temp.try_as('ac_eng', $q$SELECT cng_admin_add_unit_asset('compressor', '7e200000-0000-0000-0000-00000000000a', '{}')$q$));
+SELECT pg_temp.ck('AC-9 equipment added to a Unit takes its Station and Region, status derived, nothing invented; audited',
+  (SELECT v FROM r WHERE k='ua_c') = 'OK' AND (SELECT v FROM r WHERE k='ua_sv') = 'OK' AND (SELECT v FROM r WHERE k='ua_h') = 'OK'
+  AND (SELECT v FROM r WHERE k='ua_srv') = 'OK' AND (SELECT v FROM r WHERE k='ua_bad') = '22023' AND (SELECT v FROM r WHERE k='ua_eng') = '42501'
+  AND EXISTS (SELECT 1 FROM compressors WHERE unit_id = '7e200000-0000-0000-0000-00000000000a' AND station_id = '7e100000-0000-0000-0000-00000000000a'
+              AND mapping_status = 'resolved' AND resolved_by = '7e000000-0000-0000-0000-00000000000a' AND serial_status = 'assigned')
+  AND EXISTS (SELECT 1 FROM storage_vessels WHERE unit_id = '7e200000-0000-0000-0000-00000000000a' AND next_inspection_date IS NULL
+              AND last_inspection_precision = 'exact_date' AND serial_number IS NULL)
+  AND EXISTS (SELECT 1 FROM installed_relief_valves WHERE serial_number = 'TUA-S' AND mapping_status = 'needs_equipment_mapping'
+              AND next_calibration_date = '2027-03-01' AND station_id = '7e100000-0000-0000-0000-00000000000a')
+  AND (SELECT count(*) = 4 FROM audit_logs WHERE actor_label = 'admin_add_unit_asset'));
 ROLLBACK;

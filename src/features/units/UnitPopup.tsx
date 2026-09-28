@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 
 import { MakerChip } from '@/components/data/AssetChips'
 import { DetailGrid, DetailItem, RecordDetailsDialog } from '@/components/data/RecordDetailsDialog'
@@ -14,6 +14,8 @@ import {
   type CompressorRow, type DetectorRow, type DispenserRow, type EquipmentTab, type HoseRow, type UnitSrvRow, type VesselRow,
 } from '@/features/units/useUnitWorkspace'
 import { cn } from '@/lib/utils'
+import { useSupabaseClient } from '@/lib/supabase/client'
+import { AddUnitAssetButton, type AssetKind } from '@/features/units/AddUnitAsset'
 
 /**
  * One Unit in a popup (owner request 2026-09-28): a tab per equipment family, each a compact list; a row opens a
@@ -26,6 +28,8 @@ interface Col<T> { header: string; right?: boolean; render: (r: T) => ReactNode 
 const daysLeft = (d: number | null) => (d === null ? <NullValue /> : <span className="tabular">{d.toLocaleString()}</span>)
 
 interface TabSpec<T> {
+  kind: AssetKind
+  dueType: string | null
   tab: EquipmentTab
   label: string
   count: (u: UnitSummary) => number
@@ -36,7 +40,7 @@ interface TabSpec<T> {
 }
 
 const SRV: TabSpec<UnitSrvRow> = {
-  tab: 'srvs', label: 'SRVs', count: (u) => u.installed_srvs, key: (r) => r.id,
+  kind: 'srv', dueType: 'installed_relief_valve', tab: 'srvs', label: 'SRVs', count: (u) => u.installed_srvs, key: (r) => r.id,
   title: (r) => `SRV ${r.serial_number ?? ''}`.trim(), record: (r) => ({ table: 'installed_relief_valves', id: r.id }),
   columns: [
     { header: 'Serial', render: (r) => <Serial value={r.serial_number} status={r.serial_status} /> },
@@ -49,6 +53,7 @@ const SRV: TabSpec<UnitSrvRow> = {
 }
 
 const vessel = (tab: 'storage' | 'recovery-tank', label: string, count: (u: UnitSummary) => number): TabSpec<VesselRow> => ({
+  kind: tab === 'storage' ? 'storage_vessel' : 'recovery_tank', dueType: tab === 'storage' ? 'storage_vessel' : 'recovery_tank',
   tab, label, count, key: (r) => r.id, title: (r) => `${label.replace(/s$/, '')} ${r.serial_number ?? ''}`.trim(),
   record: (r) => ({ table: r.asset_type === 'storage_vessel' ? 'storage_vessels' : 'recovery_tanks', id: r.id }),
   columns: [
@@ -61,7 +66,7 @@ const vessel = (tab: 'storage' | 'recovery-tank', label: string, count: (u: Unit
 })
 
 const DETECTOR: TabSpec<DetectorRow> = {
-  tab: 'gas-detectors', label: 'Gas detectors', count: (u) => u.gas_detectors,
+  kind: 'gas_detector', dueType: 'gas_detector', tab: 'gas-detectors', label: 'Gas detectors', count: (u) => u.gas_detectors,
   key: (r) => r.detector_id ?? `${r.station_id}-${r.area_type_raw}`, title: (r) => `Gas detector ${r.serial_number ?? ''}`.trim(),
   record: (r) => (r.detector_id ? { table: 'gas_detectors', id: r.detector_id } : null),
   columns: [
@@ -74,7 +79,7 @@ const DETECTOR: TabSpec<DetectorRow> = {
 }
 
 const DISPENSER: TabSpec<DispenserRow> = {
-  tab: 'dispensers', label: 'Dispensers', count: (u) => u.dispensers, key: (r) => r.id,
+  kind: 'dispenser', dueType: null, tab: 'dispensers', label: 'Dispensers', count: (u) => u.dispensers, key: (r) => r.id,
   title: (r) => `Dispenser ${r.dispenser_name ?? r.serial_number ?? ''}`.trim(), record: (r) => ({ table: 'dispensers', id: r.id }),
   columns: [
     { header: 'Dispenser', render: (r) => <Text value={r.dispenser_name} /> },
@@ -86,7 +91,7 @@ const DISPENSER: TabSpec<DispenserRow> = {
 }
 
 const HOSE: TabSpec<HoseRow> = {
-  tab: 'hoses', label: 'Hoses', count: (u) => u.hoses, key: (r) => r.id,
+  kind: 'hose', dueType: 'hose', tab: 'hoses', label: 'Hoses', count: (u) => u.hoses, key: (r) => r.id,
   title: (r) => `Hose ${r.serial_number ?? ''}`.trim(), record: (r) => ({ table: 'hoses', id: r.id }),
   columns: [
     { header: 'Serial', render: (r) => <Serial value={r.serial_number} status={r.serial_status} /> },
@@ -99,7 +104,7 @@ const HOSE: TabSpec<HoseRow> = {
 }
 
 const COMPRESSOR: TabSpec<CompressorRow> = {
-  tab: 'compressor', label: 'Compressor', count: (u) => u.compressors, key: (r) => r.id,
+  kind: 'compressor', dueType: null, tab: 'compressor', label: 'Compressor', count: (u) => u.compressors, key: (r) => r.id,
   title: (r) => `Compressor ${r.model ?? r.serial_number ?? ''}`.trim(), record: (r) => ({ table: 'compressors', id: r.id }),
   columns: [
     { header: 'Manufacturer', render: (r) => <MakerChip value={r.manufacturer} /> },
@@ -167,9 +172,57 @@ function TabList<T>({ spec, unitId, onOpen }: { spec: TabSpec<T>; unitId: string
   )
 }
 
+/** Overdue and due-within-60-days per equipment family, from the same view the reports read (suggestion 4). */
+function useUnitDue(unitId: string | undefined, nonce: number) {
+  const supabase = useSupabaseClient()
+  const [counts, setCounts] = useState<Record<string, { overdue: number; due: number }> | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      if (!supabase || !unitId) return
+      const { data, error } = await supabase.from('v_report_due_compliance').select('asset_type, due_status').eq('unit_id', unitId)
+      if (cancelled || error || !data) return
+      const out: Record<string, { overdue: number; due: number }> = {}
+      for (const r of data as { asset_type: string; due_status: string }[]) {
+        const c = (out[r.asset_type] ??= { overdue: 0, due: 0 })
+        if (r.due_status === 'overdue') c.overdue += 1
+        else if (DUE_SOON.includes(r.due_status)) c.due += 1
+      }
+      setCounts(out)
+    })()
+    return () => { cancelled = true }
+  }, [supabase, unitId, nonce])
+  return counts
+}
+const DUE_SOON = ['due_today', 'due_7', 'due_15', 'due_30', 'due_60']
+
+function DueStrip({ counts }: { counts: Record<string, { overdue: number; due: number }> | null }) {
+  if (!counts) return null
+  return (
+    <ul aria-label="Due summary" className="flex flex-wrap gap-2">
+      {TABS.filter((t) => t.dueType).map((t) => {
+        const c = counts[t.dueType as string] ?? { overdue: 0, due: 0 }
+        const tone = c.overdue ? 'border-[var(--status-overdue,#dc2626)] bg-red-50 text-red-900 dark:bg-red-950 dark:text-red-100'
+          : c.due ? 'border-amber-500 bg-amber-50 text-amber-900 dark:bg-amber-950 dark:text-amber-100'
+          : 'border-emerald-500 bg-emerald-50 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100'
+        return (
+          <li key={t.tab} className={cn('rounded border-l-4 border px-2 py-1 text-xs', tone)}>
+            <span className="font-semibold">{t.label}</span>{' '}
+            {c.overdue || c.due
+              ? <span className="tabular">{c.overdue} overdue · {c.due} due ≤60d</span>
+              : <span>nothing due</span>}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
 export function UnitPopup({ unit, onClose }: { unit: UnitSummary | null; onClose: () => void }) {
   const [tab, setTab] = useState<EquipmentTab>('srvs')
   const [item, setItem] = useState<{ spec: TabSpec<unknown>; row: unknown } | null>(null)
+  const [nonce, setNonce] = useState(0)
+  const counts = useUnitDue(unit?.unit_id, nonce)
   const spec = TABS.find((t) => t.tab === tab) ?? TABS[0]
   const record = item ? item.spec.record(item.row) : null
   return (
@@ -179,6 +232,7 @@ export function UnitPopup({ unit, onClose }: { unit: UnitSummary | null; onClose
                            onClose={() => { setItem(null); setTab('srvs'); onClose() }}>
         {unit ? (
           <div className="flex min-w-0 flex-col gap-3">
+            <DueStrip counts={counts} />
             <div role="tablist" aria-label="Equipment" className="flex flex-wrap gap-1 border-b">
               {TABS.map((t) => (
                 <button key={t.tab} type="button" role="tab" aria-selected={t.tab === tab}
@@ -189,8 +243,11 @@ export function UnitPopup({ unit, onClose }: { unit: UnitSummary | null; onClose
                 </button>
               ))}
             </div>
-            <div role="tabpanel" aria-label={spec.label}>
-              <TabList key={spec.tab} spec={spec} unitId={unit.unit_id} onOpen={(row) => setItem({ spec, row })} />
+            <div role="tabpanel" aria-label={spec.label} className="flex flex-col gap-2">
+              <div className="flex justify-end">
+                <AddUnitAssetButton kind={spec.kind} unitId={unit.unit_id} unitName={unit.unit_name} onAdded={() => setNonce((n) => n + 1)} />
+              </div>
+              <TabList key={`${spec.tab}-${nonce}`} spec={spec} unitId={unit.unit_id} onOpen={(row) => setItem({ spec, row })} />
             </div>
           </div>
         ) : null}
