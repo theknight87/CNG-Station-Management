@@ -10,7 +10,7 @@ import { Fact } from '@/features/hierarchy/HierarchyPieces'
 import { useRegions } from '@/features/hierarchy/useHierarchy'
 import { DueBadge, PrecisionDate, PressureRange, Serial, Text } from '@/features/units/assetDisplay'
 import { ValveHistory } from '@/features/relief-valves/SrvWorkflowPieces'
-import { SmartFilterBar, MappingBadge, Metric, ParentCell, SourceContext } from '@/features/relief-valves/SrvPieces'
+import { ManufacturerChip, SmartFilterBar, MappingBadge, Metric, ParentCell, SourceContext } from '@/features/relief-valves/SrvPieces'
 import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
 import {
   hasSmartFilters,
@@ -39,7 +39,7 @@ import {
 
 const COLUMNS: RegistryColumn<InstalledSrvRow>[] = [
   {
-    key: 'region', header: 'Region',
+    key: 'region', header: 'Region', sort: 'region',
     render: (r) => (r.mapping_status === 'needs_station_mapping'
       ? <span className="whitespace-nowrap text-muted-foreground">Not confirmed</span>
       : <Text value={r.region_name} />),
@@ -61,26 +61,26 @@ const COLUMNS: RegistryColumn<InstalledSrvRow>[] = [
       ),
   },
   {
-    key: 'pressure', header: 'Set pressure', align: 'right',
+    key: 'pressure', header: 'Set pressure', align: 'right', sort: 'pressure',
     render: (r) => (
       <PressureRange min={r.pressure_min} max={r.pressure_max} unit={r.pressure_unit} raw={r.set_pressure_raw} />
     ),
   },
-  { key: 'manufacturer', header: 'Manufacturer', render: (r) => <Text value={r.manufacturer} /> },
+  { key: 'manufacturer', header: 'Manufacturer', sort: 'manufacturer', render: (r) => <ManufacturerChip value={r.manufacturer} /> },
   {
     key: 'serial', header: 'Serial', rowHeader: true, sort: 'serial',
     render: (r) => <Serial value={r.serial_number} status={r.serial_status} />,
   },
-  { key: 'size', header: 'Size', render: (r) => <ValveSize type={r.size_type} inlet={r.inlet_size} outlet={r.outlet_size} /> },
+  { key: 'size', header: 'Size', sort: 'size', render: (r) => <ValveSize type={r.size_type} inlet={r.inlet_size} outlet={r.outlet_size} /> },
   {
-    key: 'last_calibration', header: 'Last calibration',
+    key: 'last_calibration', header: 'Last calibration', sort: 'last_calibration',
     render: (r) => <PrecisionDate display={r.last_calibration_display} precision={r.last_calibration_precision} />,
   },
   {
     key: 'days_left', header: 'Days left', align: 'right', numeric: true, sort: 'next_due',
     render: (r) => (r.days_left === null ? <NullValue /> : <span>{r.days_left.toLocaleString()}</span>),
   },
-  { key: 'due', header: 'Status', render: (r) => <DueBadge status={r.due_status} /> },
+  { key: 'due', header: 'Status', sort: 'due', render: (r) => <DueBadge status={r.due_status} /> },
 ]
 
 /** Details panel only. A recorded code, or the code of the single warehouse record with the same serial, labelled as such. */

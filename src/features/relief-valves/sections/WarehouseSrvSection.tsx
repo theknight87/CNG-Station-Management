@@ -1,3 +1,4 @@
+import { AvailabilityChip, ManufacturerChip } from '@/features/relief-valves/SrvPieces'
 import { useCallback, useState } from 'react'
 import { Plus, Search, X } from 'lucide-react'
 
@@ -76,36 +77,31 @@ function SendToCalibration({ row, onSent }: { row: WarehouseSrvRow; onSent: () =
 
 function columns(reload: () => void): RegistryColumn<WarehouseSrvRow>[] { return [
   {
-    key: 'pressure', header: 'Set pressure', align: 'right',
+    key: 'pressure', header: 'Set pressure', align: 'right', sort: 'pressure',
     render: (r) => (
       <PressureRange min={r.pressure_min} max={r.pressure_max} unit={r.pressure_unit} raw={r.set_pressure_raw} />
     ),
   },
   {
     key: 'availability', header: 'Availability', sort: 'availability',
-    render: (r) =>
-      r.availability_status ? (
-        <span className="whitespace-nowrap">{AVAILABILITY_LABEL[r.availability_status] ?? r.availability_status}</span>
-      ) : (
-        <NullValue />
-      ),
+    render: (r) => <AvailabilityChip status={r.availability_status} label={r.availability_status ? AVAILABILITY_LABEL[r.availability_status] ?? null : null} />,
   },
-  { key: 'manufacturer', header: 'Manufacturer', sort: 'manufacturer', render: (r) => <Text value={r.manufacturer} /> },
-  { key: 'size', header: 'Size', render: (r) => <ValveSize type={r.size_type} inlet={r.inlet_size} outlet={r.outlet_size} /> },
+  { key: 'manufacturer', header: 'Manufacturer', sort: 'manufacturer', render: (r) => <ManufacturerChip value={r.manufacturer} /> },
+  { key: 'size', header: 'Size', sort: 'size', render: (r) => <ValveSize type={r.size_type} inlet={r.inlet_size} outlet={r.outlet_size} /> },
   {
     key: 'serial', header: 'Serial', rowHeader: true, sort: 'serial',
     render: (r) => <Serial value={r.serial_number} status={r.serial_status} />,
   },
   {
-    key: 'warehouse_code', header: 'Warehouse code',
+    key: 'warehouse_code', header: 'Warehouse code', sort: 'warehouse_code',
     render: (r) => (r.warehouse_code ? <Identifier value={r.warehouse_code} /> : <NullValue />),
   },
   {
-    key: 'last_calibration', header: 'Last calibration',
+    key: 'last_calibration', header: 'Last calibration', sort: 'last_calibration',
     render: (r) => <PrecisionDate display={r.last_calibration_display} precision={r.last_calibration_precision} />,
   },
   {
-    key: 'days_left', header: 'Days left', align: 'right', numeric: true,
+    key: 'days_left', header: 'Days left', align: 'right', numeric: true, sort: 'next_due',
     render: (r) => (r.days_left === null ? <NullValue /> : <span>{r.days_left.toLocaleString()}</span>),
   },
   {
@@ -114,7 +110,7 @@ function columns(reload: () => void): RegistryColumn<WarehouseSrvRow>[] { return
   },
   {
     // A DESTINATION, labelled as one. Never a hierarchy position.
-    key: 'target', header: 'Destination',
+    key: 'target', header: 'Destination', sort: 'target',
     render: (r) =>
       r.is_unassigned_stock ? (
         <span className="whitespace-nowrap text-muted-foreground">Unassigned stock</span>

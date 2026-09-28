@@ -216,3 +216,42 @@ export function SmartFilterBar({ id, value, onChange, stationLabel = 'Station', 
     </div>
   )
 }
+
+/**
+ * Owner request 2026-09-28: each manufacturer and each availability state gets its own colour so they can be told
+ * apart at a glance. Categorical colour only — the text is always shown, so colour is never the only signal, and
+ * red/amber stay reserved for due status.
+ */
+const CHIP = 'inline-flex items-center whitespace-nowrap rounded border px-1.5 py-0.5 text-xs font-medium'
+const MANUFACTURER_TONE: Record<string, string> = {
+  technical: 'border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-700 dark:bg-sky-950 dark:text-sky-100',
+  mercer: 'border-violet-300 bg-violet-50 text-violet-900 dark:border-violet-700 dark:bg-violet-950 dark:text-violet-100',
+  'dk-lok': 'border-teal-300 bg-teal-50 text-teal-900 dark:border-teal-700 dark:bg-teal-950 dark:text-teal-100',
+  coi: 'border-indigo-300 bg-indigo-50 text-indigo-900 dark:border-indigo-700 dark:bg-indigo-950 dark:text-indigo-100',
+  anderson: 'border-fuchsia-300 bg-fuchsia-50 text-fuchsia-900 dark:border-fuchsia-700 dark:bg-fuchsia-950 dark:text-fuchsia-100',
+  'tyco anderson': 'border-pink-300 bg-pink-50 text-pink-900 dark:border-pink-700 dark:bg-pink-950 dark:text-pink-100',
+  ekc: 'border-cyan-300 bg-cyan-50 text-cyan-900 dark:border-cyan-700 dark:bg-cyan-950 dark:text-cyan-100',
+  farinola: 'border-lime-400 bg-lime-50 text-lime-900 dark:border-lime-700 dark:bg-lime-950 dark:text-lime-100',
+  taylor: 'border-stone-400 bg-stone-100 text-stone-900 dark:border-stone-600 dark:bg-stone-900 dark:text-stone-100',
+  aspro: 'border-blue-300 bg-blue-50 text-blue-900 dark:border-blue-700 dark:bg-blue-950 dark:text-blue-100',
+  takei: 'border-purple-300 bg-purple-50 text-purple-900 dark:border-purple-700 dark:bg-purple-950 dark:text-purple-100',
+}
+const NEUTRAL_TONE = 'border-border bg-muted text-foreground'
+
+export function ManufacturerChip({ value }: { value: string | null }) {
+  if (!value) return <NullValue />
+  return <span className={cn(CHIP, MANUFACTURER_TONE[value.trim().toLowerCase()] ?? NEUTRAL_TONE)}>{value}</span>
+}
+
+const AVAILABILITY_TONE: Record<string, string> = {
+  available_new: 'border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-700 dark:bg-sky-950 dark:text-sky-100',
+  available_calibrated: 'border-teal-300 bg-teal-50 text-teal-900 dark:border-teal-700 dark:bg-teal-950 dark:text-teal-100',
+  available_in_store_uc: 'border-violet-300 bg-violet-50 text-violet-900 dark:border-violet-700 dark:bg-violet-950 dark:text-violet-100',
+  sent_to_station_received: 'border-slate-300 bg-slate-100 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100',
+  sent_to_station_not_received: 'border-orange-300 bg-orange-50 text-orange-900 dark:border-orange-700 dark:bg-orange-950 dark:text-orange-100',
+}
+
+export function AvailabilityChip({ status, label }: { status: string | null; label: string | null }) {
+  if (!status) return <NullValue />
+  return <span className={cn(CHIP, AVAILABILITY_TONE[status] ?? NEUTRAL_TONE)}>{label ?? status}</span>
+}

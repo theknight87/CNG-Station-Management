@@ -195,7 +195,8 @@ export function applySmartFilters<B extends { ilike: any; lte: any; gte: any; eq
 export type MappingFilter = 'all' | 'resolved' | 'needs_equipment_mapping' | 'needs_unit_mapping' | 'needs_station_mapping' | 'conflict'
 /** 'attention' is overdue OR any due bucket — stated, never left ambiguous. */
 export type DueFilter = 'all' | 'overdue' | 'attention' | 'unknown'
-export type InstalledSort = 'next_due' | 'last_calibration' | 'station' | 'unit' | 'serial' | 'mapping'
+export type InstalledSort = 'region' | 'next_due' | 'last_calibration' | 'station' | 'unit' | 'serial' | 'mapping'
+  | 'pressure' | 'manufacturer' | 'size' | 'due'
 
 export interface InstalledQuery {
   search: string
@@ -212,7 +213,7 @@ export interface InstalledQuery {
 
 export const DEFAULT_INSTALLED_QUERY: InstalledQuery = {
   search: '', regionId: null, mapping: 'all', due: 'all', parentKind: 'all', filters: EMPTY_SMART_FILTERS,
-  sort: 'next_due', direction: 'asc', page: 0, pageSize: 50,
+  sort: 'region', direction: 'asc', page: 0, pageSize: 50,
 }
 
 /**
@@ -222,6 +223,12 @@ export const DEFAULT_INSTALLED_QUERY: InstalledQuery = {
  * stub (not the app) came from forgetting that.
  */
 const INSTALLED_SORT: Record<InstalledSort, string[]> = {
+  // Owner default: Region, then Station, then set pressure smallest first (BAR and PSI on one scale).
+  region: ['region_name', 'station_name', 'pressure_sort_bar', 'id'],
+  pressure: ['pressure_sort_bar', 'id'],
+  manufacturer: ['manufacturer', 'id'],
+  size: ['size_type', 'inlet_size', 'outlet_size', 'id'],
+  due: ['due_status', 'next_calibration_date', 'id'],
   next_due: ['next_calibration_date', 'id'],
   last_calibration: ['last_calibration_date', 'id'],
   station: ['station_name', 'unit_name', 'id'],
@@ -326,6 +333,7 @@ export function useInstalledSrvs(query: InstalledQuery): {
 }
 
 export type WarehouseSort = 'next_due' | 'serial' | 'part_number' | 'manufacturer' | 'availability'
+  | 'pressure' | 'size' | 'warehouse_code' | 'last_calibration' | 'target'
 
 export interface WarehouseQuery {
   search: string
@@ -339,10 +347,15 @@ export interface WarehouseQuery {
 }
 
 export const DEFAULT_WAREHOUSE_QUERY: WarehouseQuery = {
-  search: '', availability: null, due: 'all', filters: EMPTY_SMART_FILTERS, sort: 'serial', direction: 'asc', page: 0, pageSize: 50,
+  search: '', availability: null, due: 'all', filters: EMPTY_SMART_FILTERS, sort: 'pressure', direction: 'asc', page: 0, pageSize: 50,
 }
 
 const WAREHOUSE_SORT: Record<WarehouseSort, string[]> = {
+  pressure: ['pressure_sort_bar', 'id'],
+  size: ['size_type', 'inlet_size', 'outlet_size', 'id'],
+  warehouse_code: ['warehouse_code', 'id'],
+  last_calibration: ['last_calibration_date', 'id'],
+  target: ['target_station_name', 'id'],
   next_due: ['next_calibration_date', 'id'],
   serial: ['serial_number', 'id'],
   part_number: ['part_number', 'id'],
