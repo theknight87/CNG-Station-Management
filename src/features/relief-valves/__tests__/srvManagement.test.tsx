@@ -539,7 +539,7 @@ describe('smart filters and warehouse code', () => {
       gte(c: string, v: unknown) { calls.push(['gte', c, v]); return b },
       eq(c: string, v: unknown) { calls.push(['eq', c, v]); return b },
     }
-    applySmartFilters(b, { serial: ' 0003,262 ', region: 'r-1', station: 'الهرم', size: 'M 3/4" X 1"', pressure: '316', pressureUnit: 'BAR' }, 'station_display')
+    applySmartFilters(b, { serial: ' 0003,262 ', region: 'r-1', station: 'الهرم', size: 'M 3/4" X 1"', pressure: '316', pressureUnit: 'BAR', manufacturer: 'COI' }, 'station_display')
     expect(calls).toEqual([
       ['ilike', 'serial_number', '%0003 262%'],
       ['eq', 'region_id', 'r-1'],
@@ -549,8 +549,26 @@ describe('smart filters and warehouse code', () => {
       ['ilike', 'outlet_size', '1"%'],
       ['lte', 'pressure_min', 316],
       ['gte', 'pressure_max', 316],
+      ['ilike', 'manufacturer', 'COI'],
       ['eq', 'pressure_unit', 'BAR'],
     ])
+  })
+
+  it('FILTER-RANGE set pressure takes one value or a range; a range matches valves overlapping it', async () => {
+    const { parsePressure, applySmartFilters: apply, EMPTY_SMART_FILTERS: E } = await import('@/features/relief-valves/useSrvManagement')
+    expect(parsePressure('30')).toEqual({ lo: 30, hi: 30 })
+    expect(parsePressure('30-35')).toEqual({ lo: 30, hi: 35 })
+    expect(parsePressure(' 35 - 30 ')).toEqual({ lo: 30, hi: 35 })
+    expect(parsePressure('30-')).toBeNull()
+    const calls: [string, string, unknown][] = []
+    const b = {
+      ilike(c: string, v: unknown) { calls.push(['ilike', c, v]); return b },
+      lte(c: string, v: unknown) { calls.push(['lte', c, v]); return b },
+      gte(c: string, v: unknown) { calls.push(['gte', c, v]); return b },
+      eq(c: string, v: unknown) { calls.push(['eq', c, v]); return b },
+    }
+    apply(b, { ...E, pressure: '30-35' }, 'station_display')
+    expect(calls).toEqual([['lte', 'pressure_min', 35], ['gte', 'pressure_max', 30]])
   })
 
   it('FILTER-3 the full size is read as the table writes it; a bare inlet still works', async () => {
@@ -628,7 +646,7 @@ describe('Installed SRVs — owner layout and filtered summary (2026-09-28)', ()
     expect(calls.list.some((c) => c.startsWith('rpc:cng_installed_srv_summary_filtered'))).toBe(false)
     replies.summary = { data: { total: 7, overdue: 1, attention: 2, needs_station_mapping: 0, needs_unit_mapping: 0, needs_equipment_mapping: 0, conflict: 0 }, error: null }
     await user.type(screen.getByLabelText(/^set pressure$/i), '275')
-    await waitFor(() => expect(calls.list.some((c) => c.startsWith('rpc:cng_installed_srv_summary_filtered') && c.includes('"pressure":"275"'))).toBe(true))
+    await waitFor(() => expect(calls.list.some((c) => c.startsWith('rpc:cng_installed_srv_summary_filtered') && c.includes('"pressure_lo":"275"') && c.includes('"pressure_hi":"275"'))).toBe(true))
     expect(await screen.findByText('matching the filters')).toBeDefined()
     expect(screen.getByText('7')).toBeDefined()
   })

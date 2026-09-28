@@ -202,8 +202,9 @@ export function SmartFilterBar({ id, value, onChange, stationLabel = 'Station', 
       </label>
       <label className="flex flex-col gap-0.5 text-xs text-muted-foreground" htmlFor={`${id}-pressure`}>
         Set pressure
-        <input id={`${id}-pressure`} inputMode="decimal" className={cn(input, 'w-24 text-right tabular')} value={value.pressure}
-               placeholder="value" onChange={(e) => set({ pressure: e.target.value.replace(/[^\d.]/g, '') })} />
+        <input id={`${id}-pressure`} inputMode="decimal" className={cn(input, 'w-28 text-right tabular')} value={value.pressure}
+               title="One value (30) or a range (30-35)"
+               placeholder="30 or 30-35" onChange={(e) => set({ pressure: e.target.value.replace(/[^\d.\-– ]/g, '') })} />
       </label>
       <label className="flex flex-col gap-0.5 text-xs text-muted-foreground" htmlFor={`${id}-unit`}>
         Unit
@@ -212,6 +213,14 @@ export function SmartFilterBar({ id, value, onChange, stationLabel = 'Station', 
           <option value="">Any</option>
           <option value="BAR">BAR</option>
           <option value="PSI">PSI</option>
+        </select>
+      </label>
+      <label className="flex flex-col gap-0.5 text-xs text-muted-foreground" htmlFor={`${id}-manufacturer`}>
+        Manufacturer
+        <select id={`${id}-manufacturer`} className={cn(input, 'px-1.5 text-foreground')} value={value.manufacturer}
+                onChange={(e) => set({ manufacturer: e.target.value })}>
+          <option value="">All</option>
+          {MANUFACTURERS.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
       </label>
     </div>
@@ -239,6 +248,7 @@ const MANUFACTURER_TONE: Record<string, string> = {
   aspro: 'border-slate-900 bg-slate-900 text-white dark:border-slate-200 dark:bg-slate-200 dark:text-black',
   takei: 'border-cyan-300 bg-cyan-300 text-black',
 }
+const MANUFACTURERS = ['Anderson', 'Aspro', 'COI', 'DK-LOK', 'EKC', 'Farinola', 'Mercer', 'TAKEI', 'Taylor', 'Technical', 'Tyco Anderson']
 const NEUTRAL_TONE = 'border-border bg-muted text-foreground'
 
 export function ManufacturerChip({ value }: { value: string | null }) {

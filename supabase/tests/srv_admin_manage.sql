@@ -41,6 +41,10 @@ INSERT INTO srv_calibration_jobs (id, warehouse_valve_id, sent_by) VALUES ('7f70
 SELECT pg_temp.ck('SM-1 filtered summary: 275 BAR at the test station counts only that valve',
   (SELECT total = 1 FROM cng_installed_srv_summary_filtered('{"pressure":"275","station":"TSM ALPHA"}'))
   AND (SELECT total = 2 FROM cng_installed_srv_summary_filtered('{"station":"TSM ALPHA"}')));
+SELECT pg_temp.ck('SM-1b summary: a pressure range counts valves overlapping it; manufacturer filters exactly',
+  (SELECT total = 1 FROM cng_installed_srv_summary_filtered('{"pressure_lo":"80","pressure_hi":"100","station":"TSM ALPHA"}'))
+  AND (SELECT total = 2 FROM cng_installed_srv_summary_filtered('{"pressure_lo":"80","pressure_hi":"300","station":"TSM ALPHA"}'))
+  AND (SELECT total = 0 FROM cng_installed_srv_summary_filtered('{"manufacturer":"coi","station":"TSM ALPHA"}')));
 SELECT pg_temp.ck('SM-2 a non-admin is refused by every admin action',
   pg_temp.try_as('sm_eng', $q$SELECT cng_srv_log_archive('7f600000-0000-0000-0000-000000000001')$q$) = '42501'
   AND pg_temp.try_as('sm_eng', $q$SELECT cng_admin_archive_srv('installed_relief_valves','7f300000-0000-0000-0000-000000000003')$q$) = '42501');

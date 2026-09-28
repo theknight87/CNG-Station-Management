@@ -150,11 +150,12 @@ export interface SrvSmartFilters {
   size: string
   pressure: string
   pressureUnit: '' | 'BAR' | 'PSI'
+  manufacturer: string
 }
-export const EMPTY_SMART_FILTERS: SrvSmartFilters = { serial: '', region: '', station: '', size: '', pressure: '', pressureUnit: '' }
+export const EMPTY_SMART_FILTERS: SrvSmartFilters = { serial: '', region: '', station: '', size: '', pressure: '', pressureUnit: '', manufacturer: '' }
 
 export function hasSmartFilters(f: SrvSmartFilters): boolean {
-  return Boolean(f.serial.trim() || f.region || f.station.trim() || f.size.trim() || f.pressure.trim() || f.pressureUnit)
+  return Boolean(f.serial.trim() || f.region || f.station.trim() || f.size.trim() || f.pressure.trim() || f.pressureUnit || f.manufacturer)
 }
 
 /** Splits a full size (`M 3/4" X 1"`) into its type, inlet and outlet parts. Any part may be absent. */
@@ -169,6 +170,17 @@ export function parseSize(value: string): { type: 'male' | 'female' | 'flange' |
   }
   const [inlet = '', outlet = ''] = v.split(/\s*[xX×]\s*/)
   return { type, inlet: inlet.trim(), outlet: outlet.trim() }
+}
+
+/**
+ * Set pressure filter: one value ("30") or a range ("30-35"). A valve matches when its recorded range overlaps
+ * lo..hi, in the unit chosen beside it. Anything unreadable filters nothing rather than guessing.
+ */
+export function parsePressure(value: string): { lo: number; hi: number } | null {
+  const m = /^\s*(\d+(?:\.\d+)?)\s*(?:[-–]\s*(\d+(?:\.\d+)?))?\s*$/.exec(value)
+  if (!m) return null
+  const a = Number(m[1]), b = m[2] === undefined ? a : Number(m[2])
+  return { lo: Math.min(a, b), hi: Math.max(a, b) }
 }
 
 /** Applies the dedicated filters to a PostgREST builder. Station and Region columns differ per dataset. */
@@ -186,8 +198,9 @@ export function applySmartFilters<B extends { ilike: any; lte: any; gte: any; eq
     if (clean(size.inlet)) b = b.ilike('inlet_size', `${clean(size.inlet)}%`)
     if (clean(size.outlet)) b = b.ilike('outlet_size', `${clean(size.outlet)}%`)
   }
-  const v = Number(f.pressure.trim())
-  if (f.pressure.trim() && Number.isFinite(v)) b = b.lte('pressure_min', v).gte('pressure_max', v)
+  const range = parsePressure(f.pressure)
+  if (range) b = b.lte('pressure_min', range.hi).gte('pressure_max', range.lo)
+  if (f.manufacturer) b = b.ilike('manufacturer', clean(f.manufacturer))
   if (f.pressureUnit) b = b.eq('pressure_unit', f.pressureUnit)
   return b
 }
@@ -548,7 +561,7 @@ export function summaryParams(q: InstalledQuery): Record<string, string> {
   const clean = (v: string) => v.trim().replace(/[%*,()]/g, ' ').trim()
   const size = parseSize(q.filters.size)
   const term = q.search.trim().replace(/[,()]/g, ' ')
-  const v = Number(q.filters.pressure.trim())
+  const range = parsePressure(q.filters.pressure)
   const all: Record<string, string> = {
     region_id: q.regionId ?? '',
     mapping: q.mapping === 'all' ? '' : q.mapping,
@@ -559,7 +572,9 @@ export function summaryParams(q: InstalledQuery): Record<string, string> {
     size_type: q.filters.size.trim() && size.type ? size.type : '',
     inlet: q.filters.size.trim() ? clean(size.inlet) : '',
     outlet: q.filters.size.trim() ? clean(size.outlet) : '',
-    pressure: q.filters.pressure.trim() && Number.isFinite(v) ? String(v) : '',
+    pressure_lo: range ? String(range.lo) : '',
+    pressure_hi: range ? String(range.hi) : '',
+    manufacturer: q.filters.manufacturer,
     pressure_unit: q.filters.pressureUnit,
     search: term,
     search_folded: term ? foldName(term) : '',
