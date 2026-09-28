@@ -8,7 +8,7 @@ import { DataToolbar } from '@/components/layout/PageContainer'
 import { Button } from '@/components/ui/button'
 import { Fact } from '@/features/hierarchy/HierarchyPieces'
 import { useRegions } from '@/features/hierarchy/useHierarchy'
-import { DueBadge, PrecisionDate, PressureRange, Serial, SourceStatus, Text } from '@/features/units/assetDisplay'
+import { DueBadge, PrecisionDate, PressureRange, Serial, Text } from '@/features/units/assetDisplay'
 import { ValveHistory } from '@/features/relief-valves/SrvWorkflowPieces'
 import { SmartFilterBar, MappingBadge, Metric, ParentCell, SourceContext } from '@/features/relief-valves/SrvPieces'
 import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
@@ -39,26 +39,23 @@ import {
 
 const COLUMNS: RegistryColumn<InstalledSrvRow>[] = [
   {
-    key: 'serial', header: 'Serial', rowHeader: true, sort: 'serial',
-    render: (r) => <Serial value={r.serial_number} status={r.serial_status} />,
-  },
-  {
     key: 'region', header: 'Region',
     render: (r) => (r.mapping_status === 'needs_station_mapping'
       ? <span className="whitespace-nowrap text-muted-foreground">Not confirmed</span>
       : <Text value={r.region_name} />),
   },
   {
-    key: 'station', header: 'Station', sort: 'station',
-    render: (r) => (r.mapping_status === 'needs_station_mapping'
-      ? <span className="whitespace-nowrap text-muted-foreground">Station not confirmed</span>
-      : <span dir="auto" className="whitespace-nowrap">{r.station_name ?? <NullValue />}</span>),
-  },
-  {
+    // Owner layout 2026-09-28: no Station column — the Unit names the site. A valve whose Unit is not yet
+    // confirmed shows its Station, labelled so, rather than an empty cell.
     key: 'unit', header: 'Unit', sort: 'unit',
     render: (r) =>
       r.unit_name ? (
         <span dir="auto" className="whitespace-nowrap">{r.unit_name}</span>
+      ) : r.station_name ? (
+        <span className="whitespace-nowrap">
+          <span dir="auto">{r.station_name}</span>
+          <span className="ml-1.5 text-xs text-muted-foreground">station level</span>
+        </span>
       ) : (
         <span className="whitespace-nowrap text-muted-foreground">Not confirmed</span>
       ),
@@ -69,28 +66,21 @@ const COLUMNS: RegistryColumn<InstalledSrvRow>[] = [
       <PressureRange min={r.pressure_min} max={r.pressure_max} unit={r.pressure_unit} raw={r.set_pressure_raw} />
     ),
   },
-  { key: 'size', header: 'Size', render: (r) => <ValveSize type={r.size_type} inlet={r.inlet_size} outlet={r.outlet_size} /> },
   { key: 'manufacturer', header: 'Manufacturer', render: (r) => <Text value={r.manufacturer} /> },
-  { key: 'due', header: 'Status', render: (r) => <DueBadge status={r.due_status} /> },
   {
-    key: 'days_left', header: 'Days left', align: 'right', numeric: true,
-    render: (r) => (r.days_left === null ? <NullValue /> : <span>{r.days_left.toLocaleString()}</span>),
+    key: 'serial', header: 'Serial', rowHeader: true, sort: 'serial',
+    render: (r) => <Serial value={r.serial_number} status={r.serial_status} />,
   },
-  {
-    key: 'next_due', header: 'Next calibration', sort: 'next_due',
-    render: (r) => (
-      <>
-        <PrecisionDate display={r.next_calibration_display} precision={r.next_calibration_precision} />
-        {!r.next_calibration_display ? <SourceStatus value={r.source_status_raw} /> : null}
-      </>
-    ),
-  },
+  { key: 'size', header: 'Size', render: (r) => <ValveSize type={r.size_type} inlet={r.inlet_size} outlet={r.outlet_size} /> },
   {
     key: 'last_calibration', header: 'Last calibration',
     render: (r) => <PrecisionDate display={r.last_calibration_display} precision={r.last_calibration_precision} />,
   },
-  { key: 'parent', header: 'Equipment parent', render: (r) => <ParentCell row={r} /> },
-  { key: 'mapping', header: 'Mapping', sort: 'mapping', render: (r) => <MappingBadge status={r.mapping_status} /> },
+  {
+    key: 'days_left', header: 'Days left', align: 'right', numeric: true, sort: 'next_due',
+    render: (r) => (r.days_left === null ? <NullValue /> : <span>{r.days_left.toLocaleString()}</span>),
+  },
+  { key: 'due', header: 'Status', render: (r) => <DueBadge status={r.due_status} /> },
 ]
 
 /** Details panel only. A recorded code, or the code of the single warehouse record with the same serial, labelled as such. */

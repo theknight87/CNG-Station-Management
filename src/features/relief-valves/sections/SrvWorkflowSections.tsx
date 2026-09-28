@@ -26,9 +26,9 @@ function Truncated({ shown, total }: { shown: number; total: number }) {
   ) : null
 }
 
-function HistoryDialog({ valveId, title, onClose }: { valveId: string | null; title: string; onClose: () => void }) {
+function HistoryDialog({ valveId, title, onClose, note }: { valveId: string | null; title: string; onClose: () => void; note?: string }) {
   return (
-    <RecordDetailsDialog open={valveId !== null} title={title} description="Movements of this valve" onClose={onClose}>
+    <RecordDetailsDialog open={valveId !== null} title={title} description={note ?? 'Movements of this valve'} onClose={onClose}>
       {valveId ? <ValveHistory valveId={valveId} /> : null}
     </RecordDetailsDialog>
   )
@@ -104,14 +104,13 @@ export function SrvLogSection() {
             { key: 'code', header: 'Code', render: (r) => <Code value={r.warehouse_code} /> },
             { key: 'pressure', header: 'Set pressure', align: 'right', render: (r) => <Pressure v={r} /> },
             { key: 'size', header: 'Size', render: (r) => <ValveSize v={r} /> },
+            { key: 'region', header: 'Region', render: (r) => r.region_name ?? <NullValue /> },
             { key: 'station', header: 'Station', render: (r) => (
-              <span dir="auto" className="whitespace-nowrap">{r.station_display ?? <NullValue />}
+              <span dir="auto">{r.station_display ?? <NullValue />}
                 {r.unit_name ? <span className="ml-1 text-xs text-muted-foreground">/ {r.unit_name}</span> : null}
-                {r.region_name ? <span className="ml-1.5 text-xs text-muted-foreground">{r.region_name}</span> : null}
               </span>) },
             { key: 'status', header: 'Status', render: (r) => (
-              <span className="whitespace-nowrap">{LOG_STATUS[r.status]}{r.is_emergency ? ' · Emergency' : ''}</span>) },
-            { key: 'reason', header: 'Why it is here', render: (r) => <span className="text-xs">{LOG_REASON[r.reason]}</span> },
+              <span>{LOG_STATUS[r.status]}{r.is_emergency ? ' · Emergency' : ''}</span>) },
             { key: 'since', header: 'Since', render: (r) => day(r.reason === 'replaced_on_issue' ? r.logged_at : r.warehouse_issue_date ?? r.logged_at) },
             ...(isAdmin ? [{ key: 'actions', header: 'Actions', render: (r: FieldLogRow) => (
               <RowActions>
@@ -130,7 +129,8 @@ export function SrvLogSection() {
         {state.status === 'ready' ? <Truncated shown={rows.length} total={state.data.total} /> : null}
       </ListStates>
       <HistoryDialog valveId={open ? open.installed_valve_id ?? open.warehouse_valve_id : null}
-                     title={`SRV ${open?.serial_number ?? ''}`} onClose={() => setOpen(null)} />
+                     title={`SRV ${open?.serial_number ?? ''}`} onClose={() => setOpen(null)}
+                     note={open ? `Why it is in the SRV Log: ${LOG_REASON[open.reason]}` : undefined} />
     </div>
   )
 }

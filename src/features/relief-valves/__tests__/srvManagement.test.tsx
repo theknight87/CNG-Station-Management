@@ -243,7 +243,9 @@ describe('Installed SRVs — mapping lifecycle presentation', () => {
     replies.installed = { data: [installed()], error: null, count: 1 }
     renderSrv()
     expect(await screen.findByText('RV-880124')).toBeDefined()
-    expect(screen.getByText('الماظة')).toBeDefined()
+    // Owner layout: the Unit names the site in the table; Station and parent are in the details.
+    expect(screen.getByText('الماظة 1')).toBeDefined()
+    await userEvent.click((await screen.findAllByRole('button', { name: /show the full technical record/i }))[0])
     expect(screen.getByText('F-19822')).toBeDefined()
   })
 
@@ -253,7 +255,8 @@ describe('Installed SRVs — mapping lifecycle presentation', () => {
       error: null, count: 1,
     }
     renderSrv()
-    expect(await screen.findByText(/needs equipment mapping/i)).toBeDefined()
+    await userEvent.click((await screen.findAllByRole('button', { name: /show the full technical record/i }))[0])
+    expect((await screen.findAllByText(/needs equipment mapping/i)).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/not confirmed/i).length).toBeGreaterThan(0)
     expect(screen.queryByText('F-19822')).toBeNull()
   })
@@ -264,8 +267,9 @@ describe('Installed SRVs — mapping lifecycle presentation', () => {
       error: null, count: 1,
     }
     renderSrv()
-    expect(await screen.findByText(/needs unit mapping/i)).toBeDefined()
-    expect(screen.getByText('الماظة')).toBeDefined()
+    // The table shows the Station at station level instead of an empty Unit.
+    expect(await screen.findByText('الماظة')).toBeDefined()
+    expect(screen.getByText('station level')).toBeDefined()
   })
 
   it('needs_station_mapping fabricates no Region or Station from raw text', async () => {
@@ -279,10 +283,10 @@ describe('Installed SRVs — mapping lifecycle presentation', () => {
       error: null, count: 1,
     }
     renderSrv()
-    expect(await screen.findByText(/needs station mapping/i)).toBeDefined()
-    expect(screen.getByText(/station not confirmed/i)).toBeDefined()
-    // The raw source name is NOT promoted into the Station column.
-    const row = screen.getByText(/station not confirmed/i).closest('tr')!
+    const table = await screen.findByRole('table')
+    expect(within(table).getAllByText(/not confirmed/i).length).toBe(2)
+    // The raw source name is NOT promoted into the table.
+    const row = within(table).getAllByText(/not confirmed/i)[0].closest('tr')!
     expect(within(row).queryByText('ابو تيج- اسيوط')).toBeNull()
   })
 
@@ -344,8 +348,7 @@ describe('Identifiers and technical values', () => {
       error: null, count: 1,
     }
     renderSrv()
-    expect(await screen.findByText('2027')).toBeDefined()
-    expect(screen.getByText(/year only/i)).toBeDefined()
+    await screen.findByText('RV-880124')
     // Scoped to the table: "No exact date" is also a Due filter option.
     const table = screen.getByRole('table')
     expect(within(table).getByText(/no exact date/i)).toBeDefined()
@@ -593,18 +596,16 @@ describe('Installed SRVs — owner layout and filtered summary (2026-09-28)', ()
     replies.summary = { data: { total: 2683, overdue: 341, attention: 540, needs_station_mapping: 0, needs_unit_mapping: 92, needs_equipment_mapping: 0, conflict: 0 }, error: null }
   })
 
-  it('shows Region, Station and Days left in the table and no Part number column', async () => {
+  it('owner column order: Region, Unit, Set pressure, Manufacturer, Serial, Size, Last cal, Days left, Status', async () => {
     render(<MemoryRouter><InstalledSrvSection /></MemoryRouter>)
     const table = await screen.findByRole('table')
     const headers = within(table).getAllByRole('columnheader').map((h) => h.textContent?.toLowerCase() ?? '')
     const at = (name: string) => headers.findIndex((h) => h.includes(name))
-    expect(at('region')).toBeGreaterThan(-1)
-    expect(at('station')).toBeGreaterThan(-1)
-    expect(at('days left')).toBeGreaterThan(-1)
+    expect(at('station')).toBe(-1)
     expect(at('part number')).toBe(-1)
-    // Serial, then where it is: Region, Station, Unit lead the row.
-    expect(at('serial')).toBeLessThan(at('region'))
-    expect(at('region')).toBeLessThan(at('station'))
+    const order = ['region', 'unit', 'set pressure', 'manufacturer', 'serial', 'size', 'last calibration', 'days left', 'status']
+    order.forEach((n) => expect(at(n)).toBeGreaterThan(-1))
+    order.slice(1).forEach((n, i) => expect(at(order[i])).toBeLessThan(at(n)))
     expect(within(table).getByText('East')).toBeDefined()
   })
 

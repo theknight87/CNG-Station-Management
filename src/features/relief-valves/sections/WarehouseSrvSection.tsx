@@ -6,7 +6,7 @@ import { NullValue } from '@/components/data/NullValue'
 import { DataToolbar } from '@/components/layout/PageContainer'
 import { Button } from '@/components/ui/button'
 import { Fact } from '@/features/hierarchy/HierarchyPieces'
-import { DueBadge, PrecisionDate, PressureRange, Serial, SourceStatus, Text } from '@/features/units/assetDisplay'
+import { DueBadge, PrecisionDate, PressureRange, Serial, Text } from '@/features/units/assetDisplay'
 import { Metric } from '@/features/relief-valves/SrvPieces'
 import { SmartFilterBar } from '@/features/relief-valves/SrvPieces'
 import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
@@ -81,7 +81,15 @@ function columns(reload: () => void): RegistryColumn<WarehouseSrvRow>[] { return
       <PressureRange min={r.pressure_min} max={r.pressure_max} unit={r.pressure_unit} raw={r.set_pressure_raw} />
     ),
   },
-  { key: 'due', header: 'Status', render: (r) => <DueBadge status={r.due_status} /> },
+  {
+    key: 'availability', header: 'Availability', sort: 'availability',
+    render: (r) =>
+      r.availability_status ? (
+        <span className="whitespace-nowrap">{AVAILABILITY_LABEL[r.availability_status] ?? r.availability_status}</span>
+      ) : (
+        <NullValue />
+      ),
+  },
   { key: 'manufacturer', header: 'Manufacturer', sort: 'manufacturer', render: (r) => <Text value={r.manufacturer} /> },
   { key: 'size', header: 'Size', render: (r) => <ValveSize type={r.size_type} inlet={r.inlet_size} outlet={r.outlet_size} /> },
   {
@@ -93,21 +101,12 @@ function columns(reload: () => void): RegistryColumn<WarehouseSrvRow>[] { return
     render: (r) => (r.warehouse_code ? <Identifier value={r.warehouse_code} /> : <NullValue />),
   },
   {
-    key: 'part_number', header: 'Part number', sort: 'part_number',
-    render: (r) => (r.part_number ? <Identifier value={r.part_number} /> : <NullValue />),
-  },
-  {
     key: 'last_calibration', header: 'Last calibration',
     render: (r) => <PrecisionDate display={r.last_calibration_display} precision={r.last_calibration_precision} />,
   },
   {
-    key: 'availability', header: 'Availability', sort: 'availability',
-    render: (r) =>
-      r.availability_status ? (
-        <span className="whitespace-nowrap">{AVAILABILITY_LABEL[r.availability_status] ?? r.availability_status}</span>
-      ) : (
-        <NullValue />
-      ),
+    key: 'days_left', header: 'Days left', align: 'right', numeric: true,
+    render: (r) => (r.days_left === null ? <NullValue /> : <span>{r.days_left.toLocaleString()}</span>),
   },
   {
     key: 'calibrate', header: 'Calibrate',
@@ -127,19 +126,6 @@ function columns(reload: () => void): RegistryColumn<WarehouseSrvRow>[] { return
           ) : null}
         </span>
       ),
-  },
-  {
-    key: 'next_due', header: 'Next calibration', sort: 'next_due',
-    render: (r) => (
-      <>
-        <PrecisionDate display={r.next_calibration_display} precision={r.next_calibration_precision} />
-        {!r.next_calibration_display ? <SourceStatus value={r.source_status_raw} /> : null}
-      </>
-    ),
-  },
-  {
-    key: 'days_left', header: 'Days left', align: 'right', numeric: true,
-    render: (r) => (r.days_left === null ? <NullValue /> : <span>{r.days_left.toLocaleString()}</span>),
   },
 ]}
 

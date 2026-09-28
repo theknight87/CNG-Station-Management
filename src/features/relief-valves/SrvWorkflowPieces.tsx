@@ -208,7 +208,7 @@ export function SelectableTable<T extends { id: string }>({
                      onChange={() => onSelected(all ? new Set() : new Set(pickable.map((r) => r.id)))} />
             </th>
             {columns.map((c) => (
-              <th key={c.key} className={cn('px-2 py-1.5 text-left font-medium', c.align === 'right' && 'text-right')}>{c.header}</th>
+              <th key={c.key} className={cn('whitespace-nowrap px-2 py-1.5 text-left font-semibold', c.align === 'right' && 'text-right')}>{c.header}</th>
             ))}
           </tr>
         </thead>
@@ -227,7 +227,7 @@ export function SelectableTable<T extends { id: string }>({
                 ) : null}
               </td>
               {columns.map((c) => (
-                <td key={c.key} className={cn('px-2 py-1', c.align === 'right' && 'text-right tabular')}>{c.render(r)}</td>
+                <td key={c.key} className={cn('whitespace-nowrap px-2 py-1 align-middle', c.align === 'right' && 'text-right tabular')}>{c.render(r)}</td>
               ))}
             </tr>
           ))}
