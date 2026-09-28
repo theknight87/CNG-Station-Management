@@ -1,11 +1,14 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useId, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 
+/** Open dialogs, innermost last: only the top one answers Escape and Tab, so a popup opened from a popup closes alone. */
+const openStack: symbol[] = []
+
 export function RecordDetailsDialog({
-  open, title, description, children, actions, onClose,
+  open, title, description, children, actions, onClose, size = 'default',
 }: {
   open: boolean
   title: string
@@ -13,8 +16,11 @@ export function RecordDetailsDialog({
   children: ReactNode
   actions?: ReactNode
   onClose: () => void
+  /** 'wide' for a dialog that holds tabs and tables (the Unit popup). */
+  size?: 'default' | 'wide'
 }) {
   const dialogRef = useRef<HTMLElement>(null)
+  const titleId = useId()
   // Held in a ref so a parent passing a fresh callback each render does not
   // re-run the effect, which would bounce focus and lose the opener.
   const onCloseRef = useRef(onClose)
@@ -32,8 +38,11 @@ export function RecordDetailsDialog({
       'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
     ) ?? [])]
     dialogRef.current?.focus()
+    const me = Symbol('dialog')
+    openStack.push(me)
 
     const onKey = (event: KeyboardEvent) => {
+      if (openStack[openStack.length - 1] !== me) return
       if (event.key === 'Escape') {
         onCloseRef.current()
         return
@@ -60,6 +69,7 @@ export function RecordDetailsDialog({
     document.body.style.overflow = 'hidden'
     return () => {
       document.removeEventListener('keydown', onKey)
+      openStack.splice(openStack.indexOf(me), 1)
       document.body.style.overflow = previous
       if (opener?.isConnected) opener.focus()
     }
@@ -71,15 +81,15 @@ export function RecordDetailsDialog({
       <section
         role="dialog"
         aria-modal="true"
-        aria-labelledby="record-dialog-title"
+        aria-labelledby={titleId}
         ref={dialogRef}
         tabIndex={-1}
-        className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg border bg-background shadow-2xl"
+        className={`flex max-h-[88vh] w-full ${size === 'wide' ? 'max-w-6xl' : 'max-w-4xl'} flex-col overflow-hidden rounded-lg border bg-background shadow-2xl`}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header className="flex items-start justify-between gap-4 border-b px-4 py-3 sm:px-5">
           <div className="min-w-0">
-            <h2 id="record-dialog-title" className="break-words text-lg font-semibold tracking-tight">{title}</h2>
+            <h2 id={titleId} className="break-words text-lg font-semibold tracking-tight">{title}</h2>
             {description ? <p className="mt-0.5 text-sm text-muted-foreground">{description}</p> : null}
           </div>
           <Button type="button" variant="ghost" size="icon" aria-label="Close details" onClick={onClose}>

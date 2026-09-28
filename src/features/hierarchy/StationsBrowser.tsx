@@ -1,5 +1,9 @@
-import { useCallback, useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react'
+import { Fragment, useCallback, useMemo, useState } from 'react'
+import { ChevronDown, ChevronLeft, ChevronRight, Search, X } from 'lucide-react'
+
+import { StationUnits } from '@/features/hierarchy/StationUnits'
+import { UnitPopup } from '@/features/units/UnitPopup'
+import type { UnitSummary } from '@/features/hierarchy/useHierarchy'
 
 import {
   DataTable,
@@ -107,6 +111,18 @@ export function StationsBrowser({
   const total = state.status === 'ready' ? state.data.total : 0
   const range = useRangeLabel(effective.page, effective.pageSize, rows.length, total)
   const pages = pageCount(total, effective.pageSize)
+
+  // Owner request 2026-09-28: a Station row opens to its Units; a Unit opens in a popup with its equipment.
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
+  const toggle = useCallback((id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+  const [openUnit, setOpenUnit] = useState<UnitSummary | null>(null)
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
@@ -232,13 +248,24 @@ export function StationsBrowser({
               </TableHead>
               <TableBody>
                 {rows.map((station) => (
-                  <TableRow key={station.station_id}>
+                  <Fragment key={station.station_id}>
+                  <TableRow>
                     <RowHeaderCell>
+                      <span className="inline-flex items-center gap-1">
+                      <button type="button" className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                              aria-expanded={expanded.has(station.station_id)}
+                              aria-label={`${expanded.has(station.station_id) ? 'Hide' : 'Show'} the Units of ${station.station_name}`}
+                              onClick={() => toggle(station.station_id)}>
+                        {expanded.has(station.station_id)
+                          ? <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+                          : <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />}
+                      </button>
                       <EntityLink to={`/stations/${station.station_id}`}>
                         {/* Arabic names render direction-aware and are never
                           * truncated into ambiguity — the table scrolls. */}
                         <EntityName name={station.station_name} />
                       </EntityLink>
+                      </span>
                     </RowHeaderCell>
                     <TableCell>{station.region_name}</TableCell>
                     <TableCell align="right" numeric><Count value={station.units} /></TableCell>
@@ -257,6 +284,14 @@ export function StationsBrowser({
                       <AttentionBadge overdue={station.overdue} unresolved={station.unresolved_mapping} />
                     </TableCell>
                   </TableRow>
+                  {expanded.has(station.station_id) ? (
+                    <tr className="border-t bg-muted/20">
+                      <td colSpan={9} className="px-3 py-2">
+                        <StationUnits stationId={station.station_id} onOpen={setOpenUnit} />
+                      </td>
+                    </tr>
+                  ) : null}
+                  </Fragment>
                 ))}
               </TableBody>
             </DataTable>
@@ -298,6 +333,7 @@ export function StationsBrowser({
           </nav>
         </>
       ) : null}
+      <UnitPopup unit={openUnit} onClose={() => setOpenUnit(null)} />
     </div>
   )
 }
