@@ -54,6 +54,12 @@ vi.mock('@/lib/supabase/client', () => {
           calls.list.push(`${table}.in:${col}=[${values.join('|')}]`)
           return chain
         },
+        ilike: (col: string, value: string) => {
+          calls.list.push(`${table}.${head ? 'count.' : ''}ilike:${col}=${value}`)
+          return chain
+        },
+        lte: () => chain,
+        gte: () => chain,
         or: (expr: string) => {
           calls.list.push(`${table}.or:${expr}`)
           return chain
@@ -180,6 +186,15 @@ describe('Server-side query', () => {
     await waitFor(() => expect(calls.list).toContain('v_vessel_management.eq:mapping_status=needs_unit_mapping'))
     await userEvent.selectOptions(screen.getByLabelText(/^due$/i), 'overdue')
     await waitFor(() => expect(calls.list).toContain('v_vessel_management.eq:due_status=overdue'))
+  })
+
+  it('the summary counts follow the filters (owner request 2026-09-28)', async () => {
+    replies.vessels = { data: [vessel()], error: null, count: 1 }
+    renderVessels()
+    await screen.findByText('SV-00001')
+    await userEvent.type(screen.getByLabelText(/^serial$/i), 'SV')
+    await waitFor(() => expect(calls.list).toContain('v_vessel_management.count.ilike:serial_number=%SV%'))
+    expect(await screen.findByText('Counts match the current filters.')).toBeDefined()
   })
 
   it('sorts with the requested column first and a deterministic tie-break', async () => {

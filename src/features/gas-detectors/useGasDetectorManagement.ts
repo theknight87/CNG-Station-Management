@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { applyAssetFilters, EMPTY_ASSET_FILTERS, type AssetFilters } from '@/components/data/assetFilters'
+import { applyAssetFilters, EMPTY_ASSET_FILTERS, hasAssetFilters, type AssetFilters } from '@/components/data/assetFilters'
 import type { RegistryPage } from '@/components/data/RegistryTable'
 import { useSupabaseClient } from '@/lib/supabase/client'
 import { foldName } from '@/features/hierarchy/foldName'
@@ -172,6 +172,43 @@ const SORT_COLUMNS: Record<DetectorSort, string[]> = {
 
 const TIE_BREAK = ['detector_id', 'station_id', 'unit_id']
 
+/**
+ * Every filter the registry applies (no sort, no paging): the table AND its summary use this, so they agree.
+ * The summary pins presence itself, so it passes withPresence = false.
+ */
+export function applyDetectorQuery<B extends { eq: any; in: any; or: any; ilike: any; lte: any; gte: any }>( // eslint-disable-line @typescript-eslint/no-explicit-any
+  b: B, q: DetectorQuery, withPresence = true,
+): B {
+  const term = q.search.trim()
+  if (withPresence && q.presence !== 'all') b = b.eq('detector_presence', q.presence)
+  if (q.regionId) b = b.eq('region_id', q.regionId)
+  if (q.stationId) b = b.eq('station_id', q.stationId)
+  if (q.area !== 'all') b = b.eq('area_type', q.area)
+  if (q.mapping !== 'all') b = b.eq('mapping_status', q.mapping)
+  if (q.due === 'overdue') b = b.eq('due_status', 'overdue')
+  if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
+  if (q.due === 'attention') b = b.in('due_status', ATTENTION_BUCKETS)
+  b = applyAssetFilters(b, q.filters, { serial: 'serial_number', station: 'station_name', maker: 'manufacturer' })
+  if (term) {
+    // Retrieval only. Matching a station name here RESOLVES NOTHING — no
+    // mapping state is advanced by a search hit. The folded form is offered
+    // so an Arabic name typed one way finds the other, using the same
+    // folding rule the SQL uses.
+    const raw = term.replace(/[,()]/g, ' ')
+    const folded = foldName(raw)
+    b = b.or(
+      [
+        `serial_number.ilike.*${raw}*`,
+        `manufacturer.ilike.*${raw}*`,
+        `model.ilike.*${raw}*`,
+        `station_name.ilike.*${raw}*`,
+        `unit_name.ilike.*${folded}*`,
+      ].join(','),
+    )
+  }
+  return b
+}
+
 /** Overdue PLUS every due bucket out to 60 days. Stated, never left ambiguous. */
 const ATTENTION_BUCKETS = ['overdue', 'due_today', 'due_7', 'due_15', 'due_30', 'due_60']
 
@@ -195,38 +232,12 @@ export function useGasDetectors(query: DetectorQuery): {
       }
       if (!cancelled) setState({ status: 'loading' })
       const q: DetectorQuery = JSON.parse(key)
-      const term = q.search.trim()
 
       // Every filter is applied SERVER-SIDE, including the ones that narrow the
       // count. Fetching company-wide rows and hiding them in React would make
       // the browser the authorization boundary.
       let b = supabase.from('v_gas_detector_management').select(COLUMNS, { count: 'exact' })
-      if (q.presence !== 'all') b = b.eq('detector_presence', q.presence)
-      if (q.regionId) b = b.eq('region_id', q.regionId)
-      if (q.stationId) b = b.eq('station_id', q.stationId)
-      if (q.area !== 'all') b = b.eq('area_type', q.area)
-      if (q.mapping !== 'all') b = b.eq('mapping_status', q.mapping)
-      if (q.due === 'overdue') b = b.eq('due_status', 'overdue')
-      if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
-      if (q.due === 'attention') b = b.in('due_status', ATTENTION_BUCKETS)
-      b = applyAssetFilters(b, q.filters, { serial: 'serial_number', station: 'station_name', maker: 'manufacturer' })
-      if (term) {
-        // Retrieval only. Matching a station name here RESOLVES NOTHING — no
-        // mapping state is advanced by a search hit. The folded form is offered
-        // so an Arabic name typed one way finds the other, using the same
-        // folding rule the SQL uses.
-        const raw = term.replace(/[,()]/g, ' ')
-        const folded = foldName(raw)
-        b = b.or(
-          [
-            `serial_number.ilike.*${raw}*`,
-            `manufacturer.ilike.*${raw}*`,
-            `model.ilike.*${raw}*`,
-            `station_name.ilike.*${raw}*`,
-            `unit_name.ilike.*${folded}*`,
-          ].join(','),
-        )
-      }
+      b = applyDetectorQuery(b, q)
       for (const column of [...SORT_COLUMNS[q.sort], ...TIE_BREAK]) {
         b = b.order(column, { ascending: q.direction === 'asc', nullsFirst: false })
       }
@@ -243,8 +254,8 @@ export function useGasDetectors(query: DetectorQuery): {
       const total = count ?? 0
       let filtered = false
       const hasFilters = Boolean(
-        term || q.regionId || q.stationId || q.area !== 'all' || q.mapping !== 'all' ||
-        q.due !== 'all' || q.presence !== DEFAULT_DETECTOR_QUERY.presence,
+        q.search.trim() || q.regionId || q.stationId || q.area !== 'all' || q.mapping !== 'all' ||
+        q.due !== 'all' || q.presence !== DEFAULT_DETECTOR_QUERY.presence || hasAssetFilters(q.filters),
       )
       if (total === 0 && hasFilters) {
         // Distinguishes "you have no detectors" from "none match these
@@ -284,19 +295,20 @@ export interface DetectorSummary {
 }
 
 /**
- * The attention summary, counted over the WHOLE authorized dataset — not the
- * current page and not the current filters.
+ * The attention summary. Given the registry query it counts exactly the rows the filters match (owner request
+ * 2026-09-28); without one, the whole authorized dataset. Never the page.
  *
  * Eight `head: true` counts: the server returns numbers and no rows, each under
  * the caller's own RLS. Any failure fails the whole strip, because seven
  * correct metrics beside one that silently reads zero is the same lie in a
  * smaller box.
  */
-export function useGasDetectorSummary(): { state: Loadable<DetectorSummary>; reload: () => void } {
+export function useGasDetectorSummary(query?: DetectorQuery): { state: Loadable<DetectorSummary>; reload: () => void } {
   const supabase = useSupabaseClient()
   const [state, setState] = useState<Loadable<DetectorSummary>>({ status: 'loading' })
   const [nonce, setNonce] = useState(0)
   const reload = useCallback(() => setNonce((n) => n + 1), [])
+  const key = query ? JSON.stringify({ ...query, sort: null, direction: null, page: 0 }) : ''
 
   useEffect(() => {
     let cancelled = false
@@ -308,11 +320,15 @@ export function useGasDetectorSummary(): { state: Loadable<DetectorSummary>; rel
       }
       if (!cancelled) setState({ status: 'loading' })
 
-      const installed = () =>
-        supabase
+      const q: DetectorQuery | null = key ? JSON.parse(key) : null
+      const presence = (value: string) => {
+        const b = supabase
           .from('v_gas_detector_management')
           .select('detector_id', { count: 'exact', head: true })
-          .eq('detector_presence', 'installed')
+          .eq('detector_presence', value)
+        return q ? applyDetectorQuery(b, q, false) : b
+      }
+      const installed = () => presence('installed')
 
       const [total, overdue, attention, needsUnit, unknownDate, notInstalled, openArea, closedArea] =
         await Promise.all([
@@ -321,10 +337,7 @@ export function useGasDetectorSummary(): { state: Loadable<DetectorSummary>; rel
           installed().in('due_status', ATTENTION_BUCKETS),
           installed().eq('mapping_status', 'needs_unit_mapping'),
           installed().eq('due_status', 'unknown'),
-          supabase
-            .from('v_gas_detector_management')
-            .select('detector_id', { count: 'exact', head: true })
-            .eq('detector_presence', 'not_installed'),
+          presence('not_installed'),
           installed().eq('area_type', 'open'),
           installed().eq('area_type', 'closed'),
         ])
@@ -356,7 +369,7 @@ export function useGasDetectorSummary(): { state: Loadable<DetectorSummary>; rel
     return () => {
       cancelled = true
     }
-  }, [supabase, nonce])
+  }, [supabase, key, nonce])
 
   return { state, reload }
 }

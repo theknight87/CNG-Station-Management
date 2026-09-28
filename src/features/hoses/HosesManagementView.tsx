@@ -94,7 +94,6 @@ function columns(): RegistryColumn<HoseRegistryRow>[] {
 export function HosesManagementView() {
   const [query, setQuery] = useState<HoseQuery>(DEFAULT_HOSE_QUERY)
   const { state, reload } = useHoses(query)
-  const { state: summary } = useHoseSummary()
   const regions = useRegions()
 
   // Stations for the dependent filter, scoped to the chosen Region so the list
@@ -124,7 +123,7 @@ export function HosesManagementView() {
     Boolean(query.search.trim()) || query.regionId !== null || query.stationId !== null ||
     query.mapping !== 'all' || query.due !== 'all' || query.serial !== 'all' ||
     hasAssetFilters(query.filters)
-  const total = state.status === 'ready' ? state.data.total : null
+  const { state: summary } = useHoseSummary(hasFilters ? query : undefined)
 
   return (
     <PageContainer>
@@ -148,7 +147,7 @@ export function HosesManagementView() {
               Hose attention summary
             </h2>
             <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4 lg:grid-cols-7">
-              <Metric label="Hoses" value={summary.data.total.toLocaleString()} hint="visible to you" />
+              <Metric label="Hoses" value={summary.data.total.toLocaleString()} hint={hasFilters ? 'matching the filters' : 'visible to you'} />
               <Metric label="Overdue" value={summary.data.overdue.toLocaleString()} tone="overdue" />
               <Metric
                 label="Due ≤60d"
@@ -174,11 +173,8 @@ export function HosesManagementView() {
                 hint="reported, never merged"
               />
             </div>
-            {total !== null && total !== summary.data.total ? (
-              <p className="mt-1.5 text-xs text-muted-foreground">
-                Counts cover all hoses visible to you. The table below shows{' '}
-                <span className="tabular">{total.toLocaleString()}</span> matching the current filters.
-              </p>
+            {hasFilters ? (
+              <p className="mt-1.5 text-xs text-muted-foreground">Counts match the current filters.</p>
             ) : null}
           </section>
         ) : null}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { applyAssetFilters, EMPTY_ASSET_FILTERS, type AssetFilters } from '@/components/data/assetFilters'
+import { applyAssetFilters, EMPTY_ASSET_FILTERS, hasAssetFilters, type AssetFilters } from '@/components/data/assetFilters'
 import type { RegistryPage } from '@/components/data/RegistryTable'
 import { useSupabaseClient } from '@/lib/supabase/client'
 import { foldName } from '@/features/hierarchy/foldName'
@@ -144,6 +144,36 @@ const SORT_COLUMNS: Record<VesselSort, string[]> = {
   mapping: ['mapping_status', 'id'],
 }
 
+/** Every filter the registry applies (no sort, no paging): the table AND its summary use this, so they agree. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function applyVesselQuery<B extends { eq: any; in: any; or: any; ilike: any; lte: any; gte: any }>(b: B, q: VesselQuery): B {
+  const term = q.search.trim()
+  if (q.regionId) b = b.eq('region_id', q.regionId)
+  if (q.mapping !== 'all') b = b.eq('mapping_status', q.mapping)
+  if (q.due === 'overdue') b = b.eq('due_status', 'overdue')
+  if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
+  if (q.due === 'attention') b = b.in('due_status', ATTENTION_BUCKETS)
+  if (q.duplicateSerial) b = b.eq('serial_duplicate', true)
+  b = applyAssetFilters(b, q.filters, { serial: 'serial_number', station: 'station_name', maker: 'manufacturer' })
+  if (term) {
+    // Retrieval only. Matching a station name here resolves nothing; the
+    // folded form is offered so an Arabic query typed one way finds the
+    // other, using the same folding the SQL uses.
+    const raw = term.replace(/[,()]/g, ' ')
+    const folded = foldName(raw)
+    b = b.or(
+      [
+        `serial_number.ilike.*${raw}*`,
+        `manufacturer.ilike.*${raw}*`,
+        `model.ilike.*${raw}*`,
+        `station_name.ilike.*${raw}*`,
+        `unit_name.ilike.*${folded}*`,
+      ].join(','),
+    )
+  }
+  return b
+}
+
 /** Overdue PLUS every due bucket out to 60 days. Stated, never left ambiguous. */
 const ATTENTION_BUCKETS = ['overdue', 'due_today', 'due_7', 'due_15', 'due_30', 'due_60']
 
@@ -167,7 +197,6 @@ export function useVessels(
       }
       if (!cancelled) setState({ status: 'loading' })
       const q: VesselQuery = JSON.parse(key)
-      const term = q.search.trim()
 
       // `asset_type` is pinned on EVERY query, including the unfiltered count,
       // so the two registries can never bleed into one another.
@@ -175,29 +204,7 @@ export function useVessels(
         .from('v_vessel_management')
         .select(COLUMNS, { count: 'exact' })
         .eq('asset_type', assetType)
-      if (q.regionId) b = b.eq('region_id', q.regionId)
-      if (q.mapping !== 'all') b = b.eq('mapping_status', q.mapping)
-      if (q.due === 'overdue') b = b.eq('due_status', 'overdue')
-      if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
-      if (q.due === 'attention') b = b.in('due_status', ATTENTION_BUCKETS)
-      if (q.duplicateSerial) b = b.eq('serial_duplicate', true)
-      b = applyAssetFilters(b, q.filters, { serial: 'serial_number', station: 'station_name', maker: 'manufacturer' })
-      if (term) {
-        // Retrieval only. Matching a station name here resolves nothing; the
-        // folded form is offered so an Arabic query typed one way finds the
-        // other, using the same folding the SQL uses.
-        const raw = term.replace(/[,()]/g, ' ')
-        const folded = foldName(raw)
-        b = b.or(
-          [
-            `serial_number.ilike.*${raw}*`,
-            `manufacturer.ilike.*${raw}*`,
-            `model.ilike.*${raw}*`,
-            `station_name.ilike.*${raw}*`,
-            `unit_name.ilike.*${folded}*`,
-          ].join(','),
-        )
-      }
+      b = applyVesselQuery(b, q)
       for (const column of SORT_COLUMNS[q.sort]) {
         b = b.order(column, { ascending: q.direction === 'asc', nullsFirst: false })
       }
@@ -213,7 +220,8 @@ export function useVessels(
       const total = count ?? 0
       let filtered = false
       const hasFilters = Boolean(
-        term || q.regionId || q.mapping !== 'all' || q.due !== 'all' || q.duplicateSerial,
+        q.search.trim() || q.regionId || q.mapping !== 'all' || q.due !== 'all' || q.duplicateSerial ||
+          hasAssetFilters(q.filters),
       )
       if (total === 0 && hasFilters) {
         const { count: unfiltered } = await supabase!
@@ -249,15 +257,15 @@ export interface VesselSummary {
 }
 
 /**
- * The attention summary, counted over the WHOLE authorized dataset for this
- * asset type — not the current page, and not the current filters.
+ * The attention summary for this asset type. Given the registry query it counts exactly the rows the
+ * filters match (owner request 2026-09-28); without one, the whole authorized dataset. Never the page.
  *
  * Seven `head: true` counts: the server returns numbers and no rows. Each runs
  * under the caller's RLS, so the totals are the caller's own. Any failure fails
  * the whole strip, because six correct metrics beside one that silently reads
  * zero is the same lie in a smaller box.
  */
-export function useVesselSummary(assetType: VesselAssetType): {
+export function useVesselSummary(assetType: VesselAssetType, query?: VesselQuery): {
   state: Loadable<VesselSummary>
   reload: () => void
 } {
@@ -265,6 +273,7 @@ export function useVesselSummary(assetType: VesselAssetType): {
   const [state, setState] = useState<Loadable<VesselSummary>>({ status: 'loading' })
   const [nonce, setNonce] = useState(0)
   const reload = useCallback(() => setNonce((n) => n + 1), [])
+  const key = query ? JSON.stringify({ ...query, sort: null, direction: null, page: 0 }) : ''
 
   useEffect(() => {
     let cancelled = false
@@ -276,11 +285,15 @@ export function useVesselSummary(assetType: VesselAssetType): {
       }
       if (!cancelled) setState({ status: 'loading' })
 
-      const view = () =>
-        supabase
+      // With the registry's filters the strip counts exactly what the table shows (owner request 2026-09-28).
+      const q: VesselQuery | null = key ? JSON.parse(key) : null
+      const view = () => {
+        const b = supabase
           .from('v_vessel_management')
           .select('id', { count: 'exact', head: true })
           .eq('asset_type', assetType)
+        return q ? applyVesselQuery(b, q) : b
+      }
 
       const [total, overdue, attention, needsUnit, conflict, unknownDate, duplicateSerial] =
         await Promise.all([
@@ -320,7 +333,7 @@ export function useVesselSummary(assetType: VesselAssetType): {
     return () => {
       cancelled = true
     }
-  }, [supabase, assetType, nonce])
+  }, [supabase, assetType, key, nonce])
 
   return { state, reload }
 }

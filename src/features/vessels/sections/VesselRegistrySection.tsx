@@ -92,7 +92,7 @@ export function VesselRegistrySection({ assetType }: { assetType: VesselAssetTyp
   const [query, setQuery] = useState<VesselQuery>(DEFAULT_VESSEL_QUERY)
   const { state, reload } = useVessels(assetType, query)
   const makers = useMakers('v_vessel_management', 'manufacturer', ['asset_type', assetType])
-  const { state: summary } = useVesselSummary(assetType)
+  const { state: summary } = useVesselSummary(assetType, query)
   const regions = useRegions()
   const label = LABEL[assetType]
 
@@ -117,7 +117,6 @@ export function VesselRegistrySection({ assetType }: { assetType: VesselAssetTyp
     query.due !== 'all' ||
     query.duplicateSerial ||
     hasAssetFilters(query.filters)
-  const total = state.status === 'ready' ? state.data.total : null
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
@@ -135,7 +134,7 @@ export function VesselRegistrySection({ assetType }: { assetType: VesselAssetTyp
             {label.plural} attention summary
           </h2>
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3 lg:grid-cols-7">
-            <Metric label={label.plural} value={summary.data.total.toLocaleString()} hint="visible to you" />
+            <Metric label={label.plural} value={summary.data.total.toLocaleString()} hint={hasFilters ? 'matching the filters' : 'visible to you'} />
             <Metric label="Overdue" value={summary.data.overdue.toLocaleString()} tone="overdue" />
             <Metric
               label="Due ≤60d"
@@ -161,11 +160,8 @@ export function VesselRegistrySection({ assetType }: { assetType: VesselAssetTyp
               hint="candidates"
             />
           </div>
-          {total !== null && total !== summary.data.total ? (
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              Counts cover all {label.plural.toLowerCase()} visible to you. The table below shows{' '}
-              <span className="tabular">{total.toLocaleString()}</span> matching the current filters.
-            </p>
+          {hasFilters ? (
+            <p className="mt-1.5 text-xs text-muted-foreground">Counts match the current filters.</p>
           ) : null}
         </section>
       ) : null}

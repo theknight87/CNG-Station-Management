@@ -100,7 +100,7 @@ export function GasDetectorsView() {
   const [query, setQuery] = useState<DetectorQuery>(DEFAULT_DETECTOR_QUERY)
   const { state, reload } = useGasDetectors(query)
   const makers = useMakers('v_gas_detector_management')
-  const { state: summary } = useGasDetectorSummary()
+  const { state: summary } = useGasDetectorSummary(query)
   const regions = useRegions()
 
   // Stations for the dependent filter, scoped to the chosen Region so the list
@@ -154,7 +154,7 @@ export function GasDetectorsView() {
               Gas detector attention summary
             </h2>
             <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3 lg:grid-cols-6">
-              <Metric label="Detectors" value={summary.data.total.toLocaleString()} hint="installed, visible to you" />
+              <Metric label="Detectors" value={summary.data.total.toLocaleString()} hint={hasFilters ? 'installed, matching the filters' : 'installed, visible to you'} />
               <Metric label="Overdue" value={summary.data.overdue.toLocaleString()} tone="overdue" />
               <Metric
                 label="Due ≤60d"

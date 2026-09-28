@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { applyAssetFilters, EMPTY_ASSET_FILTERS, type AssetFilters } from '@/components/data/assetFilters'
+import { applyAssetFilters, EMPTY_ASSET_FILTERS, hasAssetFilters, type AssetFilters } from '@/components/data/assetFilters'
 import type { RegistryPage } from '@/components/data/RegistryTable'
 import { useSupabaseClient } from '@/lib/supabase/client'
 import { foldName } from '@/features/hierarchy/foldName'
@@ -150,6 +150,41 @@ const SORT_COLUMNS: Record<HoseSort, string[]> = {
   mapping: ['mapping_status'],
 }
 
+/** Every filter the registry applies (no sort, no paging): the table AND its summary use this, so they agree. */
+export function applyHoseQuery<B extends { eq: any; in: any; or: any; ilike: any; lte: any; gte: any }>(b: B, q: HoseQuery): B { // eslint-disable-line @typescript-eslint/no-explicit-any
+  const term = q.search.trim()
+  if (q.regionId) b = b.eq('region_id', q.regionId)
+  if (q.stationId) b = b.eq('station_id', q.stationId)
+  if (q.mapping !== 'all') b = b.eq('mapping_status', q.mapping)
+  if (q.due === 'overdue') b = b.eq('due_status', 'overdue')
+  if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
+  if (q.due === 'attention') b = b.in('due_status', ATTENTION_BUCKETS)
+  // Serial quality is its own axis: a missing serial is not an unresolved
+  // mapping and not an overdue test.
+  if (q.serial === 'missing') b = b.eq('serial_missing', true)
+  if (q.serial === 'duplicate') b = b.eq('serial_duplicate', true)
+  if (q.serial === 'recorded') b = b.eq('serial_missing', false)
+  b = applyAssetFilters(b, q.filters, {
+    serial: 'serial_number', station: 'station_name', pressure: 'working_pressure_value', pressureUnit: 'working_pressure_unit',
+  })
+  if (term) {
+    // Retrieval only. A search hit resolves no mapping and never merges two
+    // serials. The folded form is offered so an Arabic description or unit
+    // name typed one way finds the other, using the same folding as the SQL.
+    const raw = term.replace(/[,()]/g, ' ')
+    const folded = foldName(raw)
+    b = b.or(
+      [
+        `serial_number.ilike.*${raw}*`,
+        `description.ilike.*${raw}*`,
+        `station_name.ilike.*${raw}*`,
+        `unit_name.ilike.*${folded}*`,
+      ].join(','),
+    )
+  }
+  return b
+}
+
 /** Overdue PLUS every due bucket out to 60 days. Stated, never left ambiguous. */
 const ATTENTION_BUCKETS = ['overdue', 'due_today', 'due_7', 'due_15', 'due_30', 'due_60']
 
@@ -173,41 +208,12 @@ export function useHoses(query: HoseQuery): {
       }
       if (!cancelled) setState({ status: 'loading' })
       const q: HoseQuery = JSON.parse(key)
-      const term = q.search.trim()
 
       // Every filter is applied SERVER-SIDE, including the ones that narrow the
       // count. Fetching company-wide rows and hiding them in React would make
       // the browser the authorization boundary.
       let b = supabase.from('v_hose_registry').select(COLUMNS, { count: 'exact' })
-      if (q.regionId) b = b.eq('region_id', q.regionId)
-      if (q.stationId) b = b.eq('station_id', q.stationId)
-      if (q.mapping !== 'all') b = b.eq('mapping_status', q.mapping)
-      if (q.due === 'overdue') b = b.eq('due_status', 'overdue')
-      if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
-      if (q.due === 'attention') b = b.in('due_status', ATTENTION_BUCKETS)
-      // Serial quality is its own axis: a missing serial is not an unresolved
-      // mapping and not an overdue test.
-      if (q.serial === 'missing') b = b.eq('serial_missing', true)
-      if (q.serial === 'duplicate') b = b.eq('serial_duplicate', true)
-      if (q.serial === 'recorded') b = b.eq('serial_missing', false)
-      b = applyAssetFilters(b, q.filters, {
-        serial: 'serial_number', station: 'station_name', pressure: 'working_pressure_value', pressureUnit: 'working_pressure_unit',
-      })
-      if (term) {
-        // Retrieval only. A search hit resolves no mapping and never merges two
-        // serials. The folded form is offered so an Arabic description or unit
-        // name typed one way finds the other, using the same folding as the SQL.
-        const raw = term.replace(/[,()]/g, ' ')
-        const folded = foldName(raw)
-        b = b.or(
-          [
-            `serial_number.ilike.*${raw}*`,
-            `description.ilike.*${raw}*`,
-            `station_name.ilike.*${raw}*`,
-            `unit_name.ilike.*${folded}*`,
-          ].join(','),
-        )
-      }
+      b = applyHoseQuery(b, q)
       for (const column of [...SORT_COLUMNS[q.sort], 'id']) {
         b = b.order(column, { ascending: q.direction === 'asc', nullsFirst: false })
       }
@@ -224,7 +230,8 @@ export function useHoses(query: HoseQuery): {
       const total = count ?? 0
       let filtered = false
       const hasFilters = Boolean(
-        term || q.regionId || q.stationId || q.mapping !== 'all' || q.due !== 'all' || q.serial !== 'all',
+        q.search.trim() || q.regionId || q.stationId || q.mapping !== 'all' || q.due !== 'all' || q.serial !== 'all' ||
+          hasAssetFilters(q.filters),
       )
       if (total === 0 && hasFilters) {
         // Distinguishes "you have no hoses" from "none match these filters" —
@@ -262,18 +269,19 @@ export interface HoseSummary {
 }
 
 /**
- * The attention summary, counted over the WHOLE authorized dataset — not the
- * current page and not the current filters.
+ * The attention summary. Without filters it reads v_hose_summary; with them (owner request 2026-09-28) it counts
+ * v_hose_registry through the registry's own filters, so it matches the table. Never the page.
  *
  * Seven `head: true` counts: the server returns numbers and no rows, each under
  * the caller's own RLS. Any failure fails the whole strip, because six correct
  * metrics beside one that silently reads zero is the same lie in a smaller box.
  */
-export function useHoseSummary(): { state: Loadable<HoseSummary>; reload: () => void } {
+export function useHoseSummary(query?: HoseQuery): { state: Loadable<HoseSummary>; reload: () => void } {
   const supabase = useSupabaseClient()
   const [state, setState] = useState<Loadable<HoseSummary>>({ status: 'loading' })
   const [nonce, setNonce] = useState(0)
   const reload = useCallback(() => setNonce((n) => n + 1), [])
+  const key = query ? JSON.stringify({ ...query, sort: null, direction: null, page: 0 }) : ''
 
   useEffect(() => {
     let cancelled = false
@@ -284,6 +292,25 @@ export function useHoseSummary(): { state: Loadable<HoseSummary>; reload: () => 
         return
       }
       if (!cancelled) setState({ status: 'loading' })
+
+      if (key) {
+        const q: HoseQuery = JSON.parse(key)
+        const view = () => applyHoseQuery(supabase.from('v_hose_registry').select('id', { count: 'exact', head: true }), q)
+        const parts = await Promise.all([
+          view(), view().eq('due_status', 'overdue'), view().in('due_status', ATTENTION_BUCKETS),
+          view().eq('mapping_status', 'needs_unit_mapping'), view().eq('due_status', 'unknown'),
+          view().eq('serial_missing', true), view().eq('serial_duplicate', true),
+        ])
+        if (cancelled) return
+        const failure = parts.find((r) => r.error)
+        if (failure?.error) { setState({ status: 'error', message: failure.error.message }); return }
+        const [total, overdue, attention, needsUnit, unknownDate, missing, duplicate] = parts.map((r) => r.count ?? 0)
+        setState({ status: 'ready', data: {
+          total, overdue, attention, needs_unit_mapping: needsUnit, unknown_date: unknownDate,
+          serial_missing: missing, serial_duplicate: duplicate,
+        } })
+        return
+      }
 
       const { data, error } = await supabase.from('v_hose_summary').select('*')
       if (cancelled) return
@@ -308,7 +335,7 @@ export function useHoseSummary(): { state: Loadable<HoseSummary>; reload: () => 
     return () => {
       cancelled = true
     }
-  }, [supabase, nonce])
+  }, [supabase, key, nonce])
 
   return { state, reload }
 }
