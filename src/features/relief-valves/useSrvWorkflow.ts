@@ -88,6 +88,11 @@ export interface EmergencyRow {
   replaced_serial: string | null
   replaced_code: string | null
   replaced_status: 'at_station' | 'returned' | null
+  serial_number: string | null
+  manufacturer: string | null
+  size_type: string | null
+  inlet_size: string | null
+  outlet_size: string | null
 }
 
 export interface WorkflowList<T> { rows: T[]; total: number }
@@ -115,7 +120,7 @@ const SPECS = {
     view: 'v_srv_emergency',
     columns: 'id, issued_at, notes, region_id, region_name, station_name, unit_name, warehouse_valve_id, issued_serial, ' +
       'issued_code, set_pressure_raw, pressure_min, pressure_max, pressure_unit, replaced_installed_valve_id, ' +
-      'replaced_serial, replaced_code, replaced_status',
+      'replaced_serial, replaced_code, replaced_status, serial_number, manufacturer, size_type, inlet_size, outlet_size',
     order: 'issued_at', station: 'station_name', region: 'region_id',
   },
 } as const
@@ -140,8 +145,8 @@ export function useWorkflowList<T>(
       let b = supabase.from(spec.view).select(spec.columns, { count: 'exact' })
       if (o.status?.length) b = b.in('status', o.status)
       if (o.filters) {
-        // Emergency rows carry the ISSUED valve's pressure, not a serial_number column.
-        const f = kind === 'emergency' ? { ...o.filters, serial: '', size: '' } : o.filters
+        // Emergency rows carry the ISSUED valve's serial, manufacturer, size and pressure (view 20260928170000).
+        const f = o.filters
         if (spec.station) b = applySmartFilters(b, f, spec.station, spec.region ?? 'region_id')
         else b = applySmartFilters(b, { ...f, station: '', region: '' }, 'serial_number')
       }

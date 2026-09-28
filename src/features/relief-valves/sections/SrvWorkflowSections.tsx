@@ -4,7 +4,7 @@ import { RecordDetailsDialog } from '@/components/data/RecordDetailsDialog'
 import { NullValue } from '@/components/data/NullValue'
 import { Button } from '@/components/ui/button'
 import { EMPTY_SMART_FILTERS, type SrvSmartFilters } from '@/features/relief-valves/useSrvManagement'
-import { ManufacturerChip, SmartFilterBar, ToneChip } from '@/features/relief-valves/SrvPieces'
+import { ManufacturerChip, RegionChip, SmartFilterBar, ToneChip } from '@/features/relief-valves/SrvPieces'
 import { byValues, pressureBar, type ToneName } from '@/features/relief-valves/srvSort'
 import {
   Code, FormMessage, ListStates, Pressure, SelectableTable, ValveHistory, ValveSize,
@@ -41,7 +41,7 @@ const LOG_TONE: Record<FieldLogRow['status'], ToneName> = {
   at_station: 'sky', location_unconfirmed: 'orange', returned: 'teal',
 }
 
-const sizeOf = (r: ValveFields) => sizeText(r.size_type, r.inlet_size, r.outlet_size) || null
+const sizeOf = (r: Pick<ValveFields, 'size_type' | 'inlet_size' | 'outlet_size'>) => sizeText(r.size_type, r.inlet_size, r.outlet_size) || null
 const logSince = (r: FieldLogRow) => (r.reason === 'replaced_on_issue' ? r.logged_at : r.warehouse_issue_date ?? r.logged_at)
 
 const LOG_STATUS: Record<FieldLogRow['status'], string> = {
@@ -114,7 +114,7 @@ export function SrvLogSection() {
             { key: 'pressure', header: 'Set pressure', align: 'right', sortValue: pressureBar, render: (r) => <Pressure v={r} /> },
             { key: 'manufacturer', header: 'Manufacturer', sortValue: (r) => r.manufacturer, render: (r) => <ManufacturerChip value={r.manufacturer} /> },
             { key: 'size', header: 'Size', sortValue: sizeOf, render: (r) => <ValveSize v={r} /> },
-            { key: 'region', header: 'Region', sortValue: (r) => r.region_name, render: (r) => r.region_name ?? <NullValue /> },
+            { key: 'region', header: 'Region', sortValue: (r) => r.region_name, render: (r) => <RegionChip name={r.region_name} /> },
             { key: 'station', header: 'Station', sortValue: (r) => r.station_display, render: (r) => (
               <span dir="auto">{r.station_display ?? <NullValue />}
                 {r.unit_name ? <span className="ml-1 text-xs text-muted-foreground">/ {r.unit_name}</span> : null}
@@ -294,17 +294,21 @@ export function SrvEmergencySection() {
           onSelected={() => {}}
           selectable={() => false}
           onOpen={setOpen}
+          defaultOrder={byValues<EmergencyRow>((r) => r.region_name, (r) => r.station_name, pressureBar)}
           columns={[
-            { key: 'date', header: 'Issued', render: (r) => day(r.issued_at) },
-            { key: 'station', header: 'Station / Unit', render: (r) => (
-              <span dir="auto" className="whitespace-nowrap">{r.station_name} / {r.unit_name}
-                <span className="ml-1.5 text-xs text-muted-foreground">{r.region_name}</span></span>) },
-            { key: 'issued', header: 'Issued valve', render: (r) => <span className="whitespace-nowrap"><Code value={r.issued_serial} /> <Code value={r.issued_code} /></span> },
-            { key: 'pressure', header: 'Set pressure', align: 'right', render: (r) => <Pressure v={r} /> },
-            { key: 'replaced', header: 'Replaced valve', render: (r) => r.replaced_installed_valve_id
+            { key: 'date', header: 'Issued', sortValue: (r) => r.issued_at, render: (r) => day(r.issued_at) },
+            { key: 'region', header: 'Region', sortValue: (r) => r.region_name, render: (r) => <RegionChip name={r.region_name} /> },
+            { key: 'station', header: 'Station / Unit', sortValue: (r) => r.station_name, render: (r) => (
+              <span dir="auto">{r.station_name} / {r.unit_name}</span>) },
+            { key: 'issued', header: 'Issued valve', sortValue: (r) => r.issued_serial, render: (r) => <span className="whitespace-nowrap"><Code value={r.issued_serial} /> <Code value={r.issued_code} /></span> },
+            { key: 'pressure', header: 'Set pressure', align: 'right', sortValue: pressureBar, render: (r) => <Pressure v={r} /> },
+            { key: 'manufacturer', header: 'Manufacturer', sortValue: (r) => r.manufacturer, render: (r) => <ManufacturerChip value={r.manufacturer} /> },
+            { key: 'size', header: 'Size', sortValue: sizeOf, render: (r) => <ValveSize v={r} /> },
+            { key: 'replaced', header: 'Replaced valve', sortValue: (r) => r.replaced_serial, render: (r) => r.replaced_installed_valve_id
               ? <Code value={r.replaced_serial} /> : <span className="text-muted-foreground">None — added only</span> },
-            { key: 'rstatus', header: 'Replaced valve status', render: (r) => r.replaced_status === 'returned'
-              ? 'Returned to warehouse' : r.replaced_status === 'at_station' ? 'At station — awaiting return' : <NullValue /> },
+            { key: 'rstatus', header: 'Replaced valve status', sortValue: (r) => r.replaced_status, render: (r) => r.replaced_status === 'returned'
+              ? <ToneChip tone="teal">Returned to warehouse</ToneChip>
+              : r.replaced_status === 'at_station' ? <ToneChip tone="sky">At station — awaiting return</ToneChip> : <NullValue /> },
             { key: 'notes', header: 'Notes', render: (r) => r.notes ? <span dir="auto">{r.notes}</span> : <NullValue /> },
             ...(isAdmin ? [{ key: 'actions', header: 'Actions', render: (r: EmergencyRow) => (
               <RowActions>

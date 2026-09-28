@@ -260,9 +260,9 @@ export function ManufacturerChip({ value }: { value: string | null }) {
 const AVAILABILITY_TONE: Record<string, string> = {
   available_new: 'border-2 border-blue-600 bg-background text-blue-700 dark:text-blue-300',
   available_calibrated: 'border-2 border-emerald-600 bg-background text-emerald-700 dark:text-emerald-300',
-  available_in_store_uc: 'border-2 border-purple-600 bg-background text-purple-700 dark:text-purple-300',
+  available_in_store_uc: 'border-2 border-orange-500 bg-background text-orange-700 dark:text-orange-300',
   sent_to_station_received: 'border-2 border-slate-500 bg-background text-slate-700 dark:text-slate-300',
-  sent_to_station_not_received: 'border-2 border-orange-500 bg-background text-orange-700 dark:text-orange-300',
+  sent_to_station_not_received: 'border-2 border-purple-600 bg-background text-purple-700 dark:text-purple-300',
 }
 
 export function AvailabilityChip({ status, label }: { status: string | null; label: string | null }) {
@@ -272,4 +272,20 @@ export function AvailabilityChip({ status, label }: { status: string | null; lab
 
 export function ToneChip({ tone, children }: { tone: ToneName; children: ReactNode }) {
   return <span className={cn(CHIP, TONE[tone])}>{children}</span>
+}
+
+/** Region: a coloured dot beside the name (a third shape, so it never reads as a manufacturer or a status). */
+const REGION_DOT: Record<string, string> = {
+  east: 'bg-blue-600', west: 'bg-purple-600', delta: 'bg-emerald-600',
+  canal: 'bg-cyan-500', alex: 'bg-orange-500', upper: 'bg-stone-600',
+}
+
+export function RegionChip({ name }: { name: string | null }) {
+  if (!name) return <NullValue />
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-medium">
+      <span aria-hidden="true" className={cn('h-2.5 w-2.5 rounded-full', REGION_DOT[name.toLowerCase()] ?? 'bg-muted-foreground')} />
+      {name}
+    </span>
+  )
 }

@@ -10,7 +10,7 @@ import { Fact } from '@/features/hierarchy/HierarchyPieces'
 import { useRegions } from '@/features/hierarchy/useHierarchy'
 import { DueBadge, PrecisionDate, PressureRange, Serial, Text } from '@/features/units/assetDisplay'
 import { ValveHistory } from '@/features/relief-valves/SrvWorkflowPieces'
-import { ManufacturerChip, SmartFilterBar, MappingBadge, Metric, ParentCell, SourceContext } from '@/features/relief-valves/SrvPieces'
+import { ManufacturerChip, RegionChip, SmartFilterBar, MappingBadge, Metric, ParentCell, SourceContext } from '@/features/relief-valves/SrvPieces'
 import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
 import {
   hasSmartFilters,
@@ -42,7 +42,7 @@ const COLUMNS: RegistryColumn<InstalledSrvRow>[] = [
     key: 'region', header: 'Region', sort: 'region',
     render: (r) => (r.mapping_status === 'needs_station_mapping'
       ? <span className="whitespace-nowrap text-muted-foreground">Not confirmed</span>
-      : <Text value={r.region_name} />),
+      : <RegionChip name={r.region_name} />),
   },
   {
     // Owner layout 2026-09-28: no Station column — the Unit names the site. A valve whose Unit is not yet

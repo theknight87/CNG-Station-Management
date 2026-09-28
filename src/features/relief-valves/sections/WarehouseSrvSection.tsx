@@ -1,4 +1,4 @@
-import { AvailabilityChip, ManufacturerChip } from '@/features/relief-valves/SrvPieces'
+import { AvailabilityChip, ManufacturerChip, RegionChip } from '@/features/relief-valves/SrvPieces'
 import { useCallback, useState } from 'react'
 import { Plus, Search, X } from 'lucide-react'
 
@@ -118,7 +118,7 @@ function columns(reload: () => void): RegistryColumn<WarehouseSrvRow>[] { return
         <span className="whitespace-nowrap">
           {r.target_station_name ?? <NullValue />}
           {r.target_region_name ? (
-            <span className="ml-1.5 text-xs text-muted-foreground">{r.target_region_name}</span>
+            <span className="ml-1.5 text-xs"><RegionChip name={r.target_region_name} /></span>
           ) : null}
         </span>
       ),
