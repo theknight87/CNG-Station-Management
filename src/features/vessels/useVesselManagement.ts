@@ -125,7 +125,7 @@ export interface VesselQuery {
 
 export const DEFAULT_VESSEL_QUERY: VesselQuery = {
   search: '', regionId: null, mapping: 'all', due: 'all', duplicateSerial: false, filters: EMPTY_ASSET_FILTERS,
-  sort: 'next_due', direction: 'asc', page: 0, pageSize: 50,
+  sort: 'region', direction: 'asc', page: 0, pageSize: 50,
 }
 
 /**
@@ -136,7 +136,8 @@ export const DEFAULT_VESSEL_QUERY: VesselQuery = {
 const SORT_COLUMNS: Record<VesselSort, string[]> = {
   next_due: ['next_inspection_date', 'id'],
   last_inspection: ['last_inspection_date', 'id'],
-  region: ['region_name', 'station_name', 'id'],
+  // Owner default (as SRV): Region, then Station, then Unit. Vessels carry no pressure, so Unit is the third key.
+  region: ['region_name', 'station_name', 'unit_name', 'id'],
   station: ['station_name', 'unit_name', 'id'],
   unit: ['unit_name', 'id'],
   serial: ['serial_number', 'id'],

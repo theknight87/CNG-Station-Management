@@ -130,7 +130,7 @@ export interface HoseQuery {
 
 export const DEFAULT_HOSE_QUERY: HoseQuery = {
   search: '', regionId: null, stationId: null, mapping: 'all', due: 'all', serial: 'all', filters: EMPTY_ASSET_FILTERS,
-  sort: 'next_due', direction: 'asc', page: 0, pageSize: 50,
+  sort: 'region', direction: 'asc', page: 0, pageSize: 50,
 }
 
 /**
@@ -141,7 +141,8 @@ export const DEFAULT_HOSE_QUERY: HoseQuery = {
 const SORT_COLUMNS: Record<HoseSort, string[]> = {
   next_due: ['next_test_date'],
   last_test: ['last_test_date'],
-  region: ['region_name', 'station_name'],
+  // Owner default (as SRV): Region, then Station, then working pressure smallest first.
+  region: ['region_name', 'station_name', 'working_pressure_value'],
   working_pressure: ['working_pressure_value'],
   station: ['station_name', 'unit_name'],
   unit: ['unit_name'],

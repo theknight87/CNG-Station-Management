@@ -188,6 +188,18 @@ describe('Server-side query', () => {
     await waitFor(() => expect(calls.list).toContain('v_vessel_management.eq:due_status=overdue'))
   })
 
+  it('default order: Region, then Station, then Unit (owner request 2026-09-28)', async () => {
+    replies.vessels = { data: [vessel()], error: null, count: 1 }
+    renderVessels()
+    await screen.findByText('SV-00001')
+    const orders = calls.list.filter((c) => c.startsWith('v_vessel_management.order:'))
+    expect(orders.slice(0, 3)).toEqual([
+      'v_vessel_management.order:region_name:asc',
+      'v_vessel_management.order:station_name:asc',
+      'v_vessel_management.order:unit_name:asc',
+    ])
+  })
+
   it('the summary counts follow the filters (owner request 2026-09-28)', async () => {
     replies.vessels = { data: [vessel()], error: null, count: 1 }
     renderVessels()
