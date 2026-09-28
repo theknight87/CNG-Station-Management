@@ -22,7 +22,7 @@ for p, raw, m in json.load(open(sys.argv[2])):
     if m and p['unit'] not in HELD: continue
     name = (raw or [None])[0] or p['unit']
     if p['unit'] in HELD:
-        why = 'سيريال الخزان موجود في السيستم على محطة تانية: ' + ' | '.join(sorted({f['station'] for f in m}))
+        why = 'سيريال الخزان اللي في الشيت متسجل بالفعل في السيستم على خزان في محطة تانية (غالبًا نفس المحطة باسم مختلف)'
         hint = ' | '.join(sorted({f['station'] for f in m}))
     else:
         k = fold(name)

@@ -444,3 +444,20 @@ Production after: 2,577 resolved, 106 awaiting a Unit (92 Storage on their Stati
 شبين Technical -> شبين 1 (a FORNOVO compressor can carry Technical valves on the gas line besides COI); عز الدين
 Technical -> عز الدين 2 (the COI Unit). Preview `e65382bf…` identical twice, 14 linked; 6m parented all 14 (`dffac05d…`).
 Production after: 2,591 resolved; the only 92 still without a Unit are Storage SRVs kept on their Station by owner ruling.
+
+## Phase 6x — placeholder vessels replaced from the owner's workbook (2026-09-28)
+
+Migration `20260928090000_placeholder_vessel_replace_6x.sql`, suite `placeholder_vessel_replace_6x` (7 assertions).
+Source: the owner's "Storage and Recovery Calibration" workbook, sheet `رصيد المحطات`. A 6r placeholder is replaced only
+when its SRVs' raw Station name (or its Unit name) equals a workbook Station cell after whitespace/letter folding in the
+same Region (`scripts/import/6x_vessels_extract.py`); cells normalized by the pipeline's own functions
+(`6x_vessels_normalize.ts`). Row k = 0 becomes the placeholder itself, further rows are new vessels of the Unit, and a
+Unit that ends with several vessels has its Storage SRVs re-paired by the owner's 6s serial-order rule. Deployed
+byte-exact (proposal `9d9a497c…`, preview `e494aa95…`, commit `e51d651c…`); payload md5 `6ce4caab…` matched on both
+ends; preview `b5520949…` identical twice; commit: 18 placeholders replaced, 38 vessels added, 44 SRVs returned; 6s
+`5648f9da…` re-paired all 44. Serials the workbook lists under two Units (a shared skid: نفق العبور 1/2, الفردوس 1/2,
+شبرا 3/4) are stored on each Unit's vessel and surface as duplicate-serial candidates (principle 16).
+Held: 4 placeholders whose workbook serial already sits on a vessel of a differently named Station, and 44 with no
+exact name in the workbook — listed with look-alike hints in `srv-placeholder-vessels-unmatched.csv`. Owner rejected two
+hints: الودي الصف ≠ الفهميين الصف, البراجيل القديمة ≠ البراجيل الجديدة. Production after: 48 placeholders left,
+56 workbook vessels, 2,591 SRVs resolved, 0 parents in another Unit, 0 Units under another Station.
