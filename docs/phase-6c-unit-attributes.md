@@ -439,3 +439,8 @@ SRV type belongs to one Unit; Storage SRVs stay on the Station. Applied: the 26 
 parented all 32 to their Unit's only compressor (`ce1e29ea…`). Held for the owner: الشهداء COI 5 / DK-LOK 5 (no valve
 on either Unit yet, so which type goes where is not proven), and Technical 2 each at شبين and عز الدين (a third type).
 Production after: 2,577 resolved, 106 awaiting a Unit (92 Storage on their Station, 14 Stage).
+
+**6w second batch (owner ruling 2026-09-28):** الشهداء COI -> الشهداء 1 (FORNOVO) and DK-LOK -> الشهداء 2 (KWANGSHIN);
+شبين Technical -> شبين 1 (a FORNOVO compressor can carry Technical valves on the gas line besides COI); عز الدين
+Technical -> عز الدين 2 (the COI Unit). Preview `e65382bf…` identical twice, 14 linked; 6m parented all 14 (`dffac05d…`).
+Production after: 2,591 resolved; the only 92 still without a Unit are Storage SRVs kept on their Station by owner ruling.
