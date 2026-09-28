@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 
+import { applyAssetFilters, EMPTY_ASSET_FILTERS, type AssetFilters } from '@/components/data/assetFilters'
 import type { RegistryPage } from '@/components/data/RegistryTable'
 import { useSupabaseClient } from '@/lib/supabase/client'
 import { foldName } from '@/features/hierarchy/foldName'
@@ -120,7 +121,7 @@ export function detectorRowKey(row: DetectorRegistryRow): string {
 }
 
 export type DetectorSort =
-  | 'next_due' | 'last_calibration' | 'station' | 'unit' | 'serial'
+  | 'region' | 'next_due' | 'last_calibration' | 'station' | 'unit' | 'serial'
   | 'manufacturer' | 'area' | 'mapping'
 
 export type DetectorDueFilter = 'all' | 'overdue' | 'attention' | 'unknown'
@@ -136,6 +137,7 @@ export interface DetectorQuery {
   area: DetectorAreaFilter
   mapping: DetectorMappingFilter
   due: DetectorDueFilter
+  filters: AssetFilters
   sort: DetectorSort
   direction: 'asc' | 'desc'
   page: number
@@ -148,7 +150,7 @@ export interface DetectorQuery {
  */
 export const DEFAULT_DETECTOR_QUERY: DetectorQuery = {
   search: '', regionId: null, stationId: null, presence: 'installed', area: 'all',
-  mapping: 'all', due: 'all', sort: 'next_due', direction: 'asc', page: 0, pageSize: 50,
+  mapping: 'all', due: 'all', filters: EMPTY_ASSET_FILTERS, sort: 'next_due', direction: 'asc', page: 0, pageSize: 50,
 }
 
 /**
@@ -159,6 +161,7 @@ export const DEFAULT_DETECTOR_QUERY: DetectorQuery = {
 const SORT_COLUMNS: Record<DetectorSort, string[]> = {
   next_due: ['next_calibration_date'],
   last_calibration: ['last_calibration_date'],
+  region: ['region_name', 'station_name'],
   station: ['station_name', 'unit_name'],
   unit: ['unit_name'],
   serial: ['serial_number'],
@@ -206,6 +209,7 @@ export function useGasDetectors(query: DetectorQuery): {
       if (q.due === 'overdue') b = b.eq('due_status', 'overdue')
       if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
       if (q.due === 'attention') b = b.in('due_status', ATTENTION_BUCKETS)
+      b = applyAssetFilters(b, q.filters, { serial: 'serial_number', station: 'station_name', maker: 'manufacturer' })
       if (term) {
         // Retrieval only. Matching a station name here RESOLVES NOTHING — no
         // mapping state is advanced by a search hit. The folded form is offered

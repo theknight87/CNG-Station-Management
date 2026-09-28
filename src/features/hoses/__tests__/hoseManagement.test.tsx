@@ -167,8 +167,8 @@ describe('Route and page shell', () => {
       .map((h) => h.textContent?.trim() ?? '')
       .filter((h) => h && !/expand/i.test(h))
     // A hose is an individually traceable item, so Serial is first.
-    expect(order.slice(0, 6)).toEqual([
-      'Serial', 'Station', 'Unit', 'Next test', 'Days left', 'Status',
+    expect(order.slice(0, 7)).toEqual([
+      'Region', 'Serial', 'Station', 'Unit', 'Next test', 'Days left', 'Status',
     ])
     expect(order.indexOf('Description')).toBeGreaterThan(order.indexOf('Status'))
   })

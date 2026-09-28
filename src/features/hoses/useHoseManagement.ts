@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 
+import { applyAssetFilters, EMPTY_ASSET_FILTERS, type AssetFilters } from '@/components/data/assetFilters'
 import type { RegistryPage } from '@/components/data/RegistryTable'
 import { useSupabaseClient } from '@/lib/supabase/client'
 import { foldName } from '@/features/hierarchy/foldName'
@@ -106,7 +107,7 @@ const COLUMNS =
   'source_file, source_sheet, source_row'
 
 export type HoseSort =
-  | 'next_due' | 'last_test' | 'station' | 'unit' | 'serial' | 'description' | 'mapping'
+  | 'region' | 'working_pressure' | 'next_due' | 'last_test' | 'station' | 'unit' | 'serial' | 'description' | 'mapping'
 
 export type HoseDueFilter = 'all' | 'overdue' | 'attention' | 'unknown'
 export type HoseMappingFilter = 'all' | HoseMappingStatus
@@ -120,6 +121,7 @@ export interface HoseQuery {
   mapping: HoseMappingFilter
   due: HoseDueFilter
   serial: HoseSerialFilter
+  filters: AssetFilters
   sort: HoseSort
   direction: 'asc' | 'desc'
   page: number
@@ -127,7 +129,7 @@ export interface HoseQuery {
 }
 
 export const DEFAULT_HOSE_QUERY: HoseQuery = {
-  search: '', regionId: null, stationId: null, mapping: 'all', due: 'all', serial: 'all',
+  search: '', regionId: null, stationId: null, mapping: 'all', due: 'all', serial: 'all', filters: EMPTY_ASSET_FILTERS,
   sort: 'next_due', direction: 'asc', page: 0, pageSize: 50,
 }
 
@@ -139,6 +141,8 @@ export const DEFAULT_HOSE_QUERY: HoseQuery = {
 const SORT_COLUMNS: Record<HoseSort, string[]> = {
   next_due: ['next_test_date'],
   last_test: ['last_test_date'],
+  region: ['region_name', 'station_name'],
+  working_pressure: ['working_pressure_value'],
   station: ['station_name', 'unit_name'],
   unit: ['unit_name'],
   serial: ['serial_number'],
@@ -186,6 +190,9 @@ export function useHoses(query: HoseQuery): {
       if (q.serial === 'missing') b = b.eq('serial_missing', true)
       if (q.serial === 'duplicate') b = b.eq('serial_duplicate', true)
       if (q.serial === 'recorded') b = b.eq('serial_missing', false)
+      b = applyAssetFilters(b, q.filters, {
+        serial: 'serial_number', station: 'station_name', pressure: 'working_pressure_value', pressureUnit: 'working_pressure_unit',
+      })
       if (term) {
         // Retrieval only. A search hit resolves no mapping and never merges two
         // serials. The folded form is offered so an Arabic description or unit

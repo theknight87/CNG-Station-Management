@@ -1,4 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
+import { RegionChip } from '@/components/data/AssetChips'
+import { AssetFilterBar } from '@/components/data/AssetFilterBar'
+import { hasAssetFilters } from '@/components/data/assetFilters'
 import { Search, X } from 'lucide-react'
 
 import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
@@ -41,6 +44,7 @@ import {
 
 function columns(): RegistryColumn<HoseRegistryRow>[] {
   return [
+    { key: 'region', header: 'Region', sort: 'region', render: (r) => <RegionChip name={r.region_name} /> },
     {
       // Identity first, and the duplicate condition travels WITH the serial
       // rather than hiding in a separate column, because it is a fact about
@@ -79,7 +83,7 @@ function columns(): RegistryColumn<HoseRegistryRow>[] {
     },
     {
       // The stored unit, never inferred from magnitude and never converted.
-      key: 'working_pressure', header: 'Working pressure', align: 'right',
+      key: 'working_pressure', header: 'Working pressure', align: 'right', sort: 'working_pressure',
       render: (r) => (
         <Pressure value={r.working_pressure_value} unit={r.working_pressure_unit} raw={r.working_pressure_raw} />
       ),
@@ -118,7 +122,8 @@ export function HosesManagementView() {
   const clearFilters = useCallback(() => setQuery(DEFAULT_HOSE_QUERY), [])
   const hasFilters =
     Boolean(query.search.trim()) || query.regionId !== null || query.stationId !== null ||
-    query.mapping !== 'all' || query.due !== 'all' || query.serial !== 'all'
+    query.mapping !== 'all' || query.due !== 'all' || query.serial !== 'all' ||
+    hasAssetFilters(query.filters)
   const total = state.status === 'ready' ? state.data.total : null
 
   return (
@@ -283,6 +288,7 @@ export function HosesManagementView() {
             </Button>
           ) : null}
         </DataToolbar>
+        <AssetFilterBar id="hoses" value={query.filters} onChange={(filters) => update({ filters })} pressureLabel="Working pressure" />
 
         <RegistryTable
 

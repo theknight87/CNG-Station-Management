@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 
+import { applyAssetFilters, EMPTY_ASSET_FILTERS, type AssetFilters } from '@/components/data/assetFilters'
 import type { RegistryPage } from '@/components/data/RegistryTable'
 import { useSupabaseClient } from '@/lib/supabase/client'
 import { foldName } from '@/features/hierarchy/foldName'
@@ -104,7 +105,7 @@ const COLUMNS =
   'next_inspection_display, days_left, due_status, source_status_raw, needs_review, notes, ' +
   'serial_missing, serial_duplicate, serial_duplicate_count'
 
-export type VesselSort = 'next_due' | 'last_inspection' | 'station' | 'unit' | 'serial' | 'manufacturer' | 'mapping'
+export type VesselSort = 'region' | 'next_due' | 'last_inspection' | 'station' | 'unit' | 'serial' | 'manufacturer' | 'mapping'
 export type VesselDueFilter = 'all' | 'overdue' | 'attention' | 'unknown'
 export type VesselMappingFilter = 'all' | VesselMappingStatus
 
@@ -115,6 +116,7 @@ export interface VesselQuery {
   due: VesselDueFilter
   /** Narrow to duplicate serial candidates. Never hides a member of a pair. */
   duplicateSerial: boolean
+  filters: AssetFilters
   sort: VesselSort
   direction: 'asc' | 'desc'
   page: number
@@ -122,7 +124,7 @@ export interface VesselQuery {
 }
 
 export const DEFAULT_VESSEL_QUERY: VesselQuery = {
-  search: '', regionId: null, mapping: 'all', due: 'all', duplicateSerial: false,
+  search: '', regionId: null, mapping: 'all', due: 'all', duplicateSerial: false, filters: EMPTY_ASSET_FILTERS,
   sort: 'next_due', direction: 'asc', page: 0, pageSize: 50,
 }
 
@@ -134,6 +136,7 @@ export const DEFAULT_VESSEL_QUERY: VesselQuery = {
 const SORT_COLUMNS: Record<VesselSort, string[]> = {
   next_due: ['next_inspection_date', 'id'],
   last_inspection: ['last_inspection_date', 'id'],
+  region: ['region_name', 'station_name', 'id'],
   station: ['station_name', 'unit_name', 'id'],
   unit: ['unit_name', 'id'],
   serial: ['serial_number', 'id'],
@@ -178,6 +181,7 @@ export function useVessels(
       if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
       if (q.due === 'attention') b = b.in('due_status', ATTENTION_BUCKETS)
       if (q.duplicateSerial) b = b.eq('serial_duplicate', true)
+      b = applyAssetFilters(b, q.filters, { serial: 'serial_number', station: 'station_name', maker: 'manufacturer' })
       if (term) {
         // Retrieval only. Matching a station name here resolves nothing; the
         // folded form is offered so an Arabic query typed one way finds the

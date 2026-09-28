@@ -1,4 +1,8 @@
 import { useCallback, useState } from 'react'
+import { MakerChip, RegionChip } from '@/components/data/AssetChips'
+import { AssetFilterBar } from '@/components/data/AssetFilterBar'
+import { hasAssetFilters } from '@/components/data/assetFilters'
+import { useMakers } from '@/components/data/useMakers'
 import { Search, X } from 'lucide-react'
 
 import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
@@ -40,6 +44,7 @@ const LABEL: Record<VesselAssetType, { singular: string; plural: string; dateLab
 
 function columns(assetType: VesselAssetType): RegistryColumn<VesselRegistryRow>[] {
   return [
+    { key: 'region', header: 'Region', sort: 'region', render: (r) => <RegionChip name={r.region_name} /> },
     {
       key: 'serial', header: 'Serial', rowHeader: true, sort: 'serial',
       // The badge sits BESIDE the serial, not in place of it: the value the
@@ -51,7 +56,7 @@ function columns(assetType: VesselAssetType): RegistryColumn<VesselRegistryRow>[
         </span>
       ),
     },
-    { key: 'manufacturer', header: 'Manufacturer', sort: 'manufacturer', render: (r) => <Text value={r.manufacturer} /> },
+    { key: 'manufacturer', header: 'Manufacturer', sort: 'manufacturer', render: (r) => <MakerChip value={r.manufacturer} /> },
     { key: 'model', header: 'Model', render: (r) => <Text value={r.model} /> },
     { key: 'station', header: 'Station', sort: 'station', render: (r) => <VesselStationCell row={r} /> },
     { key: 'unit', header: 'Unit', sort: 'unit', render: (r) => <VesselUnitCell row={r} /> },
@@ -86,6 +91,7 @@ function columns(assetType: VesselAssetType): RegistryColumn<VesselRegistryRow>[
 export function VesselRegistrySection({ assetType }: { assetType: VesselAssetType }) {
   const [query, setQuery] = useState<VesselQuery>(DEFAULT_VESSEL_QUERY)
   const { state, reload } = useVessels(assetType, query)
+  const makers = useMakers('v_vessel_management', 'manufacturer', ['asset_type', assetType])
   const { state: summary } = useVesselSummary(assetType)
   const regions = useRegions()
   const label = LABEL[assetType]
@@ -109,7 +115,8 @@ export function VesselRegistrySection({ assetType }: { assetType: VesselAssetTyp
     query.regionId !== null ||
     query.mapping !== 'all' ||
     query.due !== 'all' ||
-    query.duplicateSerial
+    query.duplicateSerial ||
+    hasAssetFilters(query.filters)
   const total = state.status === 'ready' ? state.data.total : null
 
   return (
@@ -245,6 +252,7 @@ export function VesselRegistrySection({ assetType }: { assetType: VesselAssetTyp
           </Button>
         ) : null}
       </DataToolbar>
+      <AssetFilterBar id={`vessel-${assetType}`} value={query.filters} onChange={(filters) => update({ filters })} makers={makers} />
 
       <RegistryTable
 

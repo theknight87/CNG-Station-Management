@@ -175,8 +175,8 @@ describe('Column priority', () => {
     // place, Days left and Status fell outside the visible region at 1440px,
     // hiding the two values this screen exists to surface.
     const order = headers.filter((h) => h && !/expand/i.test(h))
-    expect(order.slice(0, 7)).toEqual([
-      'Serial', 'Station', 'Unit', 'Area type', 'Next calibration', 'Days left', 'Status',
+    expect(order.slice(0, 8)).toEqual([
+      'Region', 'Serial', 'Station', 'Unit', 'Area type', 'Next calibration', 'Days left', 'Status',
     ])
     expect(order.indexOf('Manufacturer')).toBeGreaterThan(order.indexOf('Status'))
     expect(order.indexOf('Model')).toBeGreaterThan(order.indexOf('Status'))

@@ -1,4 +1,8 @@
 import { useCallback, useMemo, useState } from 'react'
+import { MakerChip, RegionChip } from '@/components/data/AssetChips'
+import { AssetFilterBar } from '@/components/data/AssetFilterBar'
+import { hasAssetFilters } from '@/components/data/assetFilters'
+import { useMakers } from '@/components/data/useMakers'
 import { Search, X } from 'lucide-react'
 
 import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
@@ -50,6 +54,7 @@ import {
  */
 function columns(): RegistryColumn<DetectorRegistryRow>[] {
   return [
+    { key: 'region', header: 'Region', sort: 'region', render: (r) => <RegionChip name={r.region_name} /> },
     {
       key: 'serial', header: 'Serial', rowHeader: true, sort: 'serial',
       render: (r) => <Serial value={r.serial_number} status={r.serial_status} />,
@@ -86,7 +91,7 @@ function columns(): RegistryColumn<DetectorRegistryRow>[] {
       render: (r) => <PrecisionDate display={r.last_calibration_display} precision={r.last_calibration_precision} />,
     },
     { key: 'mapping', header: 'Mapping', sort: 'mapping', render: (r) => <DetectorMappingBadge status={r.mapping_status} /> },
-    { key: 'manufacturer', header: 'Manufacturer', sort: 'manufacturer', render: (r) => <Text value={r.manufacturer} /> },
+    { key: 'manufacturer', header: 'Manufacturer', sort: 'manufacturer', render: (r) => <MakerChip value={r.manufacturer} /> },
     { key: 'model', header: 'Model', render: (r) => <Text value={r.model} /> },
   ]
 }
@@ -94,6 +99,7 @@ function columns(): RegistryColumn<DetectorRegistryRow>[] {
 export function GasDetectorsView() {
   const [query, setQuery] = useState<DetectorQuery>(DEFAULT_DETECTOR_QUERY)
   const { state, reload } = useGasDetectors(query)
+  const makers = useMakers('v_gas_detector_management')
   const { state: summary } = useGasDetectorSummary()
   const regions = useRegions()
 
@@ -123,7 +129,7 @@ export function GasDetectorsView() {
   const hasFilters =
     Boolean(query.search.trim()) || query.regionId !== null || query.stationId !== null ||
     query.area !== 'all' || query.mapping !== 'all' || query.due !== 'all' ||
-    query.presence !== DEFAULT_DETECTOR_QUERY.presence
+    query.presence !== DEFAULT_DETECTOR_QUERY.presence || hasAssetFilters(query.filters)
   const total = state.status === 'ready' ? state.data.total : null
 
   return (
@@ -310,6 +316,8 @@ export function GasDetectorsView() {
             </Button>
           ) : null}
         </DataToolbar>
+        <AssetFilterBar id="gas-detectors" value={query.filters} onChange={(filters) => update({ filters })}
+                        makers={makers.length ? makers : undefined} />
 
         <RegistryTable
 
