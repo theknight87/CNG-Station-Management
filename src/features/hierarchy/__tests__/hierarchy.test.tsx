@@ -194,7 +194,7 @@ describe('Stations browser', () => {
   it('renders rows and a pagination total taken from the RLS-scoped count', async () => {
     replies.stations = { data: [station()], error: null, count: 210 }
     wrap(<StationsView />)
-    expect(await screen.findByRole('link', { name: 'الماظة' })).toBeDefined()
+    expect(await screen.findByText('الماظة')).toBeDefined()
     // The total is whatever the database counted for THIS caller.
     expect(screen.getByText(/1–1 of 210/)).toBeDefined()
   })
@@ -202,7 +202,7 @@ describe('Stations browser', () => {
   it('asks the database to filter and sort, never JavaScript', async () => {
     replies.stations = { data: [station()], error: null, count: 1 }
     wrap(<StationsView />)
-    await screen.findByRole('link', { name: 'الماظة' })
+    await screen.findByText('الماظة')
 
     await userEvent.click(screen.getByRole('button', { name: /overdue/i }))
     await waitFor(() => {
@@ -215,7 +215,7 @@ describe('Stations browser', () => {
   it('searches on the folded name so Arabic spelling variants match', async () => {
     replies.stations = { data: [station()], error: null, count: 1 }
     wrap(<StationsView />)
-    await screen.findByRole('link', { name: 'الماظة' })
+    await screen.findByText('الماظة')
 
     await userEvent.type(screen.getByRole('searchbox', { name: /search stations/i }), 'الماظه')
     await waitFor(() => {

@@ -72,4 +72,17 @@ SELECT pg_temp.ck('AC-7 both functions are definer, search_path pinned, no anon 
   (SELECT bool_and(prosecdef AND proconfig IS NOT NULL AND NOT has_function_privilege('anon', oid, 'EXECUTE'))
      FROM pg_proc WHERE proname IN ('cng_admin_create_station', 'cng_admin_add_warehouse_srvs')));
 
+INSERT INTO r VALUES ('arch', pg_temp.try_as('ac_admin', $q$SELECT cng_admin_archive_station((SELECT id FROM stations WHERE station_name = 'TAC NEW'))$q$));
+INSERT INTO r VALUES ('arch2', pg_temp.try_as('ac_admin', $q$SELECT cng_admin_archive_station((SELECT id FROM stations WHERE station_name = 'TAC NEW'))$q$));
+INSERT INTO stations (id, region_id, station_name) SELECT '7e100000-0000-0000-0000-000000000009', id, 'TAC BUSY' FROM east;
+INSERT INTO storage_vessels (region_id, station_id, mapping_status) SELECT id, '7e100000-0000-0000-0000-000000000009', 'needs_unit_mapping' FROM east;
+INSERT INTO r VALUES ('busy', pg_temp.try_as('ac_admin', $q$SELECT cng_admin_archive_station('7e100000-0000-0000-0000-000000000009')$q$));
+INSERT INTO r VALUES ('arch_eng', pg_temp.try_as('ac_eng', $q$SELECT cng_admin_archive_station('7e100000-0000-0000-0000-000000000009')$q$));
+SELECT pg_temp.ck('AC-8 an empty Station is archived with its Units (kept, audited); twice is stale; one with equipment and a non-admin are refused',
+  (SELECT v FROM r WHERE k='arch') = 'OK' AND (SELECT v FROM r WHERE k='arch2') = 'PT409'
+  AND (SELECT v FROM r WHERE k='busy') = '23503' AND (SELECT v FROM r WHERE k='arch_eng') = '42501'
+  AND (SELECT archived_at IS NOT NULL AND archived_by = '7e000000-0000-0000-0000-00000000000a' FROM stations WHERE station_name = 'TAC NEW')
+  AND (SELECT bool_and(u.archived_at IS NOT NULL) FROM units u JOIN stations s ON s.id = u.station_id WHERE s.station_name = 'TAC NEW')
+  AND NOT EXISTS (SELECT 1 FROM v_station_summary WHERE station_name = 'TAC NEW')
+  AND (SELECT archived_at IS NULL FROM stations WHERE station_name = 'TAC BUSY'));
 ROLLBACK;

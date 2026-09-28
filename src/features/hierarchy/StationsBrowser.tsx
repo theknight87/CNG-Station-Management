@@ -1,6 +1,8 @@
-import { Fragment, useCallback, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronLeft, ChevronRight, Search, X } from 'lucide-react'
 
+import { StationName } from '@/features/hierarchy/StationPopup'
+import { STATIONS_CHANGED } from '@/features/hierarchy/stationPopupContext'
 import { AddStationButton } from '@/features/hierarchy/AddStationDialog'
 import { StationUnits } from '@/features/hierarchy/StationUnits'
 import { UnitPopup } from '@/features/units/UnitPopup'
@@ -16,12 +18,11 @@ import {
   TableRow,
   TableScroll,
 } from '@/components/data/DataTable'
-import { EntityName } from '@/components/data/TechnicalText'
 import { ValueOrNull } from '@/components/data/NullValue'
 import { DataToolbar } from '@/components/layout/PageContainer'
 import { EmptyState, ErrorState, LoadingState, NoResultsState, NotImplemented } from '@/components/states/AppStates'
 import { Button } from '@/components/ui/button'
-import { AttentionBadge, Count, EntityLink } from '@/features/hierarchy/HierarchyPieces'
+import { AttentionBadge, Count } from '@/features/hierarchy/HierarchyPieces'
 import {
   DEFAULT_STATION_QUERY,
   pageCount,
@@ -74,6 +75,10 @@ export function StationsBrowser({
   )
 
   const { state, reload } = useStations(effective)
+  useEffect(() => {
+    window.addEventListener(STATIONS_CHANGED, reload)
+    return () => window.removeEventListener(STATIONS_CHANGED, reload)
+  }, [reload])
   const regions = useRegions()
 
   // Any change to the result set returns to page 1. Staying on page 5 of a
@@ -262,11 +267,8 @@ export function StationsBrowser({
                           ? <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
                           : <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />}
                       </button>
-                      <EntityLink to={`/stations/${station.station_id}`}>
-                        {/* Arabic names render direction-aware and are never
-                          * truncated into ambiguity — the table scrolls. */}
-                        <EntityName name={station.station_name} />
-                      </EntityLink>
+                      {/* Owner request 2026-09-28: a Station opens its hierarchy in a popup, not another page. */}
+                      <StationName id={station.station_id} name={station.station_name} />
                       </span>
                     </RowHeaderCell>
                     <TableCell>{station.region_name}</TableCell>

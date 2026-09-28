@@ -1,4 +1,5 @@
 import { StatusBadge } from '@/components/data/StatusBadge'
+import { StationName } from '@/features/hierarchy/StationPopup'
 import { NullValue } from '@/components/data/NullValue'
 import type {
   DetectorAreaType, DetectorMappingStatus, DetectorPresence, DetectorRegistryRow,
@@ -108,7 +109,7 @@ export function PresenceBadge({ value }: { value: DetectorPresence }) {
 export function DetectorStationCell({ row }: { row: DetectorRegistryRow }) {
   return (
     <span className="whitespace-nowrap">
-      {row.station_name ?? <NullValue />}
+      <StationName id={row.station_id} name={row.station_name} />
       {row.region_name ? <span className="ml-1.5 text-xs text-muted-foreground">{row.region_name}</span> : null}
     </span>
   )
