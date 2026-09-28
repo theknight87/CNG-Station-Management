@@ -53,6 +53,9 @@ vi.mock('@/lib/supabase/client', () => {
           calls.list.push(`${table}.in:${col}=[${values.join('|')}]`)
           return chain
         },
+        ilike: (col: string, value: string) => { calls.list.push(`${table}.ilike:${col}=${value}`); return chain },
+        lte: (col: string, value: number) => { calls.list.push(`${table}.lte:${col}=${value}`); return chain },
+        gte: (col: string, value: number) => { calls.list.push(`${table}.gte:${col}=${value}`); return chain },
         or: (expr: string) => {
           calls.list.push(`${table}.or:${expr}`)
           return chain
@@ -82,7 +85,11 @@ vi.mock('@/lib/supabase/client', () => {
       return chain
     },
   }
-  ;(client as Record<string, unknown>).rpc = () => Promise.resolve({ data: [], error: null })
+  ;(client as Record<string, unknown>).rpc = (fn: string, args: unknown) => {
+    calls.list.push(`rpc:${fn}:${JSON.stringify(args)}`)
+    const done = Promise.resolve({ data: [], error: null })
+    return Object.assign(done, { maybeSingle: () => Promise.resolve(replies.summary) })
+  }
   return { useSupabaseClient: () => client }
 })
 
@@ -305,15 +312,18 @@ describe('Installed SRVs — mapping lifecycle presentation', () => {
 })
 
 describe('Identifiers and technical values', () => {
-  it('keeps SS-4R3A a Part Number and leaves the serial absent', async () => {
+  it('keeps SS-4R3A a Part Number and leaves the serial absent (part number lives in the details only)', async () => {
     replies.installed = {
       data: [installed({ serial_number: null, serial_number_raw: 'SS-4R3A', serial_status: 'unknown', part_number: 'SS-4R3A' })],
       error: null, count: 1,
     }
     renderSrv()
-    const row = (await screen.findByText('SS-4R3A')).closest('tr')!
+    const table = await screen.findByRole('table')
+    const row = within(table).getAllByRole('row')[1]
     expect(within(row).getAllByText(/not recorded/i).length).toBeGreaterThan(0)
-    expect(within(row).getByText('SS-4R3A')).toBeDefined()
+    // Owner request 2026-09-28: the Part number column left the table; it is shown in the record's details.
+    expect(within(row).queryByText('SS-4R3A')).toBeNull()
+    expect(within(table).queryByRole('columnheader', { name: /part number/i })).toBeNull()
   })
 
   it('preserves an identifier exactly, including leading zeros', async () => {
@@ -563,5 +573,49 @@ describe('smart filters and warehouse code', () => {
     const table = await screen.findByRole('table')
     expect(await within(table).findByText('acc 794')).toBeDefined()
     expect(within(table).getByText('by serial')).toBeDefined()
+  })
+})
+
+describe('Installed SRVs — owner layout and filtered summary (2026-09-28)', () => {
+  beforeEach(() => {
+    calls.list = []
+    replies.installed = { data: [installed()], error: null, count: 1 }
+    replies.summary = { data: { total: 2683, overdue: 341, attention: 540, needs_station_mapping: 0, needs_unit_mapping: 92, needs_equipment_mapping: 0, conflict: 0 }, error: null }
+  })
+
+  it('shows Region, Station and Days left in the table and no Part number column', async () => {
+    render(<MemoryRouter><InstalledSrvSection /></MemoryRouter>)
+    const table = await screen.findByRole('table')
+    const headers = within(table).getAllByRole('columnheader').map((h) => h.textContent?.toLowerCase() ?? '')
+    const at = (name: string) => headers.findIndex((h) => h.includes(name))
+    expect(at('region')).toBeGreaterThan(-1)
+    expect(at('station')).toBeGreaterThan(-1)
+    expect(at('days left')).toBeGreaterThan(-1)
+    expect(at('part number')).toBe(-1)
+    // Serial, then where it is: Region, Station, Unit lead the row.
+    expect(at('serial')).toBeLessThan(at('region'))
+    expect(at('region')).toBeLessThan(at('station'))
+    expect(within(table).getByText('East')).toBeDefined()
+  })
+
+  it('recounts the summary for the active filters, server-side, and uses the plain view with none', async () => {
+    const user = userEvent.setup()
+    render(<MemoryRouter><InstalledSrvSection /></MemoryRouter>)
+    await screen.findByRole('table')
+    expect(calls.list).toContain('v_installed_srv_summary.maybeSingle')
+    expect(calls.list.some((c) => c.startsWith('rpc:cng_installed_srv_summary_filtered'))).toBe(false)
+    replies.summary = { data: { total: 7, overdue: 1, attention: 2, needs_station_mapping: 0, needs_unit_mapping: 0, needs_equipment_mapping: 0, conflict: 0 }, error: null }
+    await user.type(screen.getByLabelText(/^set pressure$/i), '275')
+    await waitFor(() => expect(calls.list.some((c) => c.startsWith('rpc:cng_installed_srv_summary_filtered') && c.includes('"pressure":"275"'))).toBe(true))
+    expect(await screen.findByText('matching the filters')).toBeDefined()
+    expect(screen.getByText('7')).toBeDefined()
+  })
+
+  it('offers the flange sizes in the size filter', async () => {
+    render(<MemoryRouter><InstalledSrvSection /></MemoryRouter>)
+    await screen.findByRole('table')
+    const values = Array.from(document.querySelectorAll('#installed-srv-sizes option')).map((o) => (o as HTMLOptionElement).value)
+    expect(values).toContain('Flange 1" X 1"')
+    expect(values).toContain('Flange 1" X 1-1/4"')
   })
 })

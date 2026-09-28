@@ -161,7 +161,7 @@ export function hasSmartFilters(f: SrvSmartFilters): boolean {
 export function parseSize(value: string): { type: 'male' | 'female' | 'flange' | null; inlet: string; outlet: string } {
   let v = value.trim()
   let type: 'male' | 'female' | 'flange' | null = null
-  const m = /^(flange|male|female|M|F)(?:\s+|(?=\d))/i.exec(v)
+  const m = /^(flange|male|female|M|F)(?:\s+|(?=\d)|$)/i.exec(v)
   if (m) {
     const t = m[1].toLowerCase()
     type = t === 'm' || t === 'male' ? 'male' : t === 'f' || t === 'female' ? 'female' : 'flange'
@@ -459,11 +459,14 @@ export interface InstalledSummary {
  * needs attention overall", which is what an operations lead opens this screen
  * for; the table answers "what matches my filters".
  */
-export function useInstalledSummary(): { state: Loadable<InstalledSummary>; reload: () => void } {
+export function useInstalledSummary(query?: InstalledQuery): { state: Loadable<InstalledSummary>; reload: () => void } {
   const supabase = useSupabaseClient()
   const [state, setState] = useState<Loadable<InstalledSummary>>({ status: 'loading' })
   const [nonce, setNonce] = useState(0)
   const reload = useCallback(() => setNonce((n) => n + 1), [])
+  // Only the FILTERS drive the counts; paging and sorting never change them.
+  const params = query ? summaryParams(query) : null
+  const key = JSON.stringify(params)
 
   useEffect(() => {
     let cancelled = false
@@ -483,10 +486,15 @@ export function useInstalledSummary(): { state: Loadable<InstalledSummary>; relo
       // changed. Aggregation stays in SQL because tallying rows in the browser
       // could be silently truncated by PostgREST's row limit, and a WRONG count
       // is worse than a stated failure.
-      const { data, error } = await supabase
-        .from('v_installed_srv_summary')
-        .select('total, overdue, attention, needs_station_mapping, needs_unit_mapping, needs_equipment_mapping, conflict')
-        .maybeSingle()
+      // No filters: the precomputed one-row view. Filters: the same counts over the filtered set, one scan,
+      // SECURITY INVOKER (cng_installed_srv_summary_filtered), with the predicates the table itself uses.
+      const p = JSON.parse(key) as Record<string, string> | null
+      const { data, error } = p && Object.keys(p).length > 0
+        ? await supabase.rpc('cng_installed_srv_summary_filtered', { p }).maybeSingle<InstalledSummary>()
+        : await supabase
+            .from('v_installed_srv_summary')
+            .select('total, overdue, attention, needs_station_mapping, needs_unit_mapping, needs_equipment_mapping, conflict')
+            .maybeSingle()
       if (cancelled) return
 
       // A failure is STATED, never rendered as 0.
@@ -517,7 +525,31 @@ export function useInstalledSummary(): { state: Loadable<InstalledSummary>; relo
     return () => {
       cancelled = true
     }
-  }, [supabase, nonce])
+  }, [supabase, nonce, key])
 
   return { state, reload }
+}
+
+/** The active filters as the summary function's parameters; empty values are left out. */
+export function summaryParams(q: InstalledQuery): Record<string, string> {
+  const clean = (v: string) => v.trim().replace(/[%*,()]/g, ' ').trim()
+  const size = parseSize(q.filters.size)
+  const term = q.search.trim().replace(/[,()]/g, ' ')
+  const v = Number(q.filters.pressure.trim())
+  const all: Record<string, string> = {
+    region_id: q.regionId ?? '',
+    mapping: q.mapping === 'all' ? '' : q.mapping,
+    parent_kind: q.parentKind === 'all' ? '' : q.parentKind,
+    due: q.due === 'all' ? '' : q.due,
+    serial: clean(q.filters.serial),
+    station: clean(q.filters.station),
+    size_type: q.filters.size.trim() && size.type ? size.type : '',
+    inlet: q.filters.size.trim() ? clean(size.inlet) : '',
+    outlet: q.filters.size.trim() ? clean(size.outlet) : '',
+    pressure: q.filters.pressure.trim() && Number.isFinite(v) ? String(v) : '',
+    pressure_unit: q.filters.pressureUnit,
+    search: term,
+    search_folded: term ? foldName(term) : '',
+  }
+  return Object.fromEntries(Object.entries(all).filter(([, x]) => x !== ''))
 }

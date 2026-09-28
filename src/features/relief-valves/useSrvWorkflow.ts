@@ -233,3 +233,19 @@ export function sizeText(type: string | null, inlet: string | null, outlet: stri
   const prefix = type?.toLowerCase() === 'male' ? 'M' : type?.toLowerCase() === 'female' ? 'F' : type
   return ([prefix, inlet].filter(Boolean).join(' ') + (outlet ? ` X ${outlet}` : '')).trim()
 }
+
+/** Runs one admin RPC after an explicit confirmation; reports the outcome. */
+export function useConfirmedAction(onDone: () => void) {
+  const { run, busy } = useWorkflowAction()
+  const [error, setError] = useState<string | null>(null)
+  const [done, setDone] = useState<string | null>(null)
+  async function act(question: string, fn: string, args: Record<string, unknown>, message: string) {
+    if (!window.confirm(question)) return
+    setError(null); setDone(null)
+    const err = await run(fn, args)
+    if (err) { setError(err); return }
+    setDone(message); onDone()
+  }
+  return { act, busy, error, done, setError, setDone, run }
+}
+

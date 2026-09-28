@@ -36,7 +36,7 @@ const client = {
 }
 vi.mock('@/lib/supabase/client', () => ({ useSupabaseClient: () => client }))
 
-const { SrvLogSection, SrvCalibrationSection } = await import('@/features/relief-valves/sections/SrvWorkflowSections')
+const { SrvLogSection, SrvCalibrationSection, SrvEmergencySection } = await import('@/features/relief-valves/sections/SrvWorkflowSections')
 const { IssuePanel } = await import('@/features/relief-valves/SrvWorkflowPieces')
 
 const valve = { serial_number: 'S-1', manufacturer: null, part_number: null, warehouse_code: 'sbc 2', size_type: 'Male',
@@ -132,3 +132,70 @@ describe('Issue from warehouse', () => {
     expect(calls.rpc.filter(([fn]) => fn === 'cng_srv_issue')).toHaveLength(1)
   })
 })
+
+describe('Admin delete / edit (owner request 2026-09-28)', () => {
+  const log = { ...valve, id: 'l9', reason: 'replaced_on_issue', status: 'at_station', is_emergency: false, station_display: 'الماظة',
+    installed_valve_id: 'i9', logged_at: '2026-09-23T00:00:00Z' }
+
+  it('WF-6 SRV Log: delete and back-to-station each ask first, then send only the entry id (no actor)', async () => {
+    state.rows = [log]
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const user = userEvent.setup()
+    render(<SrvLogSection />)
+    const table = await screen.findByRole('table', { name: 'SRV Log' })
+    await user.click(within(table).getByRole('button', { name: 'Delete' }))
+    expect(confirm).toHaveBeenCalled()
+    expect(calls.rpc.find(([fn]) => fn === 'cng_srv_log_archive')![1]).toEqual({ p_log_id: 'l9' })
+    await user.click(within(table).getByRole('button', { name: 'Back to its station' }))
+    expect(calls.rpc.find(([fn]) => fn === 'cng_srv_log_restore_to_station')![1]).toEqual({ p_log_id: 'l9' })
+    confirm.mockRestore()
+  })
+
+  it('WF-7 SRV Log: a cancelled confirmation sends nothing', async () => {
+    state.rows = [log]
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const user = userEvent.setup()
+    render(<SrvLogSection />)
+    await user.click(within(await screen.findByRole('table', { name: 'SRV Log' })).getByRole('button', { name: 'Delete' }))
+    expect(calls.rpc.some(([fn]) => fn === 'cng_srv_log_archive')).toBe(false)
+    confirm.mockRestore()
+  })
+
+  it('WF-8 SRV Log: move sends the chosen station', async () => {
+    state.rows = [log]
+    const user = userEvent.setup()
+    render(<SrvLogSection />)
+    await user.click(within(await screen.findByRole('table', { name: 'SRV Log' })).getByRole('button', { name: 'Move' }))
+    const dialog = await screen.findByRole('dialog')
+    await waitFor(() => expect(within(dialog).getAllByRole('option').length).toBeGreaterThan(1))
+    await user.selectOptions(within(dialog).getByLabelText('Station'), 's1')
+    await user.click(within(dialog).getByRole('button', { name: 'Move' }))
+    expect(calls.rpc.find(([fn]) => fn === 'cng_srv_log_move')![1]).toEqual({ p_log_id: 'l9', p_station_id: 's1', p_unit_id: null })
+  })
+
+  it('WF-9 calibration and emergency: admin controls exist and delete calls the archive functions', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    state.rows = [{ ...valve, id: 'j9', status: 'sent', warehouse_valve_id: 'w9', sent_at: '2026-09-01T00:00:00Z' }]
+    const user = userEvent.setup()
+    const cal = render(<SrvCalibrationSection />)
+    await user.click(within(await screen.findByRole('table', { name: 'Calibration (3rd party)' })).getByRole('button', { name: 'Delete' }))
+    expect(calls.rpc.find(([fn]) => fn === 'cng_srv_calibration_archive')![1]).toEqual({ p_job_id: 'j9' })
+    cal.unmount()
+    state.rows = [{ id: 'e9', issued_at: '2026-09-01T00:00:00Z', notes: null, region_id: 'r', region_name: 'East', station_name: 'X', unit_name: 'X 1',
+      warehouse_valve_id: 'w9', issued_serial: 'S', issued_code: null, pressure_min: 90, pressure_max: 90, pressure_unit: 'BAR', set_pressure_raw: '90',
+      replaced_installed_valve_id: null, replaced_serial: null, replaced_code: null, log_id: null, replaced_status: null }]
+    render(<SrvEmergencySection />)
+    await user.click(within(await screen.findByRole('table', { name: 'SRV Emergency' })).getByRole('button', { name: 'Delete' }))
+    expect(calls.rpc.find(([fn]) => fn === 'cng_srv_emergency_remove')![1]).toEqual({ p_issue_id: 'e9' })
+    confirm.mockRestore()
+  })
+
+  it('WF-10 a viewer sees no delete, move or edit controls', async () => {
+    state.role = 'viewer'
+    state.rows = [log]
+    render(<SrvLogSection />)
+    const table = await screen.findByRole('table', { name: 'SRV Log' })
+    expect(within(table).queryByRole('button', { name: /delete|move|back to its station/i })).toBeNull()
+  })
+})
+

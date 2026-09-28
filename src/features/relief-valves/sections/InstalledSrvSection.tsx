@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { Search, X } from 'lucide-react'
 
 import { Identifier } from '@/components/data/TechnicalText'
+import { RemoveValveButton } from '@/features/relief-valves/SrvAdminActions'
 import { NullValue } from '@/components/data/NullValue'
 import { DataToolbar } from '@/components/layout/PageContainer'
 import { Button } from '@/components/ui/button'
@@ -9,7 +10,7 @@ import { Fact } from '@/features/hierarchy/HierarchyPieces'
 import { useRegions } from '@/features/hierarchy/useHierarchy'
 import { DueBadge, PrecisionDate, PressureRange, Serial, SourceStatus, Text } from '@/features/units/assetDisplay'
 import { ValveHistory } from '@/features/relief-valves/SrvWorkflowPieces'
-import { SmartFilterBar, HierarchyCell, MappingBadge, Metric, ParentCell, SourceContext } from '@/features/relief-valves/SrvPieces'
+import { SmartFilterBar, MappingBadge, Metric, ParentCell, SourceContext } from '@/features/relief-valves/SrvPieces'
 import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
 import {
   hasSmartFilters,
@@ -38,41 +39,43 @@ import {
 
 const COLUMNS: RegistryColumn<InstalledSrvRow>[] = [
   {
+    key: 'serial', header: 'Serial', rowHeader: true, sort: 'serial',
+    render: (r) => <Serial value={r.serial_number} status={r.serial_status} />,
+  },
+  {
+    key: 'region', header: 'Region',
+    render: (r) => (r.mapping_status === 'needs_station_mapping'
+      ? <span className="whitespace-nowrap text-muted-foreground">Not confirmed</span>
+      : <Text value={r.region_name} />),
+  },
+  {
+    key: 'station', header: 'Station', sort: 'station',
+    render: (r) => (r.mapping_status === 'needs_station_mapping'
+      ? <span className="whitespace-nowrap text-muted-foreground">Station not confirmed</span>
+      : <span dir="auto" className="whitespace-nowrap">{r.station_name ?? <NullValue />}</span>),
+  },
+  {
+    key: 'unit', header: 'Unit', sort: 'unit',
+    render: (r) =>
+      r.unit_name ? (
+        <span dir="auto" className="whitespace-nowrap">{r.unit_name}</span>
+      ) : (
+        <span className="whitespace-nowrap text-muted-foreground">Not confirmed</span>
+      ),
+  },
+  {
     key: 'pressure', header: 'Set pressure', align: 'right',
     render: (r) => (
       <PressureRange min={r.pressure_min} max={r.pressure_max} unit={r.pressure_unit} raw={r.set_pressure_raw} />
     ),
   },
-  { key: 'due', header: 'Status', render: (r) => <DueBadge status={r.due_status} /> },
-  { key: 'manufacturer', header: 'Manufacturer', render: (r) => <Text value={r.manufacturer} /> },
   { key: 'size', header: 'Size', render: (r) => <ValveSize type={r.size_type} inlet={r.inlet_size} outlet={r.outlet_size} /> },
+  { key: 'manufacturer', header: 'Manufacturer', render: (r) => <Text value={r.manufacturer} /> },
+  { key: 'due', header: 'Status', render: (r) => <DueBadge status={r.due_status} /> },
   {
-    key: 'serial', header: 'Serial', rowHeader: true, sort: 'serial',
-    render: (r) => <Serial value={r.serial_number} status={r.serial_status} />,
+    key: 'days_left', header: 'Days left', align: 'right', numeric: true,
+    render: (r) => (r.days_left === null ? <NullValue /> : <span>{r.days_left.toLocaleString()}</span>),
   },
-  {
-    // Its own column, never folded into Serial. SS-4R3A is owner-confirmed as
-    // a Part Number, so it lands here and the serial stays absent.
-    key: 'part_number', header: 'Part number',
-    render: (r) => (r.part_number ? <Identifier value={r.part_number} /> : <NullValue />),
-  },
-  {
-    key: 'last_calibration', header: 'Last calibration',
-    render: (r) => <PrecisionDate display={r.last_calibration_display} precision={r.last_calibration_precision} />,
-  },
-  { key: 'warehouse', header: 'Warehouse code', render: (r) => <WarehouseCode row={r} /> },
-  { key: 'station', header: 'Station', sort: 'station', render: (r) => <HierarchyCell row={r} /> },
-  {
-    key: 'unit', header: 'Unit', sort: 'unit',
-    render: (r) =>
-      r.unit_name ? (
-        <span className="whitespace-nowrap">{r.unit_name}</span>
-      ) : (
-        <span className="whitespace-nowrap text-muted-foreground">Not confirmed</span>
-      ),
-  },
-  { key: 'parent', header: 'Equipment parent', render: (r) => <ParentCell row={r} /> },
-  { key: 'mapping', header: 'Mapping', sort: 'mapping', render: (r) => <MappingBadge status={r.mapping_status} /> },
   {
     key: 'next_due', header: 'Next calibration', sort: 'next_due',
     render: (r) => (
@@ -83,9 +86,12 @@ const COLUMNS: RegistryColumn<InstalledSrvRow>[] = [
     ),
   },
   {
-    key: 'days_left', header: 'Days left', align: 'right', numeric: true,
-    render: (r) => (r.days_left === null ? <NullValue /> : <span>{r.days_left.toLocaleString()}</span>),
+    key: 'last_calibration', header: 'Last calibration',
+    render: (r) => <PrecisionDate display={r.last_calibration_display} precision={r.last_calibration_precision} />,
   },
+  { key: 'warehouse', header: 'Warehouse code', render: (r) => <WarehouseCode row={r} /> },
+  { key: 'parent', header: 'Equipment parent', render: (r) => <ParentCell row={r} /> },
+  { key: 'mapping', header: 'Mapping', sort: 'mapping', render: (r) => <MappingBadge status={r.mapping_status} /> },
 ]
 
 /** A recorded code, or the code of the single warehouse record with the same serial, labelled as such. */
@@ -102,7 +108,8 @@ function WarehouseCode({ row }: { row: InstalledSrvRow }) {
 }
 
 function ValveSize({ type, inlet, outlet }: { type: string | null; inlet: string | null; outlet: string | null }) {
-  const prefix = type?.toLowerCase() === 'male' ? 'M' : type?.toLowerCase() === 'female' ? 'F' : type
+  const t = type?.toLowerCase()
+  const prefix = t === 'male' ? 'M' : t === 'female' ? 'F' : t === 'flange' ? 'Flange' : type
   const value = [prefix, inlet].filter(Boolean).join(' ') + (outlet ? ` X ${outlet}` : '')
   return value.trim() ? <span className="whitespace-nowrap font-technical">{value}</span> : <NullValue />
 }
@@ -110,7 +117,7 @@ function ValveSize({ type, inlet, outlet }: { type: string | null; inlet: string
 export function InstalledSrvSection() {
   const [query, setQuery] = useState<InstalledQuery>(DEFAULT_INSTALLED_QUERY)
   const { state, reload } = useInstalledSrvs(query)
-  const { state: summary } = useInstalledSummary()
+  const { state: summary } = useInstalledSummary(query)
   const regions = useRegions()
 
   // Any change to the result set returns to page 1; staying on page 5 of a
@@ -133,13 +140,12 @@ export function InstalledSrvSection() {
     Boolean(query.search.trim()) || query.regionId !== null || query.mapping !== 'all' ||
     query.due !== 'all' || query.parentKind !== 'all' || hasSmartFilters(query.filters)
 
-  const total = state.status === 'ready' ? state.data.total : null
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      {/* Compact operational strip, not a dashboard. Counted over the whole
-        * authorized dataset, so it does not change as filters narrow the
-        * table - and a failed count is stated, never rendered as 0. */}
+      {/* Compact operational strip, not a dashboard. It follows the active
+        * filters (owner request 2026-09-28) - and a failed count is stated,
+        * never rendered as 0. */}
       {summary.status === 'error' ? (
         <p className="rounded border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
           The attention summary could not be loaded, so no counts are shown. The table below is unaffected.
@@ -151,7 +157,7 @@ export function InstalledSrvSection() {
             Attention and mapping summary
           </h2>
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4 lg:grid-cols-7">
-            <Metric label="Installed" value={summary.data.total.toLocaleString()} hint="visible to you" />
+            <Metric label="Installed" value={summary.data.total.toLocaleString()} hint={hasFilters ? 'matching the filters' : 'visible to you'} />
             <Metric label="Overdue" value={summary.data.overdue.toLocaleString()} tone="overdue" />
             {/* Stated explicitly: this bucket INCLUDES overdue. */}
             <Metric
@@ -175,12 +181,6 @@ export function InstalledSrvSection() {
               * different problem from evidence that is missing. */}
             <Metric label="Conflict" value={summary.data.conflict.toLocaleString()} />
           </div>
-          {total !== null && total !== summary.data.total ? (
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              Counts cover all installed valves visible to you. The table below shows{' '}
-              <span className="tabular">{total.toLocaleString()}</span> matching the current filters.
-            </p>
-          ) : null}
         </section>
       ) : null}
 
@@ -272,7 +272,12 @@ export function InstalledSrvSection() {
       <RegistryTable
 
         record={(r) => ({ table: 'installed_relief_valves', id: r.id })}
-        extra={(r) => <ValveHistory valveId={r.id} />}
+        extra={(r, done) => (
+          <>
+            <ValveHistory valveId={r.id} />
+            <RemoveValveButton table="installed_relief_valves" id={r.id} onDone={done} />
+          </>
+        )}
         label="Installed relief valves"
         state={state}
         reload={reload}

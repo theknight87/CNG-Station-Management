@@ -9,7 +9,10 @@ import {
   Code, FormMessage, ListStates, Pressure, SelectableTable, ValveHistory, ValveSize,
 } from '@/features/relief-valves/SrvWorkflowPieces'
 import {
-  useIsAdmin, useWorkflowAction, useWorkflowList,
+  CalibrationEditDialog, LogMoveDialog, RowAction, RowActions,
+} from '@/features/relief-valves/SrvAdminActions'
+import {
+  useConfirmedAction, useIsAdmin, useWorkflowAction, useWorkflowList,
   type CalibrationRow, type EmergencyRow, type FieldLogRow,
 } from '@/features/relief-valves/useSrvWorkflow'
 
@@ -55,7 +58,9 @@ export function SrvLogSection() {
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
   const [open, setOpen] = useState<FieldLogRow | null>(null)
+  const [moving, setMoving] = useState<string | null>(null)
   const { run, busy } = useWorkflowAction()
+  const admin = useConfirmedAction(reload)
   const rows = state.status === 'ready' ? state.data.rows : []
 
   async function receive() {
@@ -84,7 +89,8 @@ export function SrvLogSection() {
           </Button>
         ) : null}
       </div>
-      <FormMessage error={error} done={done} />
+      <FormMessage error={error ?? admin.error} done={done ?? admin.done} />
+      <LogMoveDialog logId={moving} onClose={() => setMoving(null)} onDone={reload} />
       <ListStates state={state} label="the SRV Log" reload={reload} empty={rows.length === 0}>
         <SelectableTable
           label="SRV Log"
@@ -107,6 +113,18 @@ export function SrvLogSection() {
               <span className="whitespace-nowrap">{LOG_STATUS[r.status]}{r.is_emergency ? ' · Emergency' : ''}</span>) },
             { key: 'reason', header: 'Why it is here', render: (r) => <span className="text-xs">{LOG_REASON[r.reason]}</span> },
             { key: 'since', header: 'Since', render: (r) => day(r.reason === 'replaced_on_issue' ? r.logged_at : r.warehouse_issue_date ?? r.logged_at) },
+            ...(isAdmin ? [{ key: 'actions', header: 'Actions', render: (r: FieldLogRow) => (
+              <RowActions>
+                {r.installed_valve_id && r.status !== 'returned' ? (
+                  <RowAction label="Back to its station" disabled={admin.busy}
+                    onClick={() => void admin.act('Put this valve back as installed at its station and remove it from the SRV Log?',
+                      'cng_srv_log_restore_to_station', { p_log_id: r.id }, 'The valve is installed at its station again.')} />
+                ) : null}
+                <RowAction label="Move" disabled={admin.busy} onClick={() => setMoving(r.id)} />
+                <RowAction label="Delete" danger disabled={admin.busy}
+                  onClick={() => void admin.act('Remove this entry from the SRV Log? It is archived (kept in the audit history).',
+                    'cng_srv_log_archive', { p_log_id: r.id }, 'Entry removed from the SRV Log.')} />
+              </RowActions>) }] : []),
           ]}
         />
         {state.status === 'ready' ? <Truncated shown={rows.length} total={state.data.total} /> : null}
@@ -138,7 +156,9 @@ export function SrvCalibrationSection() {
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
   const [open, setOpen] = useState<CalibrationRow | null>(null)
+  const [editing, setEditing] = useState<CalibrationRow | null>(null)
   const { run, busy } = useWorkflowAction()
+  const admin = useConfirmedAction(reload)
   const rows = state.status === 'ready' ? state.data.rows : []
   const picked = rows.filter((r) => selected.has(r.id))
 
@@ -191,7 +211,8 @@ export function SrvCalibrationSection() {
           </Button>
         </section>
       ) : null}
-      <FormMessage error={error} done={done} />
+      <FormMessage error={error ?? admin.error} done={done ?? admin.done} />
+      <CalibrationEditDialog job={editing} onClose={() => setEditing(null)} onDone={reload} />
       <ListStates state={state} label="calibration" reload={reload} empty={rows.length === 0}>
         <SelectableTable
           label="Calibration (3rd party)"
@@ -210,6 +231,13 @@ export function SrvCalibrationSection() {
             { key: 'returned', header: 'Returned', render: (r) => day(r.returned_at) },
             { key: 'cert', header: 'Certificate', render: (r) => r.certificate_date
               ? <span className="tabular">{r.certificate_date}{r.certificate_number ? ` · ${r.certificate_number}` : ''}</span> : <NullValue /> },
+            ...(isAdmin ? [{ key: 'actions', header: 'Actions', render: (r: CalibrationRow) => (
+              <RowActions>
+                <RowAction label="Edit" disabled={admin.busy} onClick={() => setEditing(r)} />
+                <RowAction label="Delete" danger disabled={admin.busy}
+                  onClick={() => void admin.act('Remove this calibration entry? The valve returns to warehouse stock; the entry is archived.',
+                    'cng_srv_calibration_archive', { p_job_id: r.id }, 'Calibration entry removed; the valve is back in warehouse stock.')} />
+              </RowActions>) }] : []),
           ]}
         />
         {state.status === 'ready' ? <Truncated shown={rows.length} total={state.data.total} /> : null}
@@ -222,9 +250,18 @@ export function SrvCalibrationSection() {
 // ---------------------------------------------------------------------------------------------- Emergency
 
 export function SrvEmergencySection() {
+  const isAdmin = useIsAdmin()
   const [filters, setFilters] = useState<SrvSmartFilters>(EMPTY_SMART_FILTERS)
   const { state, reload } = useWorkflowList<EmergencyRow>('emergency', { filters })
   const [open, setOpen] = useState<EmergencyRow | null>(null)
+  const admin = useConfirmedAction(reload)
+  async function editNotes(r: EmergencyRow) {
+    const notes = window.prompt('Notes for this emergency issue', r.notes ?? '')
+    if (notes === null) return
+    admin.setError(null); admin.setDone(null)
+    const err = await admin.run('cng_srv_emergency_edit', { p_issue_id: r.id, p_notes: notes })
+    if (err) admin.setError(err); else { admin.setDone('Notes saved.'); reload() }
+  }
   const rows = state.status === 'ready' ? state.data.rows : []
   return (
     <div className="flex min-w-0 flex-col gap-3">
@@ -232,6 +269,7 @@ export function SrvEmergencySection() {
         Every issue marked Emergency. The valve it replaced is also in the SRV Log until it returns to the warehouse.
       </p>
       <SmartFilterBar id="srv-emergency" value={filters} onChange={setFilters} />
+      <FormMessage error={admin.error} done={admin.done} />
       <ListStates state={state} label="emergency issues" reload={reload} empty={rows.length === 0}>
         <SelectableTable
           label="SRV Emergency"
@@ -252,6 +290,13 @@ export function SrvEmergencySection() {
             { key: 'rstatus', header: 'Replaced valve status', render: (r) => r.replaced_status === 'returned'
               ? 'Returned to warehouse' : r.replaced_status === 'at_station' ? 'At station — awaiting return' : <NullValue /> },
             { key: 'notes', header: 'Notes', render: (r) => r.notes ? <span dir="auto">{r.notes}</span> : <NullValue /> },
+            ...(isAdmin ? [{ key: 'actions', header: 'Actions', render: (r: EmergencyRow) => (
+              <RowActions>
+                <RowAction label="Edit" disabled={admin.busy} onClick={() => void editNotes(r)} />
+                <RowAction label="Delete" danger disabled={admin.busy}
+                  onClick={() => void admin.act('Remove this issue from the Emergency list? The issue itself and its valves are not changed.',
+                    'cng_srv_emergency_remove', { p_issue_id: r.id }, 'Removed from the Emergency list.')} />
+              </RowActions>) }] : []),
           ]}
         />
         {state.status === 'ready' ? <Truncated shown={rows.length} total={state.data.total} /> : null}

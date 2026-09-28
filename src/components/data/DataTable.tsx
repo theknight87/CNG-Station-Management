@@ -119,7 +119,7 @@ export function SortableHeader({
           type="button"
           onClick={onSort}
           className={cn(
-            'flex w-full items-center gap-1 rounded hover:text-foreground',
+            'flex w-full items-center gap-1 rounded font-semibold uppercase tracking-wide hover:text-foreground',
             align === 'right' && 'justify-end',
           )}
         >

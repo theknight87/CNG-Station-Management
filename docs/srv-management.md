@@ -537,3 +537,17 @@ certificate sets last calibration = certificate date and next calibration = cert
 exact, so Days Left, due windows and alerts apply. Deployed byte-exact (`cng_srv_calibration_certify`
 md5 `9a79075c…`); no data changed (the one job in production was still at the calibration company).
 Gate: `srv_warehouse_workflow` 44.
+
+## Owner changes 2026-09-28 — layout, filtered summary, admin delete/edit
+
+Migration `20260928110000_srv_admin_manage.sql` (suite `srv_admin_manage`, 8 assertions), deployed byte-exact.
+
+* **Installed table**: Serial, Region, Station, Unit lead the row; Days left sits beside Status; Part number left the
+  table and is shown only in the record's details. Sortable headers now use the same uppercase style as the rest.
+* **Summary follows the filters**: `cng_installed_srv_summary_filtered(p jsonb)` (SECURITY INVOKER, one scan, the same
+  predicates as the table). With no filter the precomputed `v_installed_srv_summary` is still used.
+* **Size filter** offers the flange sizes (`Flange 1" X 1"`, `Flange 1" X 1-1/4"`, `Flange`).
+* **Admin delete / edit** — "delete" archives (CLAUDE.md §10), every call admin-only, actor server-derived, audited:
+  SRV Log (delete; back to its station = the replaced installed valve is restored; move to another Station/Unit),
+  3rd party calibration (edit certificate fields; delete = the valve returns to stock), Emergency (edit notes; remove
+  from the list — the issue itself is kept), and delete an installed or warehouse valve from its details panel.

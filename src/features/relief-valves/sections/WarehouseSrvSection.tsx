@@ -15,6 +15,7 @@ import {
   DEFAULT_WAREHOUSE_QUERY, useWarehouseSrvs,
   type WarehouseQuery, type WarehouseSrvRow, type WarehouseSort,
 } from '@/features/relief-valves/useSrvManagement'
+import { RemoveValveButton } from '@/features/relief-valves/SrvAdminActions'
 import { IssuePanel, ValveHistory } from '@/features/relief-valves/SrvWorkflowPieces'
 import { useIsAdmin, useWorkflowAction } from '@/features/relief-valves/useSrvWorkflow'
 
@@ -255,6 +256,7 @@ export function WarehouseSrvSection() {
           <>
             <IssuePanel row={r} onDone={done} />
             <ValveHistory valveId={r.id} />
+            <RemoveValveButton table="warehouse_relief_valves" id={r.id} onDone={done} />
           </>
         )}
         rowKey={(r) => r.id}

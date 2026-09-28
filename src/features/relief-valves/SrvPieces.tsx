@@ -192,10 +192,11 @@ export function SmartFilterBar({ id, value, onChange, stationLabel = 'Station', 
       ) : null}
       <label className="flex flex-col gap-0.5 text-xs text-muted-foreground" htmlFor={`${id}-size`}>
         Size
-        <input id={`${id}-size`} list={`${id}-sizes`} className={cn(input, 'w-36 font-technical')} value={value.size} placeholder='e.g. M 3/4" X 1"'
+        <input id={`${id}-size`} list={`${id}-sizes`} className={cn(input, 'w-36 font-technical')} value={value.size} placeholder='e.g. M 3/4" X 1" or Flange'
                onChange={(e) => set({ size: e.target.value })} />
         <datalist id={`${id}-sizes`}>
-          {['M 1/4" X 1/2"', 'M 1/2" X 3/4"', 'M 1/2" X 1"', 'M 3/4" X 1"', 'M 1" X 1 1/4"', 'F 1/2" X 3/4"'].map((s) => <option key={s} value={s} />)}
+          {['M 1/4" X 1/4"', 'M 1/4" X 1/2"', 'M 1/2" X 3/4"', 'M 1/2" X 1"', 'M 3/4" X 1"', 'M 1" X 1"', 'M 1" X 1-1/4"',
+            'F 1/2" X 3/4"', 'F 1" X 1"', 'Flange 1" X 1"', 'Flange 1" X 1-1/4"', 'Flange'].map((s) => <option key={s} value={s} />)}
         </datalist>
       </label>
       <label className="flex flex-col gap-0.5 text-xs text-muted-foreground" htmlFor={`${id}-pressure`}>
