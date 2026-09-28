@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useMemo, useState } from 'react'
 import { ChevronDown, ChevronLeft, ChevronRight, Search, X } from 'lucide-react'
 
+import { AddStationButton } from '@/features/hierarchy/AddStationDialog'
 import { StationUnits } from '@/features/hierarchy/StationUnits'
 import { UnitPopup } from '@/features/units/UnitPopup'
 import type { UnitSummary } from '@/features/hierarchy/useHierarchy'
@@ -187,6 +188,7 @@ export function StationsBrowser({
             Clear
           </Button>
         ) : null}
+        <span className="ml-auto"><AddStationButton regionId={lockedRegionId} onCreated={reload} /></span>
       </DataToolbar>
 
       {state.status === 'loading' ? <LoadingState label="Loading Stations" /> : null}

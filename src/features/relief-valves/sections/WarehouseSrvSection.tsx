@@ -1,3 +1,4 @@
+import { AddWarehouseSrvsButton } from '@/features/relief-valves/AddWarehouseSrvs'
 import { AvailabilityChip, ManufacturerChip, RegionChip } from '@/features/relief-valves/SrvPieces'
 import { useCallback, useState } from 'react'
 import { Plus, Search, X } from 'lucide-react'
@@ -224,6 +225,7 @@ export function WarehouseSrvSection() {
             Clear
           </Button>
         ) : null}
+        <span className="ml-auto"><AddWarehouseSrvsButton onAdded={reload} /></span>
       </DataToolbar>
       <SmartFilterBar id="warehouse-srv" stationLabel="Destination Station" regionLabel="Destination Region" value={query.filters} onChange={(filters) => update({ filters })} />
 
