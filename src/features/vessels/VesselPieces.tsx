@@ -1,5 +1,5 @@
 import { StatusBadge } from '@/components/data/StatusBadge'
-import { StationName } from '@/features/hierarchy/StationPopup'
+import { NullValue } from '@/components/data/NullValue'
 import type { VesselMappingStatus, VesselRegistryRow } from '@/features/vessels/useVesselManagement'
 
 /**
@@ -52,7 +52,7 @@ export function VesselStationCell({ row }: { row: VesselRegistryRow }) {
   }
   return (
     <span className="whitespace-nowrap">
-      <StationName id={row.station_id} name={row.station_name} />
+      {row.station_name ?? <NullValue />}
       {row.region_name ? <span className="ml-1.5 text-xs text-muted-foreground">{row.region_name}</span> : null}
     </span>
   )

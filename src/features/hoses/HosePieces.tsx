@@ -1,5 +1,4 @@
 import { StatusBadge } from '@/components/data/StatusBadge'
-import { StationName } from '@/features/hierarchy/StationPopup'
 import { NullValue } from '@/components/data/NullValue'
 import { Identifier } from '@/components/data/TechnicalText'
 import type { HoseMappingStatus, HoseRegistryRow } from '@/features/hoses/useHoseManagement'
@@ -93,7 +92,7 @@ export function HoseSerial({ row }: { row: HoseRegistryRow }) {
 export function HoseStationCell({ row }: { row: HoseRegistryRow }) {
   return (
     <span className="whitespace-nowrap">
-      <StationName id={row.station_id} name={row.station_name} />
+      {row.station_name ?? <NullValue />}
       {row.region_name ? <span className="ml-1.5 text-xs text-muted-foreground">{row.region_name}</span> : null}
     </span>
   )

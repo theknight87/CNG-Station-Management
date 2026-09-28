@@ -4,7 +4,6 @@ import { AppShell } from '@/components/layout/AppShell'
 import { AlertBell } from '@/features/alerts/AlertBell'
 import { SupabaseAccountControl } from '@/components/layout/AccountControl'
 import { BreadcrumbProvider } from '@/components/layout/BreadcrumbProvider'
-import { StationPopupProvider } from '@/features/hierarchy/StationPopup'
 import { crumbsFromPath } from '@/components/layout/breadcrumbPaths'
 import { useAppUser } from '@/hooks/useAppUser'
 
@@ -33,9 +32,7 @@ export function AppLayout() {
           crumbs={override ?? crumbsFromPath(location.pathname)}
           account={<SupabaseAccountControl role={role} />}
         >
-          <StationPopupProvider>
-            <Outlet />
-          </StationPopupProvider>
+          <Outlet />
         </AppShell>
       )}
     </BreadcrumbProvider>

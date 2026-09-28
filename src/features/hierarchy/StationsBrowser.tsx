@@ -1,8 +1,7 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useMemo, useState } from 'react'
 import { ChevronDown, ChevronLeft, ChevronRight, Search, X } from 'lucide-react'
 
-import { StationName } from '@/features/hierarchy/StationPopup'
-import { STATIONS_CHANGED } from '@/features/hierarchy/stationPopupContext'
+import { EntityName } from '@/components/data/TechnicalText'
 import { AddStationButton } from '@/features/hierarchy/AddStationDialog'
 import { StationUnits } from '@/features/hierarchy/StationUnits'
 import { UnitPopup } from '@/features/units/UnitPopup'
@@ -75,10 +74,6 @@ export function StationsBrowser({
   )
 
   const { state, reload } = useStations(effective)
-  useEffect(() => {
-    window.addEventListener(STATIONS_CHANGED, reload)
-    return () => window.removeEventListener(STATIONS_CHANGED, reload)
-  }, [reload])
   const regions = useRegions()
 
   // Any change to the result set returns to page 1. Staying on page 5 of a
@@ -268,7 +263,12 @@ export function StationsBrowser({
                           : <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />}
                       </button>
                       {/* Owner request 2026-09-28: a Station opens its hierarchy in a popup, not another page. */}
-                      <StationName id={station.station_id} name={station.station_name} />
+                      {/* Owner request 2026-09-28: the name opens the Station's Units right here, like the arrow. */}
+                      <button type="button" dir="auto" aria-expanded={expanded.has(station.station_id)}
+                              className="text-left font-medium text-[var(--brand-strong)] underline-offset-2 hover:underline"
+                              onClick={() => toggle(station.station_id)}>
+                        <EntityName name={station.station_name} />
+                      </button>
                       </span>
                     </RowHeaderCell>
                     <TableCell>{station.region_name}</TableCell>
@@ -291,7 +291,7 @@ export function StationsBrowser({
                   {expanded.has(station.station_id) ? (
                     <tr className="border-t bg-muted/20">
                       <td colSpan={9} className="px-3 py-2">
-                        <StationUnits stationId={station.station_id} onOpen={setOpenUnit} />
+                        <StationUnits stationId={station.station_id} stationName={station.station_name} onOpen={setOpenUnit} onRemoved={reload} />
                       </td>
                     </tr>
                   ) : null}

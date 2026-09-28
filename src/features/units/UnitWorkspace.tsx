@@ -5,9 +5,8 @@ import { NullValue } from '@/components/data/NullValue'
 import { usePublishBreadcrumbs } from '@/components/layout/breadcrumbContext'
 import { PageContainer } from '@/components/layout/PageContainer'
 import { ErrorState, LoadingState, NotFound, NotImplemented } from '@/components/states/AppStates'
-import { AttentionBadge } from '@/features/hierarchy/HierarchyPieces'
+import { AttentionBadge, EntityLink } from '@/features/hierarchy/HierarchyPieces'
 import { useUnit } from '@/features/hierarchy/useHierarchy'
-import { StationName } from '@/features/hierarchy/StationPopup'
 import { UnitTabs } from '@/features/units/UnitTabs'
 
 /**
@@ -71,7 +70,9 @@ export function UnitWorkspace() {
             <EntityName name={unit.unit_name} />
           </h1>
           <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-muted-foreground">
-            <StationName id={unit.station_id} name={unit.station_name} />
+            <EntityLink to={`/stations/${unit.station_id}`}>
+              <EntityName name={unit.station_name} />
+            </EntityLink>
             <span aria-hidden="true">·</span>
             <span>{unit.region_name} Region</span>
             <span aria-hidden="true">·</span>
