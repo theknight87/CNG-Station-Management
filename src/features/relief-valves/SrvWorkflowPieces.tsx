@@ -11,6 +11,7 @@ import {
   sizeText, useIsAdmin, useReplacementCandidates, useValveHistory, useWorkflowAction, type ValveFields,
 } from '@/features/relief-valves/useSrvWorkflow'
 import { cn } from '@/lib/utils'
+import { compareValues, type SortValue } from '@/features/relief-valves/srvSort'
 
 export function ValveSize({ v }: { v: Pick<ValveFields, 'size_type' | 'inlet_size' | 'outlet_size'> }) {
   const value = sizeText(v.size_type, v.inlet_size, v.outlet_size)
@@ -185,17 +186,40 @@ export function IssuePanel({ row, onDone }: { row: WarehouseSrvRow; onDone: () =
 }
 
 /** A workflow table with row checkboxes and select-all. */
+export interface SelectableColumn<T> {
+  key: string
+  header: string
+  render: (r: T) => ReactNode
+  align?: 'right'
+  /** Present = the header sorts by this value (nulls always last). */
+  sortValue?: (r: T) => SortValue
+}
+
+/**
+ * A workflow table. Every tab loads its whole (bounded) list, so sorting happens here on the full set:
+ * `defaultOrder` until a header is clicked, then that column, click again to reverse.
+ */
 export function SelectableTable<T extends { id: string }>({
-  label, rows, columns, selected, onSelected, selectable, onOpen,
+  label, rows, columns, selected, onSelected, selectable, onOpen, defaultOrder,
 }: {
   label: string
   rows: T[]
-  columns: { key: string; header: string; render: (r: T) => ReactNode; align?: 'right' }[]
+  columns: SelectableColumn<T>[]
   selected: Set<string>
   onSelected: (next: Set<string>) => void
   selectable: (r: T) => boolean
   onOpen?: (r: T) => void
+  defaultOrder?: (a: T, b: T) => number
 }) {
+  const [sort, setSort] = useState<{ key: string; asc: boolean } | null>(null)
+  const col = sort ? columns.find((c) => c.key === sort.key && c.sortValue) : undefined
+  const ordered = col?.sortValue
+    ? [...rows].sort((a, b) => {
+        const va = col.sortValue!(a), vb = col.sortValue!(b)
+        if (va === null || va === '' || vb === null || vb === '') return compareValues(va, vb)
+        return sort!.asc ? compareValues(va, vb) : compareValues(vb, va)
+      })
+    : defaultOrder ? [...rows].sort(defaultOrder) : rows
   const pickable = rows.filter(selectable)
   const all = pickable.length > 0 && pickable.every((r) => selected.has(r.id))
   return (
@@ -207,13 +231,24 @@ export function SelectableTable<T extends { id: string }>({
               <input type="checkbox" aria-label="Select all" checked={all} disabled={pickable.length === 0}
                      onChange={() => onSelected(all ? new Set() : new Set(pickable.map((r) => r.id)))} />
             </th>
-            {columns.map((c) => (
-              <th key={c.key} className={cn('whitespace-nowrap px-2 py-1.5 text-left font-semibold', c.align === 'right' && 'text-right')}>{c.header}</th>
-            ))}
+            {columns.map((c) => {
+              const active = sort?.key === c.key
+              return (
+                <th key={c.key} aria-sort={active ? (sort!.asc ? 'ascending' : 'descending') : undefined}
+                    className={cn('whitespace-nowrap px-2 py-1.5 text-left font-semibold', c.align === 'right' && 'text-right')}>
+                  {c.sortValue ? (
+                    <button type="button" className="inline-flex items-center gap-1 uppercase tracking-wide hover:text-foreground"
+                            onClick={() => setSort(active ? { key: c.key, asc: !sort!.asc } : { key: c.key, asc: true })}>
+                      {c.header}<span aria-hidden="true">{active ? (sort!.asc ? '↑' : '↓') : '↕'}</span>
+                    </button>
+                  ) : c.header}
+                </th>
+              )
+            })}
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => (
+          {ordered.map((r) => (
             <tr key={r.id} className={cn('border-t', onOpen && 'cursor-pointer hover:bg-muted/40')} onClick={() => onOpen?.(r)}>
               <td className="px-2 py-1" onClick={(e) => e.stopPropagation()}>
                 {selectable(r) ? (

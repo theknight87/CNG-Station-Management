@@ -4,6 +4,7 @@ import { StatusBadge } from '@/components/data/StatusBadge'
 import { Identifier } from '@/components/data/TechnicalText'
 import { NullValue } from '@/components/data/NullValue'
 import { cn } from '@/lib/utils'
+import { TONE, type ToneName } from '@/features/relief-valves/srvSort'
 import { useRegions } from '@/features/admin/useMappingOptions'
 import type { InstalledSrvRow, SrvSmartFilters } from '@/features/relief-valves/useSrvManagement'
 
@@ -222,19 +223,21 @@ export function SmartFilterBar({ id, value, onChange, stationLabel = 'Station', 
  * apart at a glance. Categorical colour only — the text is always shown, so colour is never the only signal, and
  * red/amber stay reserved for due status.
  */
-const CHIP = 'inline-flex items-center whitespace-nowrap rounded border px-1.5 py-0.5 text-xs font-medium'
+const CHIP = 'inline-flex items-center whitespace-nowrap rounded border px-1.5 py-0.5 text-xs font-semibold'
+// Owner: every manufacturer must be told apart by eye. Solid fills on hues far apart (blue, purple, teal, orange,
+// pink, yellow, lime, brown, black, cyan). Red and amber stay reserved for due status.
 const MANUFACTURER_TONE: Record<string, string> = {
-  technical: 'border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-700 dark:bg-sky-950 dark:text-sky-100',
-  mercer: 'border-violet-300 bg-violet-50 text-violet-900 dark:border-violet-700 dark:bg-violet-950 dark:text-violet-100',
-  'dk-lok': 'border-teal-300 bg-teal-50 text-teal-900 dark:border-teal-700 dark:bg-teal-950 dark:text-teal-100',
-  coi: 'border-indigo-300 bg-indigo-50 text-indigo-900 dark:border-indigo-700 dark:bg-indigo-950 dark:text-indigo-100',
-  anderson: 'border-fuchsia-300 bg-fuchsia-50 text-fuchsia-900 dark:border-fuchsia-700 dark:bg-fuchsia-950 dark:text-fuchsia-100',
-  'tyco anderson': 'border-pink-300 bg-pink-50 text-pink-900 dark:border-pink-700 dark:bg-pink-950 dark:text-pink-100',
-  ekc: 'border-cyan-300 bg-cyan-50 text-cyan-900 dark:border-cyan-700 dark:bg-cyan-950 dark:text-cyan-100',
-  farinola: 'border-lime-400 bg-lime-50 text-lime-900 dark:border-lime-700 dark:bg-lime-950 dark:text-lime-100',
-  taylor: 'border-stone-400 bg-stone-100 text-stone-900 dark:border-stone-600 dark:bg-stone-900 dark:text-stone-100',
-  aspro: 'border-blue-300 bg-blue-50 text-blue-900 dark:border-blue-700 dark:bg-blue-950 dark:text-blue-100',
-  takei: 'border-purple-300 bg-purple-50 text-purple-900 dark:border-purple-700 dark:bg-purple-950 dark:text-purple-100',
+  technical: 'border-blue-700 bg-blue-700 text-white',
+  mercer: 'border-purple-700 bg-purple-700 text-white',
+  'dk-lok': 'border-teal-600 bg-teal-600 text-white',
+  coi: 'border-orange-500 bg-orange-500 text-black',
+  anderson: 'border-pink-600 bg-pink-600 text-white',
+  'tyco anderson': 'border-pink-300 bg-pink-200 text-black',
+  ekc: 'border-yellow-300 bg-yellow-300 text-black',
+  farinola: 'border-lime-500 bg-lime-500 text-black',
+  taylor: 'border-stone-600 bg-stone-600 text-white',
+  aspro: 'border-slate-900 bg-slate-900 text-white dark:border-slate-200 dark:bg-slate-200 dark:text-black',
+  takei: 'border-cyan-300 bg-cyan-300 text-black',
 }
 const NEUTRAL_TONE = 'border-border bg-muted text-foreground'
 
@@ -243,15 +246,20 @@ export function ManufacturerChip({ value }: { value: string | null }) {
   return <span className={cn(CHIP, MANUFACTURER_TONE[value.trim().toLowerCase()] ?? NEUTRAL_TONE)}>{value}</span>
 }
 
+// Availability is OUTLINED (manufacturer is filled), so the two columns never look alike.
 const AVAILABILITY_TONE: Record<string, string> = {
-  available_new: 'border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-700 dark:bg-sky-950 dark:text-sky-100',
-  available_calibrated: 'border-teal-300 bg-teal-50 text-teal-900 dark:border-teal-700 dark:bg-teal-950 dark:text-teal-100',
-  available_in_store_uc: 'border-violet-300 bg-violet-50 text-violet-900 dark:border-violet-700 dark:bg-violet-950 dark:text-violet-100',
-  sent_to_station_received: 'border-slate-300 bg-slate-100 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100',
-  sent_to_station_not_received: 'border-orange-300 bg-orange-50 text-orange-900 dark:border-orange-700 dark:bg-orange-950 dark:text-orange-100',
+  available_new: 'border-2 border-blue-600 bg-background text-blue-700 dark:text-blue-300',
+  available_calibrated: 'border-2 border-emerald-600 bg-background text-emerald-700 dark:text-emerald-300',
+  available_in_store_uc: 'border-2 border-purple-600 bg-background text-purple-700 dark:text-purple-300',
+  sent_to_station_received: 'border-2 border-slate-500 bg-background text-slate-700 dark:text-slate-300',
+  sent_to_station_not_received: 'border-2 border-orange-500 bg-background text-orange-700 dark:text-orange-300',
 }
 
 export function AvailabilityChip({ status, label }: { status: string | null; label: string | null }) {
   if (!status) return <NullValue />
   return <span className={cn(CHIP, AVAILABILITY_TONE[status] ?? NEUTRAL_TONE)}>{label ?? status}</span>
+}
+
+export function ToneChip({ tone, children }: { tone: ToneName; children: ReactNode }) {
+  return <span className={cn(CHIP, TONE[tone])}>{children}</span>
 }
