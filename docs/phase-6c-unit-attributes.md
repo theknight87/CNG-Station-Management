@@ -461,3 +461,12 @@ Held: 4 placeholders whose workbook serial already sits on a vessel of a differe
 exact name in the workbook — listed with look-alike hints in `srv-placeholder-vessels-unmatched.csv`. Owner rejected two
 hints: الودي الصف ≠ الفهميين الصف, البراجيل القديمة ≠ البراجيل الجديدة. Production after: 48 placeholders left,
 56 workbook vessels, 2,591 SRVs resolved, 0 parents in another Unit, 0 Units under another Station.
+
+**6x second batch (owner answers, 2026-09-28):** the owner filled `srv-placeholder-vessels-unmatched.csv` (a filled name =
+that workbook Station; empty = accept the single suggestion; النوبارية 57 removed). `scripts/import/6x2_owner_names.py`
+resolves each answer against the workbook's Storage rows in the same Region; only vessel data is taken, no Station is
+renamed. Payload md5 `3707ba5a…` matched on both ends; preview `d87b3e84…` identical twice; commit: 31 placeholders
+replaced, 24 vessels added, 36 SRVs returned; 6s `3f66ba4e…` re-paired all 36. Held: سيدي بشر 1/2 (one workbook Station
+with 5 vessels claimed by two Units — the split is unknown); 14 answers name a Station absent from the workbook in that
+Region (e.g. الواسطي is under Upper, not Canal). Production after: 17 placeholders left, 111 workbook vessels, 0 parents in
+another Unit.
