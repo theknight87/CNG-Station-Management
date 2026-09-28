@@ -24,6 +24,7 @@ for r in list(csv.reader(open(sys.argv[2], encoding='cp1256'), delimiter='\t'))[
     m = st.get((r[0], fold(tgt))) if tgt else None
     if m: plan.append((ph[r[8].strip()], m))
 use = collections.Counter(id(m) for p, m in plan)
-out = [[p, None, m] for p, m in plan if not (use[id(m)] > 1 and len(m) > 1)]
+shared_ok = '--shared-only' in sys.argv  # owner 2026-09-28: سيدي بشر vessels are shared by both Units
+out = [[p, None, m] for p, m in plan if (use[id(m)] > 1 and len(m) > 1) == shared_ok]
 json.dump(out, open(sys.argv[4], 'w'), ensure_ascii=False)
 print(len(plan), 'matched;', len(plan) - len(out), 'held (shared, several vessels);', len(out), 'to apply')

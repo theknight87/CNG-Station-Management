@@ -470,3 +470,8 @@ replaced, 24 vessels added, 36 SRVs returned; 6s `3f66ba4e…` re-paired all 36.
 with 5 vessels claimed by two Units — the split is unknown); 14 answers name a Station absent from the workbook in that
 Region (e.g. الواسطي is under Upper, not Canal). Production after: 17 placeholders left, 111 workbook vessels, 0 parents in
 another Unit.
+
+**6x third batch (owner ruling 2026-09-28):** the 5 workbook vessels of سيدي بشر are shared by Units سيدي بشر 1 and 2, so
+each Unit carries all five (`6x2_owner_names.py --shared-only`; duplicate-serial candidates, principle 16). Payload md5
+`3223d34c…` matched; preview `af67c5bb…` twice; 2 placeholders replaced, 8 vessels added, 9 SRVs re-paired by 6s
+(`8006be51…`). Production after: 15 placeholders left, 121 workbook vessels, 0 parents in another Unit.
