@@ -89,6 +89,10 @@ function columns(reload: () => void): RegistryColumn<WarehouseSrvRow>[] { return
     render: (r) => <Serial value={r.serial_number} status={r.serial_status} />,
   },
   {
+    key: 'warehouse_code', header: 'Warehouse code',
+    render: (r) => (r.warehouse_code ? <Identifier value={r.warehouse_code} /> : <NullValue />),
+  },
+  {
     key: 'part_number', header: 'Part number', sort: 'part_number',
     render: (r) => (r.part_number ? <Identifier value={r.part_number} /> : <NullValue />),
   },
@@ -108,10 +112,6 @@ function columns(reload: () => void): RegistryColumn<WarehouseSrvRow>[] { return
   {
     key: 'calibrate', header: 'Calibrate',
     render: (r) => <SendToCalibration row={r} onSent={reload} />,
-  },
-  {
-    key: 'warehouse_code', header: 'Warehouse',
-    render: (r) => (r.warehouse_code ? <Identifier value={r.warehouse_code} /> : <NullValue />),
   },
   {
     // A DESTINATION, labelled as one. Never a hierarchy position.
@@ -287,7 +287,7 @@ export function WarehouseSrvSection() {
             <Fact label="Availability">
               {r.availability_status ? AVAILABILITY_LABEL[r.availability_status] ?? r.availability_status : <NullValue />}
             </Fact>
-            <Fact label="Warehouse">{r.warehouse_code ? <Identifier value={r.warehouse_code} /> : <NullValue />}</Fact>
+            <Fact label="Warehouse code">{r.warehouse_code ? <Identifier value={r.warehouse_code} /> : <NullValue />}</Fact>
             <Fact label="Destination Station">
               {r.is_unassigned_stock ? (
                 <span className="text-muted-foreground">Unassigned stock</span>

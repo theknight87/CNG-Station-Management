@@ -567,12 +567,22 @@ describe('smart filters and warehouse code', () => {
     expect(hasSmartFilters(EMPTY_SMART_FILTERS)).toBe(false)
   })
 
-  it('WHCODE-1 a serial-matched warehouse code is shown and labelled as a lookup', async () => {
+  it('WHCODE-1 the installed table has no warehouse code; the details show it, labelled as a lookup', async () => {
     replies.installed = { data: [installed({ warehouse_code: 'acc 794', warehouse_code_source: 'serial_match' })], error: null, count: 1 }
     renderSrv()
     const table = await screen.findByRole('table')
-    expect(await within(table).findByText('acc 794')).toBeDefined()
-    expect(within(table).getByText('by serial')).toBeDefined()
+    expect(within(table).queryByText('acc 794')).toBeNull()
+    expect(within(table).queryByText('Warehouse code')).toBeNull()
+    await userEvent.click((await screen.findAllByRole('button', { name: /show the full technical record/i }))[0])
+    expect(screen.getByText('acc 794')).toBeDefined()
+    expect(screen.getByText('by serial')).toBeDefined()
+  })
+
+  it('WHCODE-2 an under-calibration (U) code is never shown on an installed valve', async () => {
+    replies.installed = { data: [installed({ warehouse_code: 'mbu 9', warehouse_code_source: 'serial_match' })], error: null, count: 1 }
+    renderSrv()
+    await userEvent.click((await screen.findAllByRole('button', { name: /show the full technical record/i }))[0])
+    expect(screen.getByText(/Not shown — the serial matches a warehouse record under calibration/)).toBeDefined()
   })
 })
 

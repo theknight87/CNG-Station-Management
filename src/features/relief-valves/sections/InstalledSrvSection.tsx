@@ -89,14 +89,18 @@ const COLUMNS: RegistryColumn<InstalledSrvRow>[] = [
     key: 'last_calibration', header: 'Last calibration',
     render: (r) => <PrecisionDate display={r.last_calibration_display} precision={r.last_calibration_precision} />,
   },
-  { key: 'warehouse', header: 'Warehouse code', render: (r) => <WarehouseCode row={r} /> },
   { key: 'parent', header: 'Equipment parent', render: (r) => <ParentCell row={r} /> },
   { key: 'mapping', header: 'Mapping', sort: 'mapping', render: (r) => <MappingBadge status={r.mapping_status} /> },
 ]
 
-/** A recorded code, or the code of the single warehouse record with the same serial, labelled as such. */
+/** Details panel only. A recorded code, or the code of the single warehouse record with the same serial, labelled as such. */
 function WarehouseCode({ row }: { row: InstalledSrvRow }) {
   if (!row.warehouse_code) return <NullValue />
+  // Owner rule: an installed valve carries the code it LEFT the warehouse with — new (mb 9) or calibrated (mbc 9).
+  // An under-calibration code (mbu 9) cannot belong to a valve on a station, so a serial match to one is not shown.
+  if (/^[a-z]{2}u\s*\d/i.test(row.warehouse_code.trim())) {
+    return <span className="text-xs text-muted-foreground">Not shown — the serial matches a warehouse record under calibration ({row.warehouse_code})</span>
+  }
   return (
     <span className="inline-flex items-center gap-1 whitespace-nowrap">
       <Identifier value={row.warehouse_code} />
