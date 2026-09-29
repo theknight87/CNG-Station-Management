@@ -168,9 +168,13 @@ SELECT pg_temp.ck('RECV-1 both received', :received = 2);
 SELECT pg_temp.ck('RECV-2 a reconciled warehouse record returns to stock under calibration, code gets U, destination cleared',
   (SELECT (availability_status::text, warehouse_code, target_region_id IS NULL) = ('available_in_store_uc', 'sbu 2', true)
      FROM warehouse_relief_valves WHERE id = '5f400000-0000-0000-0000-000000000005'));
-SELECT pg_temp.ck('RECV-3 a replaced valve becomes a new warehouse record under calibration with its serial',
-  (SELECT (w.availability_status::text, w.serial_number) = ('available_in_store_uc', 'TSW-56789')
-     FROM srv_field_log l JOIN warehouse_relief_valves w ON w.id = l.returned_warehouse_valve_id WHERE l.id = :'log_replaced'));
+-- 20260929110000 (owner ruling 6p, a valve is its serial): TSW-56789 already had ONE warehouse record "sent to station"
+-- (…04, sbc 1), so the replaced valve comes back AS that record (code turns U) instead of a second, code-less record.
+SELECT pg_temp.ck('RECV-3 a replaced valve returns under calibration as its own warehouse record (same serial), not a second one',
+  (SELECT (w.id, w.availability_status::text, w.serial_number, w.warehouse_code)
+          = ('5f400000-0000-0000-0000-000000000004'::uuid, 'available_in_store_uc', 'TSW-56789', 'sbu 1')
+     FROM srv_field_log l JOIN warehouse_relief_valves w ON w.id = l.returned_warehouse_valve_id WHERE l.id = :'log_replaced')
+  AND (SELECT count(*) = 1 FROM warehouse_relief_valves WHERE serial_number = 'TSW-56789' AND archived_at IS NULL));
 SELECT pg_temp.ck('RECV-4 receiving twice is refused (PT409)',
   pg_temp.try_as('sw_admin', format('SELECT cng_srv_log_receive(ARRAY[%L::uuid])', :'log_recon')) = 'PT409');
 SELECT pg_temp.ck('RECV-5 the emergency row now shows the replaced valve returned',
@@ -182,8 +186,9 @@ SELECT cng_srv_calibration_send(ARRAY['5f400000-0000-0000-0000-000000000003'::uu
 RESET ROLE;
 SELECT pg_temp.ck('CAL-1 two sent; they leave the store view', :sent = 2
   AND NOT EXISTS (SELECT 1 FROM v_srv_warehouse_stock WHERE id IN ('5f400000-0000-0000-0000-000000000003','5f400000-0000-0000-0000-000000000005')));
-SELECT pg_temp.ck('CAL-2 a calibrated valve cannot be sent to calibration (PT409)',
-  pg_temp.try_as('sw_admin', $q$SELECT cng_srv_calibration_send(ARRAY['5f400000-0000-0000-0000-000000000004'::uuid])$q$) = 'PT409');
+-- …02 was issued above (ISSUE-11) and is at the station: not in the store, so it cannot be sent.
+SELECT pg_temp.ck('CAL-2 a valve out at a station cannot be sent to calibration (PT409)',
+  pg_temp.try_as('sw_admin', $q$SELECT cng_srv_calibration_send(ARRAY['5f400000-0000-0000-0000-000000000002'::uuid])$q$) = 'PT409');
 SELECT id AS job3 FROM srv_calibration_jobs WHERE warehouse_valve_id = '5f400000-0000-0000-0000-000000000003' \gset
 SELECT id AS job5 FROM srv_calibration_jobs WHERE warehouse_valve_id = '5f400000-0000-0000-0000-000000000005' \gset
 SELECT pg_temp.try_as('sw_admin', format('SELECT cng_srv_calibration_returned(ARRAY[%L::uuid])', :'job3')) AS ret3 \gset
