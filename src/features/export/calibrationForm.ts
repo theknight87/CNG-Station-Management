@@ -95,10 +95,8 @@ export async function buildCalibrationForm(rows: CalibrationFormRow[], isoDate: 
   ws.getRow(1).height = 21
   ws.getRow(2).height = 18.65
   ws.getRow(3).height = 18.65
-  const code = ws.getCell('E3')
-  code.value = FORM_CODE
-  code.font = { bold: true, size: 16 }
-  code.alignment = CENTER
+  // Centred across the whole form (owner request 2026-09-29).
+  heading('A3:H3', FORM_CODE, { bold: true, size: 16 })
   ws.getRow(4).height = 14.5
   ws.getRow(5).height = 15
   heading('A4:C5', STATION_LINE, { size: 16 })
@@ -131,18 +129,20 @@ export async function buildCalibrationForm(rows: CalibrationFormRow[], isoDate: 
 
   // Footer (signatures), one empty row below the table.
   const f = 7 + rows.length + 1
-  heading(`A${f}:C${f}`, 'أمين المخزن', { bold: true, size: 18 }, { horizontal: 'center', vertical: 'top' })
-  heading(`F${f}:H${f}`, 'المهندس المسئول', { bold: true, size: 18 })
-  ws.getRow(f).height = 25.5
-  ws.getRow(f + 1).height = 14
-  heading(`A${f + 2}:C${f + 2}`, ' الاســم  : ________________________', { size: 14 }, { horizontal: 'center', vertical: 'top' })
-  heading(`F${f + 2}:H${f + 2}`, '        الإسم :    إسلام فارس سعيد', { size: 16 }, { horizontal: 'right', vertical: 'top' })
-  ws.getRow(f + 2).height = 23.5
+  // Rows taller than the template's so the titles and names are never clipped (owner request 2026-09-29).
+  const MID = { horizontal: 'center', vertical: 'middle' } as const
+  heading(`A${f}:C${f}`, 'أمين المخزن', { bold: true, size: 18 }, MID)
+  heading(`F${f}:H${f}`, 'المهندس المسئول', { bold: true, size: 18 }, MID)
+  ws.getRow(f).height = 36
+  ws.getRow(f + 1).height = 12
+  heading(`A${f + 2}:C${f + 2}`, ' الاســم  : ________________________', { size: 14 }, MID)
+  heading(`F${f + 2}:H${f + 2}`, '        الإسم :    إسلام فارس سعيد', { size: 16 }, { horizontal: 'right', vertical: 'middle' })
+  ws.getRow(f + 2).height = 32
   for (const [offset, text] of [[4, ' التوقيع : ________________________'], [6, ' التاريخ : ________________________']] as const) {
-    heading(`A${f + offset}:C${f + offset}`, text, { size: 14 }, { horizontal: 'center', vertical: 'top' })
-    heading(`F${f + offset}:H${f + offset}`, text, { size: 14 }, { horizontal: 'center', vertical: 'top' })
-    ws.getRow(f + offset - 1).height = 17.5
-    ws.getRow(f + offset).height = 17.5
+    heading(`A${f + offset}:C${f + offset}`, text, { size: 14 }, MID)
+    heading(`F${f + offset}:H${f + offset}`, text, { size: 14 }, MID)
+    ws.getRow(f + offset - 1).height = 12
+    ws.getRow(f + offset).height = 32
   }
 
   // Print like the original: A4 portrait, one page wide, header rows repeated, centred.

@@ -4,9 +4,10 @@ import { queryLoader } from '@/features/export/exportData'
 import { WAREHOUSE_SRV_COLUMNS } from '@/features/export/exportColumns'
 import { AvailabilityChip, ManufacturerChip, RegionChip } from '@/features/relief-valves/SrvPieces'
 import { useCallback, useState } from 'react'
-import { Plus, Search, Trash2, Wrench, X } from 'lucide-react'
+import { Plus, Search, Trash2, Truck, Wrench, X } from 'lucide-react'
 
 import { Identifier } from '@/components/data/TechnicalText'
+import { RecordDetailsDialog } from '@/components/data/RecordDetailsDialog'
 import { NullValue } from '@/components/data/NullValue'
 import { DataToolbar } from '@/components/layout/PageContainer'
 import { Button } from '@/components/ui/button'
@@ -79,6 +80,38 @@ function SendToCalibration({ row, onSent }: { row: WarehouseSrvRow; onSent: () =
  * any other state are left alone and said so. "Delete" archives each valve through the same audited
  * function as the single delete, one call per valve, and reports any it could not remove.
  */
+/**
+ * Issue (صرف) straight from the table, beside a new or calibrated valve (owner request 2026-09-29). A truck, so it is
+ * never confused with the + that sends an under-calibration valve to the calibration company. It opens the same
+ * IssuePanel the details dialog uses; the database still decides (admin only, version-checked, audited).
+ */
+function IssueFromTable({ row, onIssued }: { row: WarehouseSrvRow; onIssued: () => void }) {
+  const isAdmin = useIsAdmin()
+  const [open, setOpen] = useState(false)
+  if (!isAdmin || (row.availability_status !== 'available_new' && row.availability_status !== 'available_calibrated')) return null
+  return (
+    <>
+      <button
+        type="button"
+        title="Issue to a station (صرف)"
+        onClick={(e) => { e.stopPropagation(); setOpen(true) }}
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded border border-[var(--brand-strong)] bg-background text-[var(--brand-strong)] hover:bg-muted"
+      >
+        <Truck className="h-3.5 w-3.5" aria-hidden="true" />
+        <span className="sr-only">Issue serial {row.serial_number ?? ''} to a station</span>
+      </button>
+      {open ? (
+        <span onClick={(e) => e.stopPropagation()}>
+          <RecordDetailsDialog open title={`Issue SRV ${row.serial_number ?? ''}`.trim()} description="Choose the Station and Unit it goes to."
+                               onClose={() => setOpen(false)}>
+            <IssuePanel row={row} startOpen onCancel={() => setOpen(false)} onDone={() => { setOpen(false); onIssued() }} />
+          </RecordDetailsDialog>
+        </span>
+      ) : null}
+    </>
+  )
+}
+
 function WarehouseBulkActions({ picked, onClear, onDone }: { picked: WarehouseSrvRow[]; onClear: () => void; onDone: () => void }) {
   const supabase = useSupabaseClient()
   const [busy, setBusy] = useState(false)
@@ -159,6 +192,7 @@ function columns(reload: () => void): RegistryColumn<WarehouseSrvRow>[] { return
       <span className="inline-flex items-center gap-1.5">
         <AvailabilityChip status={r.availability_status} label={r.availability_status ? AVAILABILITY_LABEL[r.availability_status] ?? null : null} />
         <SendToCalibration row={r} onSent={reload} />
+        <IssueFromTable row={r} onIssued={reload} />
       </span>
     ),
   },

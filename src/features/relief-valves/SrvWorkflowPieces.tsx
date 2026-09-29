@@ -71,7 +71,14 @@ const field = 'h-8 rounded border bg-background px-2 text-sm text-foreground'
  * Issue (صرف) a store valve to a Region / Station / Unit. After the Unit is chosen, the valves at that
  * Station with the same set pressure are offered as the one it replaces; replacing is optional.
  */
-export function IssuePanel({ row, onDone }: { row: WarehouseSrvRow; onDone: () => void }) {
+export function IssuePanel({ row, onDone, startOpen = false, onCancel }: {
+  row: WarehouseSrvRow
+  onDone: () => void
+  /** Open straight on the form (the table's issue button), not on the "Issue from warehouse" button. */
+  startOpen?: boolean
+  /** Cancel leaves the panel entirely (closes the dialog it sits in) instead of folding it. */
+  onCancel?: () => void
+}) {
   const isAdmin = useIsAdmin()
   const stations = useStations()
   const [stationId, setStationId] = useState<string | null>(null)
@@ -80,7 +87,7 @@ export function IssuePanel({ row, onDone }: { row: WarehouseSrvRow; onDone: () =
   const [replace, setReplace] = useState<string>('')
   const [emergency, setEmergency] = useState(false)
   const [notes, setNotes] = useState('')
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(startOpen)
   const [error, setError] = useState<string | null>(null)
   const candidates = useReplacementCandidates(unitId, row.id)
   const { run, busy } = useWorkflowAction()
@@ -179,7 +186,7 @@ export function IssuePanel({ row, onDone }: { row: WarehouseSrvRow; onDone: () =
         <Button size="sm" disabled={!unitId || busy} onClick={() => void submit()}>
           {busy ? 'Issuing…' : 'Confirm issue'}
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => setOpen(false)} disabled={busy}>Cancel</Button>
+        <Button size="sm" variant="ghost" onClick={() => (onCancel ? onCancel() : setOpen(false))} disabled={busy}>Cancel</Button>
       </div>
     </section>
   )

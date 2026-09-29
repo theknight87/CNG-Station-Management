@@ -36,10 +36,11 @@ describe('calibration request form', () => {
   it('CALF-1 header: title, form code, Station and the date once, in the template cells', async () => {
     const ws = await readBack(await buildCalibrationForm(rows, '2026-06-04'))
     expect(ws.getCell('A1').value).toBe('  نموذج طلب قطع غيار للشئون الهندسية')
-    expect(ws.getCell('E3').value).toBe('NGV PC 2-1/23')
     expect(ws.getCell('A4').value).toBe('Station :__SANA GAS________________')
     expect(ws.getCell('E4').value).toBe('Date : 4/6/2026')
-    expect(ws.model.merges).toEqual(expect.arrayContaining(['A1:H2', 'A4:C5', 'E4:G5']))
+    expect(ws.model.merges).toEqual(expect.arrayContaining(['A1:H2', 'A3:H3', 'A4:C5', 'E4:G5']))
+    expect(ws.getCell('A3').value).toBe('NGV PC 2-1/23')
+    expect(ws.getCell('A3').alignment?.horizontal).toBe('center')
     expect((ws.getRow(6).values as unknown[]).slice(1)).toEqual(['Item N.o', 'Set Pressure', 'P/N', 'Model', 'S/N', 'Stock Code', 'Remarks', 'Station'])
   })
 
@@ -62,6 +63,8 @@ describe('calibration request form', () => {
     expect(ws.getCell(`A${f + 4}`).value).toBe(' التوقيع : ________________________')
     expect(ws.getCell(`F${f + 6}`).value).toBe(' التاريخ : ________________________')
     expect(ws.pageSetup.printTitlesRow).toBe('1:6')
+    // Tall enough that the titles and names are not clipped.
+    for (const r of [f, f + 2, f + 4, f + 6]) expect(ws.getRow(r).height).toBeGreaterThanOrEqual(32)
     if (process.env.CALF_SAMPLE) writeFileSync(process.env.CALF_SAMPLE, Buffer.from(await (await buildCalibrationForm(rows, '2026-06-04')).arrayBuffer()))
   })
 
