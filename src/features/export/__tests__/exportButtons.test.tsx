@@ -53,4 +53,13 @@ describe('export buttons', () => {
     expect(screen.getByRole('button', { name: 'Export Station to Excel' })).toBeDefined()
     expect(screen.queryByRole('button', { name: /csv/i })).toBeNull()
   })
+
+  it('EXPUI-4 a custom Excel builder (the calibration request form) replaces the plain table and names the file', async () => {
+    const excel = vi.fn(async (sheets: ExportSheet[]) => ({ blob: new Blob([String(sheets[0].rows.length)]), fileName: 'cng-calibration-request-2026-06-04.xlsx' }))
+    render(<ExportButtons name="srv-calibration" label="Export 2 selected" load={async () => [sheet(2)]} excel={excel} />)
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Export 2 selected to Excel' }))
+    expect(excel).toHaveBeenCalledTimes(1)
+    expect(excel.mock.calls[0][0][0].rows).toHaveLength(2)
+    expect(downloads.map((d) => d.name)).toEqual(['cng-calibration-request-2026-06-04.xlsx'])
+  })
 })

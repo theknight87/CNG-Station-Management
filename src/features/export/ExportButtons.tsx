@@ -14,7 +14,7 @@ import {
  * write. A multi-sheet export (a Region / Station / Unit workbook) is Excel only, because a CSV holds one table.
  * The outcome is always stated: rows written, a file cut at the documented ceiling, or the failure.
  */
-export function ExportButtons({ name, load, csv = true, label, className }: {
+export function ExportButtons({ name, load, csv = true, label, className, excel }: {
   /** File-name part, e.g. "installed-srvs" or the Station name. */
   name: string
   load: () => Promise<ExportSheet[]>
@@ -23,6 +23,8 @@ export function ExportButtons({ name, load, csv = true, label, className }: {
   /** Visible prefix, e.g. "Export Station". Defaults to "Export". */
   label?: string
   className?: string
+  /** A custom Excel file (e.g. a printed form) in place of the plain table. Gets the loaded sheets. */
+  excel?: (sheets: ExportSheet[]) => Promise<{ blob: Blob; fileName: string }>
 }) {
   const [busy, setBusy] = useState<'xlsx' | 'csv' | null>(null)
   const [note, setNote] = useState<{ error: boolean; text: string } | null>(null)
@@ -35,6 +37,9 @@ export function ExportButtons({ name, load, csv = true, label, className }: {
       if (format === 'csv') {
         const csvText = sheetToCsv(sheets[0])
         downloadBlob(exportFileName(name, 'csv'), new Blob([csvText], { type: 'text/csv;charset=utf-8' }))
+      } else if (excel) {
+        const file = await excel(sheets)
+        downloadBlob(file.fileName, file.blob)
       } else {
         downloadBlob(exportFileName(name, 'xlsx'), await toXlsx(sheets))
       }

@@ -5,6 +5,8 @@ import { RecordDetailsDialog } from '@/components/data/RecordDetailsDialog'
 import { ExportButtons } from '@/features/export/ExportButtons'
 import { CALIBRATION_COLUMNS, EMERGENCY_COLUMNS, SRV_LOG_COLUMNS } from '@/features/export/exportColumns'
 import { rowsLoader } from '@/features/export/exportData'
+import { buildCalibrationForm, formIsoDate, loadOriginStations, orderForForm, type CalibrationFormRow } from '@/features/export/calibrationForm'
+import { useSupabaseClient } from '@/lib/supabase/client'
 import { NullValue } from '@/components/data/NullValue'
 import { Button } from '@/components/ui/button'
 import { EMPTY_SMART_FILTERS, type SrvSmartFilters } from '@/features/relief-valves/useSrvManagement'
@@ -171,6 +173,7 @@ const CAL_STATUS: Record<CalibrationRow['status'], string> = {
 
 export function SrvCalibrationSection() {
   const isAdmin = useIsAdmin()
+  const supabase = useSupabaseClient()
   const [filters, setFilters] = useState<SrvSmartFilters>(EMPTY_SMART_FILTERS)
   const [status, setStatus] = useState<'open' | CalibrationRow['status']>('open')
   const { state, reload } = useWorkflowList<CalibrationRow>('calibration', {
@@ -214,7 +217,18 @@ export function SrvCalibrationSection() {
         </label>
         <SmartFilterBar id="srv-cal" value={filters} onChange={setFilters} showRegion={false} showStation={false} />
         <span className="ml-auto">
-          <ExportButtons name="srv-calibration" load={rowsLoader('Calibration (3rd party)', CALIBRATION_COLUMNS, rows, state.status === 'ready' && state.data.total > rows.length)} />
+          {/* Excel is the owner's request form; ticked rows only when any are ticked, otherwise the whole list shown. */}
+          <ExportButtons name="srv-calibration" label={picked.length ? `Export ${picked.length} selected` : undefined}
+            load={rowsLoader('Calibration (3rd party)', CALIBRATION_COLUMNS, picked.length ? picked : rows,
+                             !picked.length && state.status === 'ready' && state.data.total > rows.length)}
+            excel={async (sheets) => {
+              if (!supabase) throw new Error('the database is not configured')
+              const list = orderForForm(sheets[0].rows as CalibrationRow[])
+              const origin = await loadOriginStations(supabase, list.map((r) => r.warehouse_valve_id))
+              const formRows: CalibrationFormRow[] = list.map((r) => ({ ...r, origin_station: origin.get(r.warehouse_valve_id) ?? null }))
+              const date = formIsoDate(list)
+              return { blob: await buildCalibrationForm(formRows, date), fileName: `cng-calibration-request-${date}.xlsx` }
+            }} />
         </span>
       </div>
       {isAdmin && picked.length > 0 ? (
