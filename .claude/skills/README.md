@@ -47,8 +47,9 @@ vendored; the upstream repo's CI, Cursor install script and docs were not.
 | `delegate-setup` | Discovers installed implementer CLIs and proposes "fleet lanes" (feature / tests / ui → CLI). Writes config only after explicit approval; never dispatches work |
 | `*-delegate` (17 skills) | Hand one bounded coding task to an external CLI implementer — `agy`, `aider`, `claude`, `cline`, `codex`, `commandcode`, `copilot`, `cursor`, `grok`, `kimi`, `omp`, `opencode`, `pi`, `qoder`, `vibe`, `warp`, `zcode` — then review its diff and land it yourself |
 
-Each needs its CLI installed and authenticated plus Node 18+; none of those CLIs is installed in this
-repository's cloud environment, so the skills are inert there until one is. Delegation does not relax
+Each needs its CLI installed and authenticated plus Node 18+. At install time (2026-09-29) the cloud
+environment's `delegate-setup` discovery found only `claude`; the other 16 skills stay inert until
+their CLI is installed. Delegation does not relax
 anything in CLAUDE.md: the orchestrator still owns the review, the Verification Integrity Gate (§7a)
 and the commit, and a delegated diff is held to every rule a hand-written one is.
 
