@@ -119,4 +119,28 @@ describe('SRV Log count strip', () => {
     // The counts choose the statuses; no separate "include returned" box repeats them.
     expect(screen.queryByRole('checkbox', { name: /include valves already returned/i })).toBeNull()
   })
+
+  it('COUNT-7 the Movement filter (out / returned) is back and agrees with the counts', async () => {
+    const user = userEvent.setup()
+    render(<SrvLogSection />)
+    await screen.findByRole('region', { name: 'SRV Log counts' })
+    const movement = screen.getByLabelText('Movement') as HTMLSelectElement
+    expect(movement.value).toBe('open')
+    await user.selectOptions(movement, 'returned')
+    await waitFor(() => expect(lastRows()).toContain('in:status=returned'))
+    expect(screen.getByRole('button', { name: /^returned/i }).getAttribute('aria-pressed')).toBe('true')
+    await user.click(screen.getByRole('button', { name: /at station/i }))
+    expect((screen.getByLabelText('Movement') as HTMLSelectElement).value).toBe('at_station')
+  })
+
+  it('INFO-1 the explanation is hidden behind an (i) and opens on click', async () => {
+    const user = userEvent.setup()
+    render(<SrvLogSection />)
+    await screen.findByRole('region', { name: 'SRV Log counts' })
+    expect(screen.queryByText(/expected back at the warehouse/i)).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'About the SRV Log' }))
+    expect(screen.getByRole('note').textContent).toMatch(/expected back at the warehouse/i)
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('note')).toBeNull()
+  })
 })

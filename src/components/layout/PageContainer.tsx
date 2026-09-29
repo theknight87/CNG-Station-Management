@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 import { EntityName } from '@/components/data/TechnicalText'
+import { InfoTip } from '@/components/ui/InfoTip'
 import { cn } from '@/lib/utils'
 
 /**
@@ -35,11 +36,16 @@ export function PageHeader({
   return (
     <div className="flex flex-wrap items-start justify-between gap-2">
       <div className="min-w-0">
-        <h1 className="flex items-center gap-2 text-balance break-words text-xl font-semibold tracking-tight">
-          {leading}
-          {isEntity ? <EntityName name={title} /> : title}
-        </h1>
-        {description ? <div className="mt-0.5 text-sm text-muted-foreground">{description}</div> : null}
+        <div className="flex items-center gap-1.5">
+          <h1 className="flex items-center gap-2 text-balance break-words text-xl font-semibold tracking-tight">
+            {leading}
+            {isEntity ? <EntityName name={title} /> : title}
+          </h1>
+          {/* A written explanation stays behind an (i) (owner request 2026-09-29); anything else (e.g. a Region chip)
+            * is content and shows under the title. */}
+          {typeof description === 'string' ? <InfoTip label={`About ${title}`}>{description}</InfoTip> : null}
+        </div>
+        {description && typeof description !== 'string' ? <div className="mt-0.5 text-sm text-muted-foreground">{description}</div> : null}
       </div>
       {actions ? <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">{actions}</div> : null}
     </div>

@@ -2,6 +2,8 @@ import { useState, type ReactNode } from 'react'
 import { ArrowRightLeft, Pencil, Trash2, Undo2, X } from 'lucide-react'
 
 import { SearchBox } from '@/components/data/FilterControls'
+import { InfoTip } from '@/components/ui/InfoTip'
+import { filterControl, filterLabel } from '@/components/data/filterStyles'
 import type { DateOption } from '@/components/data/dateRange'
 import { DataToolbar } from '@/components/layout/PageContainer'
 import { RecordDetailsDialog } from '@/components/data/RecordDetailsDialog'
@@ -54,9 +56,13 @@ function HistoryDialog({ valveId, title, onClose, note, children }: {
  * One toolbar per workflow tab, the same shape as the registries' (owner request 2026-09-29): the search box, the
  * dedicated filters, Clear, and the tab's actions on the right.
  */
-function WorkflowToolbar({ id, label, placeholder, filters, onFilters, showRegion = true, date, children }: {
+function WorkflowToolbar({ id, label, placeholder, filters, onFilters, showRegion = true, date, info, filtersBefore, children }: {
   id: string
   label: string
+  /** What the tab is, behind an (i). */
+  info: { label: string; text: ReactNode }
+  /** A tab-specific filter shown first after the search (e.g. the SRV Log movement). */
+  filtersBefore?: ReactNode
   placeholder: string
   filters: SrvSmartFilters
   onFilters: (f: SrvSmartFilters) => void
@@ -66,8 +72,10 @@ function WorkflowToolbar({ id, label, placeholder, filters, onFilters, showRegio
 }) {
   return (
     <DataToolbar label={label}>
+      <InfoTip label={info.label}>{info.text}</InfoTip>
       <SearchBox id={`${id}-search`} label={label} placeholder={placeholder} value={filters.search}
                  onChange={(search) => onFilters({ ...filters, search })} />
+      {filtersBefore}
       <SmartFilterBar id={id} value={filters} onChange={onFilters} showRegion={showRegion} date={date} />
       {hasSmartFilters(filters) ? (
         <Button variant="ghost" size="sm" className="h-7" onClick={() => onFilters(EMPTY_SMART_FILTERS)}>
@@ -168,13 +176,24 @@ export function SrvLogSection() {
     <div className="flex min-w-0 flex-col gap-3">
       <LogCounts counts={counts} filtered={hasSmartFilters(filters)} view={view}
                  onPick={(v) => { setView(v); setSelected(new Set()) }} />
-      <p className="text-sm text-muted-foreground">
-        Valves that left the warehouse loop and are expected back. Tick the ones that arrived at the warehouse and
-        confirm: they return to warehouse stock as available — under calibration.
-      </p>
-      {/* Which statuses are shown is chosen with the counts above, so no second status control repeats it. */}
-      <WorkflowToolbar id="srv-log" label="Search and filter the SRV Log" placeholder="Serial, code, part number, station…"
-                       filters={filters} onFilters={(f) => { setFilters(f); setSelected(new Set()) }} date={WORKFLOW_DATES.log}>
+      <WorkflowToolbar id="srv-log" label="Search and filter the SRV Log"
+                       info={{ label: 'About the SRV Log', text: 'Valves out at stations, expected back at the warehouse. Tick the ones that arrived and confirm: they return to stock as under calibration.' }} placeholder="Serial, code, part number, station…"
+                       filters={filters} onFilters={(f) => { setFilters(f); setSelected(new Set()) }} date={WORKFLOW_DATES.log}
+                       filtersBefore={
+                         // The movement: still out (issued, awaiting return) or back at the warehouse. Kept in step
+                         // with the count strip above, which sets the same view.
+                         <label className={filterLabel} htmlFor="srv-log-movement">
+                           Movement
+                           <select id="srv-log-movement" className={filterControl} value={view}
+                                   onChange={(e) => { setView(e.target.value as LogView); setSelected(new Set()) }}>
+                             <option value="open">Out — awaiting return</option>
+                             <option value="at_station">Out — at station</option>
+                             <option value="location_unconfirmed">Out — location unconfirmed</option>
+                             <option value="returned">Returned to warehouse</option>
+                             <option value="all">All movements</option>
+                           </select>
+                         </label>
+                       }>
         {isAdmin ? (
           <Button size="sm" className="h-7" disabled={selected.size === 0 || busy} onClick={() => void receive()}>
             {busy ? 'Saving…' : `Arrived at warehouse (${selected.size})`}
@@ -312,12 +331,9 @@ export function SrvCalibrationSection() {
     <div className="flex min-w-0 flex-col gap-3">
       <CalibrationCounts counts={counts} filtered={hasSmartFilters(filters)} status={status}
                          onPick={(s) => { setStatus(s); setSelected(new Set()) }} />
-      <p className="text-sm text-muted-foreground">
-        Valves sent from the store to the calibration company. With the certificate they return to the warehouse as
-        available — calibrated, dated by the certificate and due again one year later. Send a valve here with the + beside it in Warehouse SRVs.
-      </p>
       {/* The status shown is chosen with the counts above, so no second status control repeats it. */}
-      <WorkflowToolbar id="srv-cal" label="Search and filter calibration" placeholder="Serial, code, part number, certificate…"
+      <WorkflowToolbar id="srv-cal" label="Search and filter calibration"
+                       info={{ label: 'About Calibration (3rd party)', text: 'Valves at the calibration company. Send one with the + in Warehouse SRVs. With the certificate it returns to stock as calibrated, due again one year after the certificate date.' }} placeholder="Serial, code, part number, certificate…"
                        filters={filters} onFilters={(f) => { setFilters(f); setSelected(new Set()) }} showRegion={false}
                        date={WORKFLOW_DATES.calibration}>
         {/* Excel is the owner's request form; ticked rows only when any are ticked, otherwise the whole list shown. */}
@@ -412,10 +428,8 @@ export function SrvEmergencySection() {
   const rows = state.status === 'ready' ? state.data.rows : []
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      <p className="text-sm text-muted-foreground">
-        Every issue marked Emergency. The valve it replaced is also in the SRV Log until it returns to the warehouse.
-      </p>
-      <WorkflowToolbar id="srv-emergency" label="Search and filter emergency issues" placeholder="Serial, code, station…"
+      <WorkflowToolbar id="srv-emergency" label="Search and filter emergency issues"
+                       info={{ label: 'About SRV Emergency', text: 'Every issue marked Emergency. The valve it replaced also stays in the SRV Log until it is back at the warehouse.' }} placeholder="Serial, code, station…"
                        filters={filters} onFilters={setFilters} date={WORKFLOW_DATES.emergency}>
         <ExportButtons name="srv-emergency" load={rowsLoader('SRV Emergency', EMERGENCY_COLUMNS, rows, state.status === 'ready' && state.data.total > rows.length)} />
       </WorkflowToolbar>

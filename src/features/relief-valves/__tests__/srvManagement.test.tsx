@@ -609,6 +609,19 @@ describe('smart filters and warehouse code', () => {
   })
 })
 
+describe('Warehouse SRVs — owner default order (2026-09-29)', () => {
+  it('set pressure, then each size together (numeric), then calibrated / new / under calibration, oldest calibration first', async () => {
+    calls.list = []
+    renderSrv('/manage/srvs/warehouse')
+    await waitFor(() => expect(calls.list.some((c) => c.startsWith('v_srv_warehouse_stock.order:'))).toBe(true))
+    const orders = calls.list.filter((c) => c.startsWith('v_srv_warehouse_stock.order:')).map((c) => c.split(':')[1])
+    expect(orders.slice(0, 10)).toEqual([
+      'pressure_sort_bar', 'inlet_sort_in', 'outlet_sort_in', 'inlet_size', 'outlet_size', 'size_type',
+      'availability_rank', 'last_calibration_date', 'warehouse_code', 'id',
+    ])
+  })
+})
+
 describe('Installed SRVs — owner layout and filtered summary (2026-09-28)', () => {
   beforeEach(() => {
     calls.list = []

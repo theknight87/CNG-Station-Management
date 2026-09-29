@@ -386,8 +386,11 @@ export const DEFAULT_WAREHOUSE_QUERY: WarehouseQuery = {
 }
 
 const WAREHOUSE_SORT: Record<WarehouseSort, string[]> = {
-  pressure: ['pressure_sort_bar', 'id'],
-  size: ['size_type', 'inlet_size', 'outlet_size', 'id'],
+  // Owner default (2026-09-29): set pressure smallest first; within it each size together, smallest first; within
+  // one pressure and size calibrated first (oldest calibration first), then new, then under calibration.
+  pressure: ['pressure_sort_bar', 'inlet_sort_in', 'outlet_sort_in', 'inlet_size', 'outlet_size', 'size_type',
+    'availability_rank', 'last_calibration_date', 'warehouse_code', 'id'],
+  size: ['inlet_sort_in', 'outlet_sort_in', 'size_type', 'inlet_size', 'outlet_size', 'id'],
   warehouse_code: ['warehouse_code', 'id'],
   last_calibration: ['last_calibration_date', 'id'],
   target: ['target_station_name', 'id'],
