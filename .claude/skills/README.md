@@ -34,6 +34,24 @@ gets the files rather than broken links.
 | `playwright-cli` | Browser automation: tracing, request mocking, storage state, video. Useful for the real end-to-end checks this environment's egress policy blocks |
 | `speckit-*` (11 skills) | Spec-driven development workflow: constitution, specify, clarify, plan, tasks, analyze, checklist, implement, converge, tasks-to-issues |
 
+## The delegation skills
+
+Installed from the owner-supplied archive `delegate-skills-master.zip` (upstream
+`amElnagdy/delegate-skills`, commit `6826b363`; archive sha256
+`c4397b5ba9949f79790998b40b29c10650d851a6f5bd1c81db6582f730a8b9e6`), verified byte-identical to its
+`skills/` directory. MIT licensed — see `LICENSE-delegate-skills`. Only the 18 skill directories were
+vendored; the upstream repo's CI, Cursor install script and docs were not.
+
+| Skill | Role |
+| --- | --- |
+| `delegate-setup` | Discovers installed implementer CLIs and proposes "fleet lanes" (feature / tests / ui → CLI). Writes config only after explicit approval; never dispatches work |
+| `*-delegate` (17 skills) | Hand one bounded coding task to an external CLI implementer — `agy`, `aider`, `claude`, `cline`, `codex`, `commandcode`, `copilot`, `cursor`, `grok`, `kimi`, `omp`, `opencode`, `pi`, `qoder`, `vibe`, `warp`, `zcode` — then review its diff and land it yourself |
+
+Each needs its CLI installed and authenticated plus Node 18+; none of those CLIs is installed in this
+repository's cloud environment, so the skills are inert there until one is. Delegation does not relax
+anything in CLAUDE.md: the orchestrator still owns the review, the Verification Integrity Gate (§7a)
+and the commit, and a delegated diff is held to every rule a hand-written one is.
+
 ## These skills do not override the project's rules
 
 CLAUDE.md §11.2 governs. A design skill critiques and improves **presentation**. It has no
