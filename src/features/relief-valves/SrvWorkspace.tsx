@@ -1,7 +1,8 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { ClipboardList, FlaskConical, Gauge, Siren, Warehouse } from 'lucide-react'
+import { Outlet } from 'react-router-dom'
 
 import { PageContainer, PageHeader } from '@/components/layout/PageContainer'
-import { cn } from '@/lib/utils'
+import { SectionTabs, type SectionTab } from '@/components/layout/SectionTabs'
 
 /**
  * Global SRV Management.
@@ -17,12 +18,12 @@ import { cn } from '@/lib/utils'
  * entry point and lands on Installed.
  */
 
-const SECTIONS = [
-  { to: 'installed', label: 'Installed SRVs', hint: 'Valves fitted to station equipment' },
-  { to: 'warehouse', label: 'Warehouse SRVs', hint: 'In the store: new, calibrated, under calibration' },
-  { to: 'log', label: 'SRV Log', hint: 'Out at stations, expected back' },
-  { to: 'calibration', label: 'Calibration (3rd party)', hint: 'At the calibration company' },
-  { to: 'emergency', label: 'SRV Emergency', hint: 'Emergency issues' },
+const SECTIONS: SectionTab[] = [
+  { to: '/manage/srvs/installed', icon: Gauge, label: 'Installed SRVs', hint: 'Valves fitted to station equipment' },
+  { to: '/manage/srvs/warehouse', icon: Warehouse, label: 'Warehouse SRVs', hint: 'In the store: new, calibrated, under calibration' },
+  { to: '/manage/srvs/log', icon: ClipboardList, label: 'SRV Log', hint: 'Out at stations, expected back' },
+  { to: '/manage/srvs/calibration', icon: FlaskConical, label: 'Calibration (3rd party)', hint: 'At the calibration company' },
+  { to: '/manage/srvs/emergency', icon: Siren, label: 'SRV Emergency', hint: 'Emergency issues' },
 ]
 
 export function SrvWorkspace() {
@@ -33,34 +34,7 @@ export function SrvWorkspace() {
         description="Safety Relief Valves across every Region you are authorized for, and warehouse stock."
       />
 
-      <nav aria-label="SRV datasets" className="scrollbar-none -mx-3 overflow-x-auto border-b px-3 sm:-mx-4 sm:px-4">
-        <ul className="flex w-max items-stretch gap-0.5">
-          {SECTIONS.map((s) => (
-            <li key={s.to}>
-              <NavLink
-                to={`/manage/srvs/${s.to}`}
-                className={({ isActive }) =>
-                  cn(
-                    'flex flex-col whitespace-nowrap border-b-2 px-3 py-1.5 transition-colors',
-                    isActive
-                      ? 'border-b-brand-strong text-brand-strong'
-                      : 'border-b-transparent text-muted-foreground hover:border-b-border hover:text-foreground',
-                  )
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    {/* The active dataset is marked by an underline, a weight
-                      * change and aria-current — never by colour alone. */}
-                    <span className={cn('text-sm', isActive && 'font-semibold')}>{s.label}</span>
-                    <span className="text-xs text-muted-foreground">{s.hint}</span>
-                  </>
-                )}
-              </NavLink>
-            </li>
-          ))}
-        </ul>
-      </nav>
+      <SectionTabs label="SRV datasets" tabs={SECTIONS} />
 
       <Outlet />
     </PageContainer>

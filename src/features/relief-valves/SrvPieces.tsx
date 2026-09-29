@@ -1,5 +1,8 @@
 import type { ReactNode } from 'react'
 
+import { RegionChip } from '@/components/data/AssetChips'
+import { DateRangeFilter } from '@/components/data/DateRangeFilter'
+import type { DateOption } from '@/components/data/dateRange'
 import { StatusBadge } from '@/components/data/StatusBadge'
 import { Identifier } from '@/components/data/TechnicalText'
 import { NullValue } from '@/components/data/NullValue'
@@ -81,7 +84,7 @@ export function HierarchyCell({ row }: { row: InstalledSrvRow }) {
   return (
     <span className="whitespace-nowrap">
       {row.station_name ?? <NullValue />}
-      {row.region_name ? <span className="ml-1.5 text-xs text-muted-foreground">{row.region_name}</span> : null}
+      {row.region_name ? <span className="ml-1.5"><RegionChip name={row.region_name} /></span> : null}
     </span>
   )
 }
@@ -155,8 +158,10 @@ export function Metric({
  * The dedicated SRV filters: serial, Station, size and set pressure. Each input
  * narrows one column server-side; they combine with each other and with search.
  */
-export function SmartFilterBar({ id, value, onChange, stationLabel = 'Station', regionLabel = 'Region', showRegion = true, showStation = true }: {
+export function SmartFilterBar({ id, value, onChange, stationLabel = 'Station', regionLabel = 'Region', showRegion = true, showStation = true, dates }: {
   id: string
+  /** The dates this tab can be filtered by; omit for no date filter. */
+  dates?: DateOption[]
   value: SrvSmartFilters
   onChange: (next: SrvSmartFilters) => void
   stationLabel?: string
@@ -223,6 +228,7 @@ export function SmartFilterBar({ id, value, onChange, stationLabel = 'Station', 
           {MANUFACTURERS.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
       </label>
+      {dates ? <DateRangeFilter id={id} value={value} onChange={set} options={dates} /> : null}
     </div>
   )
 }
@@ -274,18 +280,5 @@ export function ToneChip({ tone, children }: { tone: ToneName; children: ReactNo
   return <span className={cn(CHIP, TONE[tone])}>{children}</span>
 }
 
-/** Region: a coloured dot beside the name (a third shape, so it never reads as a manufacturer or a status). */
-const REGION_DOT: Record<string, string> = {
-  east: 'bg-blue-600', west: 'bg-purple-600', delta: 'bg-emerald-600',
-  canal: 'bg-cyan-500', alex: 'bg-orange-500', upper: 'bg-stone-600',
-}
-
-export function RegionChip({ name }: { name: string | null }) {
-  if (!name) return <NullValue />
-  return (
-    <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-medium">
-      <span aria-hidden="true" className={cn('h-2.5 w-2.5 rounded-full', REGION_DOT[name.toLowerCase()] ?? 'bg-muted-foreground')} />
-      {name}
-    </span>
-  )
-}
+/** Region: the product-wide Region chip (one colour per Region everywhere). */
+export { RegionChip }

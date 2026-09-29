@@ -183,7 +183,8 @@ describe('Unit route and header', () => {
     renderUnit()
     expect(await screen.findByRole('heading', { level: 1 })).toHaveProperty('textContent', 'الماظة 1')
     expect(screen.getAllByText('الماظة').length).toBeGreaterThan(0)
-    expect(screen.getByText(/East Region/)).toBeDefined()
+    // The Region is its colour chip, the same one used across the product.
+    expect(screen.getAllByText('East').length).toBeGreaterThan(0)
   })
 
   it('does not reveal whether an unreadable Unit exists', async () => {

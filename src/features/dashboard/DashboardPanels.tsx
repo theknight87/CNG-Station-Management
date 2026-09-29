@@ -1,7 +1,6 @@
 import { Fragment } from 'react'
 import { Link } from 'react-router-dom'
 
-import { EntityName } from '@/components/data/TechnicalText'
 import { StatusBadge } from '@/components/data/StatusBadge'
 import { SectionHeader } from '@/components/layout/PageContainer'
 import {
@@ -23,6 +22,8 @@ import {
 
 } from './dueBuckets'
 import { assetTotal, dueFor, type AssetCount, type DueRow, type MappingRow, type RegionRow, type WarehouseRow } from './useDashboard'
+import { RegionChip } from '@/components/data/AssetChips'
+import { regionTone } from '@/components/data/assetColors'
 
 /**
  * Dashboard panels.
@@ -335,7 +336,7 @@ export function RegionOverview({ regions }: { regions: RegionRow[] }) {
                 <TableRow key={r.region_id}>
                   <RowHeaderCell className="whitespace-nowrap">
                     <div className="flex items-center gap-2">
-                      <EntityName name={r.region_name} />
+                      <RegionChip name={r.region_name} />
                       {/* Proportional bar: a visual aid beside the number, never
                           a replacement for it. Hidden from assistive tech,
                           which reads the Assets column instead. */}
@@ -345,7 +346,7 @@ export function RegionOverview({ regions }: { regions: RegionRow[] }) {
                         title={`${r.assets} assets`}
                       >
                         <span
-                          className="block h-full bg-foreground/35"
+                          className={cn('block h-full', regionTone(r.region_name).dot)}
                           style={{ width: `${Math.round((r.assets / maxAssets) * 100)}%` }}
                         />
                       </span>

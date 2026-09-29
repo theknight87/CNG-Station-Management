@@ -31,6 +31,7 @@ import {
   type StationQuery,
   type StationSort,
 } from '@/features/hierarchy/useHierarchy'
+import { RegionChip } from '@/components/data/AssetChips'
 
 /**
  * The Stations browser: search, filter, sort and pagination over
@@ -271,7 +272,7 @@ export function StationsBrowser({
                       </button>
                       </span>
                     </RowHeaderCell>
-                    <TableCell>{station.region_name}</TableCell>
+                    <TableCell><RegionChip name={station.region_name} /></TableCell>
                     <TableCell align="right" numeric><Count value={station.units} /></TableCell>
                     <TableCell align="right" numeric><Count value={station.assets} /></TableCell>
                     <TableCell align="right" numeric><Count value={station.overdue} tone="overdue" /></TableCell>

@@ -20,6 +20,7 @@ import { PageContainer, PageHeader, SectionHeader } from '@/components/layout/Pa
 import { EmptyState, ErrorState, LoadingState, NotFound, NotImplemented } from '@/components/states/AppStates'
 import { AttentionBadge, Count, EntityLink, Fact, FactGrid } from '@/features/hierarchy/HierarchyPieces'
 import { useStation } from '@/features/hierarchy/useHierarchy'
+import { RegionChip } from '@/components/data/AssetChips'
 
 /**
  * One Station: its own attributes, and the Units it owns.
@@ -74,7 +75,7 @@ export function StationOverview() {
       <PageHeader
         title={station.station_name}
         isEntity
-        description={`${station.region_name} Region`}
+        description={<RegionChip name={station.region_name} size="md" />}
         actions={<>
           <AttentionBadge overdue={station.overdue} unresolved={station.unresolved_mapping} />
           <ScopeExport scope={{ kind: 'station', id: station.station_id, name: station.station_name }} />
@@ -85,7 +86,7 @@ export function StationOverview() {
         <SectionHeader id="station-facts" title="Station" />
         <div className="mt-2.5">
           <FactGrid>
-            <Fact label="Region">{station.region_name}</Fact>
+            <Fact label="Region"><RegionChip name={station.region_name} /></Fact>
             <Fact label="Bay status">
               {/* The raw source text is kept beside the normalized value
                 * (principle #6) and shown when they differ, so an engineer can

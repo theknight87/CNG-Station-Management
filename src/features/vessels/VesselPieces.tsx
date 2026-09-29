@@ -1,6 +1,7 @@
 import { StatusBadge } from '@/components/data/StatusBadge'
 import { NullValue } from '@/components/data/NullValue'
 import type { VesselMappingStatus, VesselRegistryRow } from '@/features/vessels/useVesselManagement'
+import { RegionChip } from '@/components/data/AssetChips'
 
 /**
  * Vessel-specific presentation. The technical VALUE renderers (dates,
@@ -53,7 +54,7 @@ export function VesselStationCell({ row }: { row: VesselRegistryRow }) {
   return (
     <span className="whitespace-nowrap">
       {row.station_name ?? <NullValue />}
-      {row.region_name ? <span className="ml-1.5 text-xs text-muted-foreground">{row.region_name}</span> : null}
+      {row.region_name ? <span className="ml-1.5"><RegionChip name={row.region_name} /></span> : null}
     </span>
   )
 }

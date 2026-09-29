@@ -537,9 +537,10 @@ describe('smart filters and warehouse code', () => {
       ilike(c: string, v: unknown) { calls.push(['ilike', c, v]); return b },
       lte(c: string, v: unknown) { calls.push(['lte', c, v]); return b },
       gte(c: string, v: unknown) { calls.push(['gte', c, v]); return b },
+      lt(c: string, v: unknown) { calls.push(['lt', c, v]); return b },
       eq(c: string, v: unknown) { calls.push(['eq', c, v]); return b },
     }
-    applySmartFilters(b, { serial: ' 0003,262 ', region: 'r-1', station: 'الهرم', size: 'M 3/4" X 1"', pressure: '316', pressureUnit: 'BAR', manufacturer: 'COI' }, 'station_display')
+    applySmartFilters(b, { serial: ' 0003,262 ', region: 'r-1', station: 'الهرم', size: 'M 3/4" X 1"', pressure: '316', pressureUnit: 'BAR', manufacturer: 'COI', dateField: '', dateFrom: '', dateTo: '' }, 'station_display')
     expect(calls).toEqual([
       ['ilike', 'serial_number', '%0003 262%'],
       ['eq', 'region_id', 'r-1'],
@@ -565,6 +566,7 @@ describe('smart filters and warehouse code', () => {
       ilike(c: string, v: unknown) { calls.push(['ilike', c, v]); return b },
       lte(c: string, v: unknown) { calls.push(['lte', c, v]); return b },
       gte(c: string, v: unknown) { calls.push(['gte', c, v]); return b },
+      lt(c: string, v: unknown) { calls.push(['lt', c, v]); return b },
       eq(c: string, v: unknown) { calls.push(['eq', c, v]); return b },
     }
     apply(b, { ...E, pressure: '30-35' }, 'station_display')
@@ -581,7 +583,7 @@ describe('smart filters and warehouse code', () => {
 
   it('FILTER-2 empty filters add nothing', async () => {
     const { applySmartFilters, EMPTY_SMART_FILTERS, hasSmartFilters } = await import('@/features/relief-valves/useSrvManagement')
-    const b = { ilike: vi.fn(), lte: vi.fn(), gte: vi.fn(), eq: vi.fn() }
+    const b = { ilike: vi.fn(), lte: vi.fn(), gte: vi.fn(), lt: vi.fn(), eq: vi.fn() }
     applySmartFilters(b, EMPTY_SMART_FILTERS, 'station_display')
     expect(b.ilike).not.toHaveBeenCalled()
     expect(b.eq).not.toHaveBeenCalled()

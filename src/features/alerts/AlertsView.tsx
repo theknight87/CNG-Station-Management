@@ -20,6 +20,7 @@ import {
   DEFAULT_ALERT_QUERY, useAlertActions, useAlertSummary, useAlerts,
   type AlertQuery, type AlertRow, type AlertSort,
 } from '@/features/alerts/useAlerts'
+import { RegionChip } from '@/components/data/AssetChips'
 
 /**
  * The Alerts inbox.
@@ -353,7 +354,7 @@ export function AlertsView() {
               <Fact label="Subject"><SubjectLabel value={r.subject} /></Fact>
               <Fact label="Asset"><AlertAssetCell row={r} /></Fact>
               <Fact label="Asset type"><Text value={humanizeAssetType(r.asset_type)} /></Fact>
-              <Fact label="Region"><Text value={r.region_name} /></Fact>
+              <Fact label="Region"><RegionChip name={r.region_name} /></Fact>
               <Fact label="Station"><AlertStationCell row={r} /></Fact>
               {/* Preserved verbatim; never promoted to a canonical Station. */}
               <Fact label="Station (source text)"><Text value={r.source_station_name_raw} /></Fact>

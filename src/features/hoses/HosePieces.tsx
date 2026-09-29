@@ -2,6 +2,7 @@ import { StatusBadge } from '@/components/data/StatusBadge'
 import { NullValue } from '@/components/data/NullValue'
 import { Identifier } from '@/components/data/TechnicalText'
 import type { HoseMappingStatus, HoseRegistryRow } from '@/features/hoses/useHoseManagement'
+import { RegionChip } from '@/components/data/AssetChips'
 
 /**
  * Hose-specific presentation. The technical VALUE renderers — dates, pressures,
@@ -93,7 +94,7 @@ export function HoseStationCell({ row }: { row: HoseRegistryRow }) {
   return (
     <span className="whitespace-nowrap">
       {row.station_name ?? <NullValue />}
-      {row.region_name ? <span className="ml-1.5 text-xs text-muted-foreground">{row.region_name}</span> : null}
+      {row.region_name ? <span className="ml-1.5"><RegionChip name={row.region_name} /></span> : null}
     </span>
   )
 }

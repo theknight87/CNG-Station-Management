@@ -9,17 +9,18 @@ import { buildCalibrationForm, formIsoDate, loadOriginStations, orderForForm, ty
 import { useSupabaseClient } from '@/lib/supabase/client'
 import { NullValue } from '@/components/data/NullValue'
 import { Button } from '@/components/ui/button'
-import { EMPTY_SMART_FILTERS, type SrvSmartFilters } from '@/features/relief-valves/useSrvManagement'
+import { EMPTY_SMART_FILTERS, hasSmartFilters, type SrvSmartFilters } from '@/features/relief-valves/useSrvManagement'
+import type { Loadable } from '@/features/hierarchy/useHierarchy'
 import { ManufacturerChip, RegionChip, SmartFilterBar, ToneChip } from '@/features/relief-valves/SrvPieces'
 import { byValues, pressureBar, type ToneName } from '@/features/relief-valves/srvSort'
 import {
-  Code, FormMessage, ListStates, Pressure, SelectableTable, ValveHistory, ValveSize,
+  Code, CountStrip, FormMessage, ListStates, Pressure, SelectableTable, ValveHistory, ValveSize,
 } from '@/features/relief-valves/SrvWorkflowPieces'
 import {
   CalibrationEditDialog, LogMoveDialog, RowAction, RowActions,
 } from '@/features/relief-valves/SrvAdminActions'
 import {
-  sizeText, useConfirmedAction, useIsAdmin, useWorkflowAction, useWorkflowList,
+  WORKFLOW_DATES, sizeText, useConfirmedAction, useWorkflowCounts, useIsAdmin, useWorkflowAction, useWorkflowList,
   type CalibrationRow, type ValveFields, type EmergencyRow, type FieldLogRow,
 } from '@/features/relief-valves/useSrvWorkflow'
 
@@ -61,13 +62,54 @@ const LOG_REASON: Record<FieldLogRow['reason'], string> = {
   reconcile_station_not_found: 'Sent to this Station, but no valves are recorded there',
 }
 
+type LogView = 'open' | 'all' | FieldLogRow['status']
+const LOG_STATUSES = ['at_station', 'location_unconfirmed', 'returned'] as const
+const LOG_DOT: Record<FieldLogRow['status'], string> = {
+  at_station: 'bg-blue-600', location_unconfirmed: 'bg-orange-500', returned: 'bg-emerald-600',
+}
+
+function CountsFailed() {
+  return <p className="rounded border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">The counts could not be loaded, so none are shown. The table below is unaffected.</p>
+}
+
+const countOf = (counts: Loadable<Record<string, number>>) => (k: string) => (counts.status === 'ready' ? counts.data[k] ?? 0 : null)
+const sumOf = (...v: (number | null)[]) => (v.some((x) => x === null) ? null : v.reduce<number>((a, x) => a + (x ?? 0), 0))
+
+/** The SRV Log count strip; follows every filter above the table. */
+function LogCounts({ counts, filtered, view, onPick }: {
+  counts: Loadable<Record<string, number>>
+  filtered: boolean
+  view: LogView
+  onPick: (v: LogView) => void
+}) {
+  if (counts.status === 'error') return <CountsFailed />
+  const n = countOf(counts)
+  const atStation = n('at_station'), unconfirmed = n('location_unconfirmed'), returned = n('returned')
+  return (
+    <CountStrip
+      label="SRV Log counts"
+      active={view}
+      onPick={(k) => onPick(k as LogView)}
+      note={filtered ? 'Counts follow the filters below.' : null}
+      items={[
+        { key: 'open', label: 'Awaiting return', value: sumOf(atStation, unconfirmed), hint: 'still out of the warehouse' },
+        { key: 'at_station', label: 'At station', value: atStation, dot: LOG_DOT.at_station },
+        { key: 'location_unconfirmed', label: 'Location unconfirmed', value: unconfirmed, dot: LOG_DOT.location_unconfirmed },
+        { key: 'returned', label: 'Returned', value: returned, dot: LOG_DOT.returned, hint: 'back in the warehouse' },
+        { key: 'all', label: 'All entries', value: sumOf(atStation, unconfirmed, returned) },
+      ]}
+    />
+  )
+}
+
 export function SrvLogSection() {
   const isAdmin = useIsAdmin()
   const [filters, setFilters] = useState<SrvSmartFilters>(EMPTY_SMART_FILTERS)
-  const [showReturned, setShowReturned] = useState(false)
-  const { state, reload } = useWorkflowList<FieldLogRow>('log', {
-    status: showReturned ? undefined : ['at_station', 'location_unconfirmed'], filters,
+  const [view, setView] = useState<LogView>('open')
+  const { state, reload, version } = useWorkflowList<FieldLogRow>('log', {
+    status: view === 'all' ? undefined : view === 'open' ? ['at_station', 'location_unconfirmed'] : [view], filters,
   })
+  const counts = useWorkflowCounts('log', LOG_STATUSES, filters, version)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
@@ -87,14 +129,17 @@ export function SrvLogSection() {
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
+      <LogCounts counts={counts} filtered={hasSmartFilters(filters)} view={view}
+                 onPick={(v) => { setView(v); setSelected(new Set()) }} />
       <p className="text-sm text-muted-foreground">
         Valves that left the warehouse loop and are expected back. Tick the ones that arrived at the warehouse and
         confirm: they return to warehouse stock as available — under calibration.
       </p>
-      <SmartFilterBar id="srv-log" value={filters} onChange={setFilters} />
+      <SmartFilterBar id="srv-log" value={filters} onChange={(f) => { setFilters(f); setSelected(new Set()) }} dates={WORKFLOW_DATES.log} />
       <div className="flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={showReturned} onChange={(e) => setShowReturned(e.target.checked)} />
+          <input type="checkbox" checked={view === 'all' || view === 'returned'}
+                 onChange={(e) => { setView(e.target.checked ? 'all' : 'open'); setSelected(new Set()) }} />
           Include valves already returned
         </label>
         {isAdmin ? (
@@ -171,14 +216,48 @@ const CAL_STATUS: Record<CalibrationRow['status'], string> = {
   certified: 'Returned with certificate',
 }
 
+type CalView = 'open' | 'all' | CalibrationRow['status']
+const CAL_STATUSES = ['sent', 'returned_awaiting_certificate', 'certified'] as const
+const CAL_DOT: Record<CalibrationRow['status'], string> = {
+  sent: 'bg-purple-600', returned_awaiting_certificate: 'bg-orange-500', certified: 'bg-emerald-600',
+}
+
+/** The Calibration count strip: open work first, then each status. Follows every filter above the table. */
+function CalibrationCounts({ counts, filtered, status, onPick }: {
+  counts: Loadable<Record<string, number>>
+  filtered: boolean
+  status: CalView
+  onPick: (s: CalView) => void
+}) {
+  if (counts.status === 'error') return <CountsFailed />
+  const n = countOf(counts)
+  const sent = n('sent'), awaiting = n('returned_awaiting_certificate'), certified = n('certified')
+  return (
+    <CountStrip
+      label="Calibration counts"
+      active={status}
+      onPick={(k) => onPick(k as CalView)}
+      note={filtered ? 'Counts follow the filters below.' : null}
+      items={[
+        { key: 'open', label: 'Not yet certified', value: sumOf(sent, awaiting), hint: 'at the company or awaiting certificate' },
+        { key: 'sent', label: 'At the company', value: sent, dot: CAL_DOT.sent },
+        { key: 'returned_awaiting_certificate', label: 'Certificate awaited', value: awaiting, dot: CAL_DOT.returned_awaiting_certificate },
+        { key: 'certified', label: 'Certified', value: certified, dot: CAL_DOT.certified, hint: 'back in the warehouse' },
+        { key: 'all', label: 'All entries', value: sumOf(sent, awaiting, certified) },
+      ]}
+    />
+  )
+}
+
 export function SrvCalibrationSection() {
   const isAdmin = useIsAdmin()
   const supabase = useSupabaseClient()
   const [filters, setFilters] = useState<SrvSmartFilters>(EMPTY_SMART_FILTERS)
-  const [status, setStatus] = useState<'open' | CalibrationRow['status']>('open')
-  const { state, reload } = useWorkflowList<CalibrationRow>('calibration', {
-    status: status === 'open' ? ['sent', 'returned_awaiting_certificate'] : [status], filters,
+  const [status, setStatus] = useState<CalView>('open')
+  const { state, reload, version } = useWorkflowList<CalibrationRow>('calibration', {
+    status: status === 'all' ? undefined : status === 'open' ? ['sent', 'returned_awaiting_certificate'] : [status], filters,
   })
+  const counts = useWorkflowCounts('calibration', CAL_STATUSES, filters, version)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [certDate, setCertDate] = useState('')
   const [certNo, setCertNo] = useState('')
@@ -200,6 +279,8 @@ export function SrvCalibrationSection() {
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
+      <CalibrationCounts counts={counts} filtered={hasSmartFilters(filters)} status={status}
+                         onPick={(s) => { setStatus(s); setSelected(new Set()) }} />
       <p className="text-sm text-muted-foreground">
         Valves sent from the store to the calibration company. With the certificate they return to the warehouse as
         available — calibrated, dated by the certificate and due again one year later. Send a valve here with the + beside it in Warehouse SRVs.
@@ -213,9 +294,11 @@ export function SrvCalibrationSection() {
             <option value="sent">At the calibration company</option>
             <option value="returned_awaiting_certificate">Returned — certificate awaited</option>
             <option value="certified">Returned with certificate</option>
+            <option value="all">All entries</option>
           </select>
         </label>
-        <SmartFilterBar id="srv-cal" value={filters} onChange={setFilters} showRegion={false} showStation={false} />
+        <SmartFilterBar id="srv-cal" value={filters} onChange={(f) => { setFilters(f); setSelected(new Set()) }}
+                        showRegion={false} showStation={false} dates={WORKFLOW_DATES.calibration} />
         <span className="ml-auto">
           {/* Excel is the owner's request form; ticked rows only when any are ticked, otherwise the whole list shown. */}
           <ExportButtons name="srv-calibration" label={picked.length ? `Export ${picked.length} selected` : undefined}
@@ -314,7 +397,7 @@ export function SrvEmergencySection() {
         Every issue marked Emergency. The valve it replaced is also in the SRV Log until it returns to the warehouse.
       </p>
       <div className="flex flex-wrap items-end gap-3">
-        <SmartFilterBar id="srv-emergency" value={filters} onChange={setFilters} />
+        <SmartFilterBar id="srv-emergency" value={filters} onChange={setFilters} dates={WORKFLOW_DATES.emergency} />
         <span className="ml-auto">
           <ExportButtons name="srv-emergency" load={rowsLoader('SRV Emergency', EMERGENCY_COLUMNS, rows, state.status === 'ready' && state.data.total > rows.length)} />
         </span>

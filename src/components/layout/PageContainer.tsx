@@ -23,19 +23,23 @@ export function PageHeader({
   description,
   isEntity = false,
   actions,
+  leading,
 }: {
   title: string
-  description?: string
+  description?: ReactNode
   isEntity?: boolean
+  /** Shown before the title, e.g. the Region's colour mark. */
+  leading?: ReactNode
   actions?: ReactNode
 }) {
   return (
     <div className="flex flex-wrap items-start justify-between gap-2">
       <div className="min-w-0">
-        <h1 className="text-balance break-words text-xl font-semibold tracking-tight">
+        <h1 className="flex items-center gap-2 text-balance break-words text-xl font-semibold tracking-tight">
+          {leading}
           {isEntity ? <EntityName name={title} /> : title}
         </h1>
-        {description ? <p className="mt-0.5 text-sm text-muted-foreground">{description}</p> : null}
+        {description ? <div className="mt-0.5 text-sm text-muted-foreground">{description}</div> : null}
       </div>
       {actions ? <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">{actions}</div> : null}
     </div>

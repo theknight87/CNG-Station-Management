@@ -17,6 +17,7 @@ import { Metric } from '@/features/relief-valves/SrvPieces'
 import { SmartFilterBar } from '@/features/relief-valves/SrvPieces'
 import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
 import {
+  WAREHOUSE_DATES,
   hasSmartFilters,
   AVAILABILITY_LABEL, DEFAULT_WAREHOUSE_QUERY, useWarehouseSrvs, warehouseRequest,
   type WarehouseQuery, type WarehouseSrvRow, type WarehouseSort,
@@ -344,7 +345,7 @@ export function WarehouseSrvSection() {
           <AddWarehouseSrvsButton onAdded={reload} />
         </span>
       </DataToolbar>
-      <SmartFilterBar id="warehouse-srv" stationLabel="Destination Station" regionLabel="Destination Region" value={query.filters} onChange={(filters) => update({ filters })} />
+      <SmartFilterBar id="warehouse-srv" stationLabel="Destination Station" regionLabel="Destination Region" value={query.filters} onChange={(filters) => update({ filters })} dates={WAREHOUSE_DATES} />
       {isAdmin && picked.length > 0 ? (
         <WarehouseBulkActions picked={picked} onClear={() => setSelected(new Set())} onDone={reloadClear} />
       ) : null}
@@ -400,7 +401,7 @@ export function WarehouseSrvSection() {
                 <Text value={r.target_station_name} />
               )}
             </Fact>
-            <Fact label="Destination Region"><Text value={r.target_region_name} /></Fact>
+            <Fact label="Destination Region"><RegionChip name={r.target_region_name} /></Fact>
             <Fact label="Issued from warehouse">
               {r.warehouse_issue_date ? <span className="tabular">{r.warehouse_issue_date}</span> : <NullValue />}
             </Fact>

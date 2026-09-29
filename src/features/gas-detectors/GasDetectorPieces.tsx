@@ -3,6 +3,7 @@ import { NullValue } from '@/components/data/NullValue'
 import type {
   DetectorAreaType, DetectorMappingStatus, DetectorPresence, DetectorRegistryRow,
 } from '@/features/gas-detectors/useGasDetectorManagement'
+import { RegionChip } from '@/components/data/AssetChips'
 
 /**
  * Gas-detector-specific presentation. The technical VALUE renderers — dates,
@@ -109,7 +110,7 @@ export function DetectorStationCell({ row }: { row: DetectorRegistryRow }) {
   return (
     <span className="whitespace-nowrap">
       {row.station_name ?? <NullValue />}
-      {row.region_name ? <span className="ml-1.5 text-xs text-muted-foreground">{row.region_name}</span> : null}
+      {row.region_name ? <span className="ml-1.5"><RegionChip name={row.region_name} /></span> : null}
     </span>
   )
 }

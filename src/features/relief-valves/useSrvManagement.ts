@@ -6,6 +6,7 @@ import type { RegistryPage } from '@/components/data/RegistryTable'
 import { foldName } from '@/features/hierarchy/foldName'
 import type { Loadable } from '@/features/hierarchy/useHierarchy'
 import type { DatePrecision, DueStatus, PressureUnit } from '@/features/units/useUnitWorkspace'
+import { applyDateRange, EMPTY_DATE_RANGE, hasDateRange, type DateOption, type DateRange } from '@/components/data/dateRange'
 
 /**
  * Global SRV Management data: installed valves and warehouse stock.
@@ -153,7 +154,7 @@ const WAREHOUSE_COLUMNS =
  * Size is the FULL size as the table shows it (`M 3/4" X 1"`): the M/F prefix narrows the
  * size type, and the parts either side of X narrow inlet and outlet.
  */
-export interface SrvSmartFilters {
+export interface SrvSmartFilters extends DateRange {
   serial: string
   region: string
   station: string
@@ -162,10 +163,13 @@ export interface SrvSmartFilters {
   pressureUnit: '' | 'BAR' | 'PSI'
   manufacturer: string
 }
-export const EMPTY_SMART_FILTERS: SrvSmartFilters = { serial: '', region: '', station: '', size: '', pressure: '', pressureUnit: '', manufacturer: '' }
+export const EMPTY_SMART_FILTERS: SrvSmartFilters = {
+  serial: '', region: '', station: '', size: '', pressure: '', pressureUnit: '', manufacturer: '', ...EMPTY_DATE_RANGE,
+}
 
 export function hasSmartFilters(f: SrvSmartFilters): boolean {
-  return Boolean(f.serial.trim() || f.region || f.station.trim() || f.size.trim() || f.pressure.trim() || f.pressureUnit || f.manufacturer)
+  return Boolean(f.serial.trim() || f.region || f.station.trim() || f.size.trim() || f.pressure.trim() || f.pressureUnit || f.manufacturer
+    || hasDateRange(f))
 }
 
 /** Splits a full size (`M 3/4" X 1"`) into its type, inlet and outlet parts. Any part may be absent. */
@@ -195,8 +199,8 @@ export function parsePressure(value: string): { lo: number; hi: number } | null 
 
 /** Applies the dedicated filters to a PostgREST builder. Station and Region columns differ per dataset. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function applySmartFilters<B extends { ilike: any; lte: any; gte: any; eq: any }>(
-  b: B, f: SrvSmartFilters, stationColumn: string, regionColumn = 'region_id',
+export function applySmartFilters<B extends { ilike: any; lte: any; gte: any; lt: any; eq: any }>(
+  b: B, f: SrvSmartFilters, stationColumn: string, regionColumn = 'region_id', dates?: DateOption[],
 ): B {
   const clean = (v: string) => v.trim().replace(/[%*,()]/g, ' ').trim()
   if (clean(f.serial)) b = b.ilike('serial_number', `%${clean(f.serial)}%`)
@@ -212,8 +216,18 @@ export function applySmartFilters<B extends { ilike: any; lte: any; gte: any; eq
   if (range) b = b.lte('pressure_min', range.hi).gte('pressure_max', range.lo)
   if (f.manufacturer) b = b.ilike('manufacturer', clean(f.manufacturer))
   if (f.pressureUnit) b = b.eq('pressure_unit', f.pressureUnit)
-  return b
+  return applyDateRange(b, f, dates)
 }
+
+/** The dates each SRV registry can be filtered by. */
+export const INSTALLED_DATES: DateOption[] = [
+  { column: 'next_calibration_date', label: 'Next calibration', precision: 'next_calibration_precision' },
+  { column: 'last_calibration_date', label: 'Last calibration', precision: 'last_calibration_precision' },
+]
+export const WAREHOUSE_DATES: DateOption[] = [
+  ...INSTALLED_DATES,
+  { column: 'warehouse_issue_date', label: 'Issued from warehouse' },
+]
 
 export type MappingFilter = 'all' | 'resolved' | 'needs_equipment_mapping' | 'needs_unit_mapping' | 'needs_station_mapping' | 'conflict'
 /** 'attention' is overdue OR any due bucket — stated, never left ambiguous. */
@@ -279,7 +293,7 @@ export function installedRequest(supabase: SupabaseClient, q: InstalledQuery) {
   if (q.due === 'overdue') b = b.eq('due_status', 'overdue')
   if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
   if (q.due === 'attention') b = b.in('due_status', ATTENTION_BUCKETS)
-  b = applySmartFilters(b, q.filters, 'station_display')
+  b = applySmartFilters(b, q.filters, 'station_display', 'region_id', INSTALLED_DATES)
   if (term) {
     // Retrieval, never resolution: matching a station name here does not
     // map anything. The folded form is offered too so an Arabic query
@@ -404,7 +418,7 @@ export function warehouseRequest(supabase: SupabaseClient, q: WarehouseQuery) {
   if (q.due === 'overdue') b = b.eq('due_status', 'overdue')
   if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
   if (q.due === 'attention') b = b.in('due_status', ATTENTION_BUCKETS)
-  b = applySmartFilters(b, q.filters, 'target_station_name', 'target_region_id')
+  b = applySmartFilters(b, q.filters, 'target_station_name', 'target_region_id', WAREHOUSE_DATES)
   if (term) {
     const raw = term.replace(/[,()]/g, ' ')
     b = b.or(

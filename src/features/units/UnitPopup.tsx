@@ -16,6 +16,8 @@ import {
   type CompressorRow, type DetectorRow, type DispenserRow, type EquipmentTab, type HoseRow, type UnitSrvRow, type VesselRow,
 } from '@/features/units/useUnitWorkspace'
 import { cn } from '@/lib/utils'
+import { SectionTabContent } from '@/components/layout/SectionTabs'
+import { sectionTabClass, sectionTabTrack } from '@/components/layout/sectionTabStyles'
 import { useSupabaseClient } from '@/lib/supabase/client'
 import { AddUnitAssetButton, type AssetKind } from '@/features/units/AddUnitAsset'
 
@@ -235,13 +237,12 @@ export function UnitPopup({ unit, onClose }: { unit: UnitSummary | null; onClose
         {unit ? (
           <div className="flex min-w-0 flex-col gap-3">
             <DueStrip counts={counts} />
-            <div role="tablist" aria-label="Equipment" className="flex flex-wrap gap-1 border-b">
+            <div role="tablist" aria-label="Equipment" className={sectionTabTrack}>
               {TABS.map((t) => (
                 <button key={t.tab} type="button" role="tab" aria-selected={t.tab === tab}
-                        className={cn('-mb-px border-b-2 px-3 py-1.5 text-sm', t.tab === tab
-                          ? 'border-[var(--brand-strong)] font-semibold text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')}
+                        className={sectionTabClass(t.tab === tab, true)}
                         onClick={() => setTab(t.tab)}>
-                  {t.label} <span className="tabular text-xs text-muted-foreground">({t.count(unit)})</span>
+                  <SectionTabContent tab={{ label: t.label, count: t.count(unit) }} active={t.tab === tab} compact />
                 </button>
               ))}
             </div>

@@ -293,3 +293,54 @@ export function ListStates({ state, label, reload, empty, children }: {
   if (empty) return <p className="rounded border px-3 py-6 text-center text-sm text-muted-foreground">Nothing in {label} matches.</p>
   return <>{children}</>
 }
+
+export interface CountItem {
+  /** The status (or group) this count stands for; clicking it shows those rows. */
+  key: string
+  label: string
+  value: number | null
+  hint?: string
+  /** Small marker in the same colour as the row's status chip. */
+  dot?: string
+}
+
+/**
+ * A workflow tab's count strip (owner request 2026-09-29): one number per status, under the tab's current filters.
+ * Each count is a button that shows its rows; the active one is marked by a border, weight and aria-pressed, never
+ * by colour alone. A count that failed to load is left out rather than shown as 0.
+ */
+export function CountStrip({ label, items, active, onPick, note }: {
+  label: string
+  items: CountItem[]
+  active: string | null
+  onPick: (key: string) => void
+  note?: string | null
+}) {
+  return (
+    <section aria-label={label} className="rounded border bg-card p-1.5">
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-5">
+        {items.map((it) => {
+          const on = active === it.key
+          return (
+            <button key={it.key} type="button" aria-pressed={on} onClick={() => onPick(it.key)}
+                    className={cn(
+                      'flex min-w-0 flex-col items-start rounded-md border px-2.5 py-1.5 text-left transition-colors',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                      on ? 'border-brand-strong bg-background shadow-sm' : 'border-transparent hover:border-border hover:bg-muted/60',
+                    )}>
+              <span className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground">
+                {it.dot ? <span aria-hidden="true" className={cn('h-2 w-2 shrink-0 rounded-full', it.dot)} /> : null}
+                {it.label}
+              </span>
+              <span className={cn('tabular text-xl leading-tight', on ? 'font-bold text-foreground' : 'font-semibold')}>
+                {it.value === null ? <NullValue /> : it.value.toLocaleString()}
+              </span>
+              {it.hint ? <span className="text-xs text-muted-foreground">{it.hint}</span> : null}
+            </button>
+          )
+        })}
+      </div>
+      {note ? <p className="px-1 pt-1 text-xs text-muted-foreground">{note}</p> : null}
+    </section>
+  )
+}

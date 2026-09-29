@@ -1,11 +1,15 @@
 import type { AssetFilters } from '@/components/data/assetFilters'
+import { DateRangeFilter } from '@/components/data/DateRangeFilter'
+import type { DateOption } from '@/components/data/dateRange'
 import { cn } from '@/lib/utils'
 
 const input = 'h-7 rounded border bg-background px-2 text-sm'
 
 /** Serial, Station, manufacturer and (optionally) pressure-range filters, laid out like the SRV screens. */
-export function AssetFilterBar({ id, value, onChange, makers, pressureLabel }: {
+export function AssetFilterBar({ id, value, onChange, makers, pressureLabel, dates }: {
   id: string
+  /** The dates this registry can be filtered by; omit for no date filter. */
+  dates?: DateOption[]
   value: AssetFilters
   onChange: (next: AssetFilters) => void
   /** Manufacturer choices; omit to hide the manufacturer filter (no data to filter on). */
@@ -56,6 +60,7 @@ export function AssetFilterBar({ id, value, onChange, makers, pressureLabel }: {
           </label>
         </>
       ) : null}
+      {dates ? <DateRangeFilter id={id} value={value} onChange={set} options={dates} /> : null}
     </div>
   )
 }

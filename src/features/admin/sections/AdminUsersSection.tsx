@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { useAppUser } from '@/hooks/useAppUser'
 import type { AppRole } from '@/types/domain'
 import { useAdminUsers, type AdminUserRow } from '../useAdminUsers'
+import { RegionChip } from '@/components/data/AssetChips'
 
 const ROLES: AppRole[] = ['admin', 'manager', 'engineer', 'viewer']
 
@@ -143,7 +144,7 @@ function UserRow({
           <ul className="flex flex-wrap gap-1">
             {user.region_grants.map((g) => (
               <li key={g.region_id} className="inline-flex items-center gap-1 rounded border px-1 text-xs">
-                <span>{g.region_name}</span>
+                <RegionChip name={g.region_name} />
                 <span className="text-muted-foreground">{g.can_map ? 'may map' : 'read'}</span>
                 <button
                   type="button"
@@ -197,7 +198,7 @@ function UserRow({
               <h3 className="text-sm font-semibold">Region access</h3>
               {user.region_grants.length === 0 ? <p className="text-sm text-muted-foreground">No Regions granted.</p> : (
                 <ul className="divide-y rounded border">
-                  {user.region_grants.map((g) => <li key={g.region_id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm"><span>{g.region_name} <span className="text-muted-foreground">· {g.can_map ? 'may map' : 'read only'}</span></span><Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => onRevoke(g.region_id)}>Revoke</Button></li>)}
+                  {user.region_grants.map((g) => <li key={g.region_id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm"><span className="flex items-center gap-1.5"><RegionChip name={g.region_name} /> <span className="text-muted-foreground">· {g.can_map ? 'may map' : 'read only'}</span></span><Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => onRevoke(g.region_id)}>Revoke</Button></li>)}
                 </ul>
               )}
               <Button type="button" variant="outline" size="sm" onClick={onToggleGrant}>{granting ? 'Cancel grant' : 'Grant Region'}</Button>

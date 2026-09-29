@@ -4,6 +4,7 @@ import { Identifier } from '@/components/data/TechnicalText'
 import type {
   AlertRow, AlertSubject, AlertThreshold, DeliveryStatus,
 } from '@/features/alerts/useAlerts'
+import { RegionChip } from '@/components/data/AssetChips'
 
 /**
  * Alert-specific presentation.
@@ -156,7 +157,7 @@ export function AlertStationCell({ row }: { row: AlertRow }) {
   return (
     <span className="whitespace-nowrap">
       {row.station_name ?? <NullValue />}
-      {row.region_name ? <span className="ml-1.5 text-xs text-muted-foreground">{row.region_name}</span> : null}
+      {row.region_name ? <span className="ml-1.5"><RegionChip name={row.region_name} /></span> : null}
     </span>
   )
 }

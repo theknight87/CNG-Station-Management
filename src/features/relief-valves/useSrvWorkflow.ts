@@ -5,6 +5,7 @@ import { useSupabaseClient } from '@/lib/supabase/client'
 import type { Loadable } from '@/features/hierarchy/useHierarchy'
 import type { PressureUnit } from '@/features/units/useUnitWorkspace'
 import { applySmartFilters, type SrvSmartFilters } from '@/features/relief-valves/useSrvManagement'
+import type { DateOption } from '@/components/data/dateRange'
 
 /**
  * The warehouse workflow: issue (صرف), SRV Log, Calibration (3rd party), Emergency and history.
@@ -109,12 +110,22 @@ const SPECS = {
     columns: `id, reason, status, is_emergency, region_id, region_name, station_display, unit_name, installed_valve_id, ` +
       `warehouse_valve_id, warehouse_issue_date, logged_at, returned_at, ${VALVE}`,
     order: 'logged_at', station: 'station_display', region: 'region_id',
+    dates: [
+      { column: 'logged_at', label: 'Entered the log' },
+      { column: 'warehouse_issue_date', label: 'Issued from warehouse' },
+      { column: 'returned_at', label: 'Returned' },
+    ],
   },
   calibration: {
     view: 'v_srv_calibration',
     columns: `id, status, warehouse_valve_id, sent_at, returned_at, certified_at, certificate_date, certificate_number, ` +
       `next_calibration_date, ${VALVE}`,
     order: 'sent_at', station: null, region: null,
+    dates: [
+      { column: 'sent_at', label: 'Sent' },
+      { column: 'returned_at', label: 'Returned' },
+      { column: 'certificate_date', label: 'Certificate' },
+    ],
   },
   emergency: {
     view: 'v_srv_emergency',
@@ -122,13 +133,65 @@ const SPECS = {
       'issued_code, set_pressure_raw, pressure_min, pressure_max, pressure_unit, replaced_installed_valve_id, ' +
       'replaced_serial, replaced_code, replaced_status, serial_number, manufacturer, size_type, inlet_size, outlet_size',
     order: 'issued_at', station: 'station_name', region: 'region_id',
+    dates: [{ column: 'issued_at', label: 'Issued' }],
   },
-} as const
+} as const satisfies Record<string, { view: string; columns: string; order: string; station: string | null; region: string | null; dates: DateOption[] }>
+
+/** The dates each workflow tab can be filtered by. */
+export const WORKFLOW_DATES = {
+  log: SPECS.log.dates, calibration: SPECS.calibration.dates, emergency: SPECS.emergency.dates,
+} as { log: DateOption[]; calibration: DateOption[]; emergency: DateOption[] }
+
+/** The tab's filters on a workflow query (everything except status), shared by the list and its counts. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function workflowFilters<B extends { ilike: any; lte: any; gte: any; lt: any; eq: any }>(b: B, kind: keyof typeof SPECS, f?: SrvSmartFilters): B {
+  if (!f) return b
+  const spec = SPECS[kind]
+  const dates = [...spec.dates] as DateOption[]
+  // Emergency rows carry the ISSUED valve's serial, manufacturer, size and pressure (view 20260928170000).
+  if (spec.station) return applySmartFilters(b, f, spec.station, spec.region ?? 'region_id', dates)
+  return applySmartFilters(b, { ...f, station: '', region: '' }, 'serial_number', 'region_id', dates)
+}
+
+/**
+ * How many rows each status holds under the tab's filters (owner request 2026-09-29: a count strip on the
+ * Calibration tab that follows the filters). One head-only count per status: exact, and never capped by the
+ * row limit the list itself uses.
+ */
+export function useWorkflowCounts(
+  kind: keyof typeof SPECS,
+  statuses: readonly string[],
+  filters: SrvSmartFilters,
+  nonce = 0,
+): Loadable<Record<string, number>> {
+  const supabase = useSupabaseClient()
+  const [state, setState] = useState<Loadable<Record<string, number>>>({ status: 'loading' })
+  const key = JSON.stringify({ statuses, filters })
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      if (!supabase) { if (!cancelled) setState({ status: 'unconfigured' }); return }
+      const o: { statuses: string[]; filters: SrvSmartFilters } = JSON.parse(key)
+      const spec = SPECS[kind]
+      const results = await Promise.all(o.statuses.map(async (st) => {
+        const b = workflowFilters(supabase.from(spec.view).select('id', { count: 'exact', head: true }), kind, o.filters)
+        const { count, error } = await b.eq('status', st)
+        return { st, count, error }
+      }))
+      if (cancelled) return
+      const failed = results.find((r) => r.error)
+      if (failed?.error) { setState({ status: 'error', message: failed.error.message }); return }
+      setState({ status: 'ready', data: Object.fromEntries(results.map((r) => [r.st, r.count ?? 0])) })
+    })()
+    return () => { cancelled = true }
+  }, [supabase, kind, key, nonce])
+  return state
+}
 
 export function useWorkflowList<T>(
   kind: keyof typeof SPECS,
   opts: { status?: string[]; filters?: SrvSmartFilters },
-): { state: Loadable<WorkflowList<T>>; reload: () => void } {
+): { state: Loadable<WorkflowList<T>>; reload: () => void; version: number } {
   const supabase = useSupabaseClient()
   const [state, setState] = useState<Loadable<WorkflowList<T>>>({ status: 'loading' })
   const [nonce, setNonce] = useState(0)
@@ -142,14 +205,8 @@ export function useWorkflowList<T>(
       if (!cancelled) setState({ status: 'loading' })
       const o: typeof opts = JSON.parse(key)
       const spec = SPECS[kind]
-      let b = supabase.from(spec.view).select(spec.columns, { count: 'exact' })
+      let b = workflowFilters(supabase.from(spec.view).select(spec.columns, { count: 'exact' }), kind, o.filters)
       if (o.status?.length) b = b.in('status', o.status)
-      if (o.filters) {
-        // Emergency rows carry the ISSUED valve's serial, manufacturer, size and pressure (view 20260928170000).
-        const f = o.filters
-        if (spec.station) b = applySmartFilters(b, f, spec.station, spec.region ?? 'region_id')
-        else b = applySmartFilters(b, { ...f, station: '', region: '' }, 'serial_number')
-      }
       const { data, error, count } = await b.order(spec.order, { ascending: false }).order('id').range(0, WORKFLOW_LIMIT - 1)
       if (cancelled) return
       if (error) { setState({ status: 'error', message: error.message }); return }
@@ -158,7 +215,7 @@ export function useWorkflowList<T>(
     return () => { cancelled = true }
   }, [supabase, kind, key, nonce])
 
-  return { state, reload }
+  return { state, reload, version: nonce }
 }
 
 export interface HistoryEvent {

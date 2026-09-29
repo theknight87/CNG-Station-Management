@@ -7,6 +7,8 @@ import { ErrorState, LoadingState, NotFound, NotImplemented } from '@/components
 import { Count, Fact, FactGrid } from '@/features/hierarchy/HierarchyPieces'
 import { StationsBrowser } from '@/features/hierarchy/StationsBrowser'
 import { useRegions } from '@/features/hierarchy/useHierarchy'
+import { regionTone } from '@/components/data/assetColors'
+import { cn } from '@/lib/utils'
 
 /**
  * One Region: its totals, and the Stations inside it.
@@ -46,9 +48,10 @@ export function RegionDetailView() {
   return (
     <PageContainer>
       <PageHeader title={region.region_name} description="Region totals and the Stations within it."
+                  leading={<span aria-hidden="true" className={cn('h-5 w-1.5 rounded-full', regionTone(region.region_name).dot)} />}
                   actions={<ScopeExport scope={{ kind: 'region', id: region.region_id, name: region.region_name }} />} />
 
-      <section aria-labelledby="region-totals" className="rounded border bg-card p-3">
+      <section aria-labelledby="region-totals" className={cn('rounded border border-l-4 bg-card p-3', regionTone(region.region_name).stripe)}>
         <SectionHeader id="region-totals" title="Region totals" />
         <div className="mt-2.5">
           <FactGrid>

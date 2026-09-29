@@ -1,6 +1,4 @@
-import { NavLink } from 'react-router-dom'
-
-import { cn } from '@/lib/utils'
+import { SectionTabs } from '@/components/layout/SectionTabs'
 import type { Loadable } from '@/features/hierarchy/useHierarchy'
 import type { UnitSummary } from '@/features/hierarchy/useHierarchy'
 
@@ -42,55 +40,16 @@ export function UnitTabs({
   const counts = summary.status === 'ready' && summary.data ? summary.data : null
 
   return (
-    <nav
-      aria-label="Unit sections"
-      // Scrolls rather than wrapping or shrinking: at 390px eight technical
-      // labels cannot fit, and truncating them into ambiguity is worse than a
-      // swipe. The page body still never scrolls sideways.
-      className="scrollbar-none -mx-3 overflow-x-auto border-b px-3 sm:-mx-4 sm:px-4"
-    >
-      <ul className="flex w-max items-stretch gap-0.5">
-        {TABS.map((tab) => {
-          const count = tab.key && counts ? (counts[tab.key] as number) : null
-          return (
-            <li key={tab.to || 'overview'}>
-              <NavLink
-                to={tab.to ? `/units/${unitId}/${tab.to}` : `/units/${unitId}`}
-                end={tab.to === ''}
-                className={({ isActive }) =>
-                  cn(
-                    'flex items-center gap-1.5 whitespace-nowrap border-b-2 px-2.5 py-1.5 text-sm transition-colors',
-                    isActive
-                      ? 'border-b-brand-strong font-semibold text-brand-strong'
-                      : 'border-b-transparent text-muted-foreground hover:border-b-border hover:text-foreground',
-                  )
-                }
-              >
-                {() => (
-                  <>
-                    {/* No aria-current here: NavLink already sets it on the
-                      * anchor, and a second one on the label announces "current
-                      * page" twice. The underline and the weight change are
-                      * what carry the state visually, so it is never colour
-                      * alone. */}
-                    <span>{tab.label}</span>
-                    {count !== null ? (
-                      <span
-                        className={cn(
-                          'tabular rounded px-1 text-xs',
-                          count === 0 ? 'text-muted-foreground' : 'bg-muted font-medium text-foreground',
-                        )}
-                      >
-                        {count}
-                      </span>
-                    ) : null}
-                  </>
-                )}
-              </NavLink>
-            </li>
-          )
-        })}
-      </ul>
-    </nav>
+    <SectionTabs
+      label="Unit sections"
+      compact
+      tabs={TABS.map((tab) => ({
+        to: tab.to ? `/units/${unitId}/${tab.to}` : `/units/${unitId}`,
+        end: tab.to === '',
+        label: tab.label,
+        // A count is shown only when it is known; a failed or loading summary shows none, never 0.
+        count: tab.key && counts ? (counts[tab.key] as number) : null,
+      }))}
+    />
   )
 }

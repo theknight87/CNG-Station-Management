@@ -22,6 +22,7 @@ import {
   AreaType, DetectorMappingBadge, DetectorStationCell, DetectorUnitCell, PresenceBadge,
 } from '@/features/gas-detectors/GasDetectorPieces'
 import {
+  DETECTOR_DATES,
   DEFAULT_DETECTOR_QUERY, detectorRowKey, useGasDetectorSummary, useGasDetectors,
   type DetectorQuery, type DetectorRegistryRow, type DetectorSort,
   detectorRequest,
@@ -326,7 +327,7 @@ export function GasDetectorsView() {
           </span>
         </DataToolbar>
         <AssetFilterBar id="gas-detectors" value={query.filters} onChange={(filters) => update({ filters })}
-                        makers={makers.length ? makers : undefined} />
+                        makers={makers.length ? makers : undefined} dates={DETECTOR_DATES} />
 
         <RegistryTable
 
@@ -354,7 +355,7 @@ export function GasDetectorsView() {
               </Fact>
               <Fact label="Manufacturer"><Text value={r.manufacturer} /></Fact>
               <Fact label="Model"><Text value={r.model} /></Fact>
-              <Fact label="Region"><Text value={r.region_name} /></Fact>
+              <Fact label="Region"><RegionChip name={r.region_name} /></Fact>
               <Fact label="Station"><Text value={r.station_name} /></Fact>
               <Fact label="Unit"><DetectorUnitCell row={r} /></Fact>
               <Fact label="Mapping"><DetectorMappingBadge status={r.mapping_status} /></Fact>

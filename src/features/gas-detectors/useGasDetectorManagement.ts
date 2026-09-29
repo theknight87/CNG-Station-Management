@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { useCallback, useEffect, useState } from 'react'
 
+import type { DateOption } from '@/components/data/dateRange'
 import { applyAssetFilters, EMPTY_ASSET_FILTERS, hasAssetFilters, type AssetFilters } from '@/components/data/assetFilters'
 import type { RegistryPage } from '@/components/data/RegistryTable'
 import { useSupabaseClient } from '@/lib/supabase/client'
@@ -173,11 +174,16 @@ const SORT_COLUMNS: Record<DetectorSort, string[]> = {
 
 const TIE_BREAK = ['detector_id', 'station_id', 'unit_id']
 
+export const DETECTOR_DATES: DateOption[] = [
+  { column: 'next_calibration_date', label: 'Next calibration', precision: 'next_calibration_precision' },
+  { column: 'last_calibration_date', label: 'Last calibration', precision: 'last_calibration_precision' },
+]
+
 /**
  * Every filter the registry applies (no sort, no paging): the table AND its summary use this, so they agree.
  * The summary pins presence itself, so it passes withPresence = false.
  */
-export function applyDetectorQuery<B extends { eq: any; in: any; or: any; ilike: any; lte: any; gte: any }>( // eslint-disable-line @typescript-eslint/no-explicit-any
+export function applyDetectorQuery<B extends { eq: any; in: any; or: any; ilike: any; lte: any; gte: any; lt: any }>( // eslint-disable-line @typescript-eslint/no-explicit-any
   b: B, q: DetectorQuery, withPresence = true,
 ): B {
   const term = q.search.trim()
@@ -189,7 +195,7 @@ export function applyDetectorQuery<B extends { eq: any; in: any; or: any; ilike:
   if (q.due === 'overdue') b = b.eq('due_status', 'overdue')
   if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
   if (q.due === 'attention') b = b.in('due_status', ATTENTION_BUCKETS)
-  b = applyAssetFilters(b, q.filters, { serial: 'serial_number', station: 'station_name', maker: 'manufacturer' })
+  b = applyAssetFilters(b, q.filters, { serial: 'serial_number', station: 'station_name', maker: 'manufacturer', dates: DETECTOR_DATES })
   if (term) {
     // Retrieval only. Matching a station name here RESOLVES NOTHING — no
     // mapping state is advanced by a search hit. The folded form is offered

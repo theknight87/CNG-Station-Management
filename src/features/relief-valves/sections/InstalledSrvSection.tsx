@@ -18,6 +18,7 @@ import { ValveHistory } from '@/features/relief-valves/SrvWorkflowPieces'
 import { ManufacturerChip, RegionChip, SmartFilterBar, MappingBadge, Metric, ParentCell, SourceContext } from '@/features/relief-valves/SrvPieces'
 import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
 import {
+  INSTALLED_DATES,
   hasSmartFilters,
   DEFAULT_INSTALLED_QUERY, useInstalledSrvs, useInstalledSummary,
   type InstalledQuery, type InstalledSrvRow, type InstalledSort,
@@ -271,7 +272,7 @@ export function InstalledSrvSection() {
           <ExportButtons name="installed-srvs" load={queryLoader(supabase, 'Installed SRVs', INSTALLED_SRV_COLUMNS, (c) => installedRequest(c, query))} />
         </span>
       </DataToolbar>
-      <SmartFilterBar id="installed-srv" stationLabel="Station" showRegion={false} value={query.filters} onChange={(filters) => update({ filters })} />
+      <SmartFilterBar id="installed-srv" stationLabel="Station" showRegion={false} value={query.filters} onChange={(filters) => update({ filters })} dates={INSTALLED_DATES} />
 
       <RegistryTable
 
@@ -319,7 +320,7 @@ export function InstalledSrvSection() {
               {r.mapping_status === 'needs_station_mapping' ? (
                 <span className="text-muted-foreground">Not confirmed</span>
               ) : (
-                <Text value={r.region_name} />
+                <RegionChip name={r.region_name} />
               )}
             </Fact>
             <Fact label="Station">

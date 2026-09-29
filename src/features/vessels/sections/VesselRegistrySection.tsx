@@ -23,6 +23,7 @@ import {
 } from '@/features/vessels/VesselPieces'
 import { RelatedSrvs } from '@/features/vessels/RelatedSrvs'
 import {
+  VESSEL_DATES,
   DEFAULT_VESSEL_QUERY, useVessels, useVesselSummary,
   type VesselAssetType, type VesselQuery, type VesselRegistryRow, type VesselSort,
   vesselRequest,
@@ -258,7 +259,7 @@ export function VesselRegistrySection({ assetType }: { assetType: VesselAssetTyp
                          load={queryLoader(supabase, label.plural, VESSEL_COLUMNS, (c) => vesselRequest(c, assetType, query))} />
         </span>
       </DataToolbar>
-      <AssetFilterBar id={`vessel-${assetType}`} value={query.filters} onChange={(filters) => update({ filters })} makers={makers} />
+      <AssetFilterBar id={`vessel-${assetType}`} value={query.filters} onChange={(filters) => update({ filters })} makers={makers} dates={VESSEL_DATES} />
 
       <RegistryTable
 
@@ -295,7 +296,7 @@ export function VesselRegistrySection({ assetType }: { assetType: VesselAssetTyp
               {r.mapping_status === 'needs_station_mapping' ? (
                 <span className="text-muted-foreground">Not confirmed</span>
               ) : (
-                <Text value={r.region_name} />
+                <RegionChip name={r.region_name} />
               )}
             </Fact>
             <Fact label="Station">

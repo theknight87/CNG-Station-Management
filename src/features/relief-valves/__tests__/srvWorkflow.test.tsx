@@ -81,13 +81,14 @@ describe('Calibration (3rd party)', () => {
       { ...valve, id: 'j2', status: 'returned_awaiting_certificate', warehouse_valve_id: 'w2', sent_at: '2026-09-01T00:00:00Z', returned_at: '2026-09-10T00:00:00Z' },
     ]
     const user = userEvent.setup()
-    const { container } = render(<SrvCalibrationSection />)
+    render(<SrvCalibrationSection />)
     await user.click(await screen.findByRole('checkbox', { name: 'Select all' }))
     // "Returned — certificate awaited" only applies when every ticked valve is still at the company.
     expect((screen.getByRole('button', { name: /returned — certificate awaited \(2\)/i }) as HTMLButtonElement).disabled).toBe(true)
     const certify = screen.getByRole('button', { name: /returned with certificate \(2\)/i }) as HTMLButtonElement
     expect(certify.disabled).toBe(true)
-    await user.type(container.querySelector('input[type=date]') as HTMLInputElement, '2026-09-15')
+    // The certificate date — not the date filter's From/To, which sit in the filter bar above.
+    await user.type(screen.getByLabelText('Certificate date'), '2026-09-15')
     await user.click(certify)
     expect(calls.rpc.find(([fn]) => fn === 'cng_srv_calibration_certify')![1]).toEqual({
       p_job_ids: ['j1', 'j2'], p_certificate_date: '2026-09-15', p_certificate_number: null, p_next_calibration_date: null,

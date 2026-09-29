@@ -1,5 +1,8 @@
 import { Link } from 'react-router-dom'
 
+import { RegionChip } from '@/components/data/AssetChips'
+import { regionTone } from '@/components/data/assetColors'
+import { cn } from '@/lib/utils'
 import { DataTable, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll, RowHeaderCell } from '@/components/data/DataTable'
 import { PageContainer, PageHeader } from '@/components/layout/PageContainer'
 import { EmptyState, ErrorState, LoadingState, NotImplemented } from '@/components/states/AppStates'
@@ -64,12 +67,15 @@ export function RegionsView() {
             <TableBody>
               {state.data.map((region) => (
                 <TableRow key={region.region_id}>
-                  <RowHeaderCell>
+                  {/* Each Region keeps one colour across the product (owner request 2026-09-29): the edge of its
+                    * row and its chip. The name is always written, so colour is never the only signal. */}
+                  <RowHeaderCell className={cn('border-l-4', regionTone(region.region_name).stripe)}>
                     <Link
                       to={`/regions/${region.region_id}`}
-                      className="rounded font-medium text-brand-strong underline-offset-4 hover:underline"
+                      aria-label={region.region_name}
+                      className="inline-flex rounded-full underline-offset-4 transition-shadow hover:underline hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                      {region.region_name}
+                      <RegionChip name={region.region_name} size="md" />
                     </Link>
                   </RowHeaderCell>
                   <TableCell align="right" numeric><Count value={region.stations} /></TableCell>

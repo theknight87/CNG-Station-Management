@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { useCallback, useEffect, useState } from 'react'
 
+import type { DateOption } from '@/components/data/dateRange'
 import { applyAssetFilters, EMPTY_ASSET_FILTERS, hasAssetFilters, type AssetFilters } from '@/components/data/assetFilters'
 import type { RegistryPage } from '@/components/data/RegistryTable'
 import { useSupabaseClient } from '@/lib/supabase/client'
@@ -148,7 +149,7 @@ const SORT_COLUMNS: Record<VesselSort, string[]> = {
 
 /** Every filter the registry applies (no sort, no paging): the table AND its summary use this, so they agree. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function applyVesselQuery<B extends { eq: any; in: any; or: any; ilike: any; lte: any; gte: any }>(b: B, q: VesselQuery): B {
+export function applyVesselQuery<B extends { eq: any; in: any; or: any; ilike: any; lte: any; gte: any; lt: any }>(b: B, q: VesselQuery): B {
   const term = q.search.trim()
   if (q.regionId) b = b.eq('region_id', q.regionId)
   if (q.mapping !== 'all') b = b.eq('mapping_status', q.mapping)
@@ -156,7 +157,7 @@ export function applyVesselQuery<B extends { eq: any; in: any; or: any; ilike: a
   if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
   if (q.due === 'attention') b = b.in('due_status', ATTENTION_BUCKETS)
   if (q.duplicateSerial) b = b.eq('serial_duplicate', true)
-  b = applyAssetFilters(b, q.filters, { serial: 'serial_number', station: 'station_name', maker: 'manufacturer' })
+  b = applyAssetFilters(b, q.filters, { serial: 'serial_number', station: 'station_name', maker: 'manufacturer', dates: VESSEL_DATES })
   if (term) {
     // Retrieval only. Matching a station name here resolves nothing; the
     // folded form is offered so an Arabic query typed one way finds the
@@ -175,6 +176,11 @@ export function applyVesselQuery<B extends { eq: any; in: any; or: any; ilike: a
   }
   return b
 }
+
+export const VESSEL_DATES: DateOption[] = [
+  { column: 'next_inspection_date', label: 'Next inspection', precision: 'next_inspection_precision' },
+  { column: 'last_inspection_date', label: 'Last inspection', precision: 'last_inspection_precision' },
+]
 
 /** Overdue PLUS every due bucket out to 60 days. Stated, never left ambiguous. */
 const ATTENTION_BUCKETS = ['overdue', 'due_today', 'due_7', 'due_15', 'due_30', 'due_60']

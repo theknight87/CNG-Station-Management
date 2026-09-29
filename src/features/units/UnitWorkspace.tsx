@@ -11,6 +11,7 @@ import { ErrorState, LoadingState, NotFound, NotImplemented } from '@/components
 import { AttentionBadge, EntityLink } from '@/features/hierarchy/HierarchyPieces'
 import { useUnit } from '@/features/hierarchy/useHierarchy'
 import { UnitTabs } from '@/features/units/UnitTabs'
+import { RegionChip } from '@/components/data/AssetChips'
 
 /**
  * The Unit workspace: a compact technical header, routed sub-navigation, and
@@ -78,7 +79,7 @@ export function UnitWorkspace() {
               <EntityName name={unit.station_name} />
             </EntityLink>
             <span aria-hidden="true">·</span>
-            <span>{unit.region_name} Region</span>
+            <RegionChip name={unit.region_name} />
             <span aria-hidden="true">·</span>
             <span className="inline-flex items-center gap-1">
               Job number{' '}

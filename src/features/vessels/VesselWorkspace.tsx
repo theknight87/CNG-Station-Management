@@ -1,7 +1,8 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { Container, RotateCcw } from 'lucide-react'
+import { Outlet } from 'react-router-dom'
 
 import { PageContainer, PageHeader } from '@/components/layout/PageContainer'
-import { cn } from '@/lib/utils'
+import { SectionTabs, type SectionTab } from '@/components/layout/SectionTabs'
 
 /**
  * Vessels Management.
@@ -16,9 +17,9 @@ import { cn } from '@/lib/utils'
  * `/manage/vessels` remains the canonical entry and lands on Storage Vessels.
  */
 
-const SECTIONS = [
-  { to: 'storage', label: 'Storage Vessels', hint: 'Pressure storage, may carry relief valves' },
-  { to: 'recovery', label: 'Recovery Tanks', hint: 'Recovery vessels, no relief-valve relationship' },
+const SECTIONS: SectionTab[] = [
+  { to: '/manage/vessels/storage', icon: Container, label: 'Storage Vessels', hint: 'Pressure storage, may carry relief valves' },
+  { to: '/manage/vessels/recovery', icon: RotateCcw, label: 'Recovery Tanks', hint: 'Recovery vessels, no relief-valve relationship' },
 ]
 
 export function VesselWorkspace() {
@@ -29,33 +30,7 @@ export function VesselWorkspace() {
         description="Storage Vessels and Recovery Tanks across every Region you are authorized for, with their inspection status."
       />
 
-      <nav aria-label="Vessel types" className="scrollbar-none -mx-3 overflow-x-auto border-b px-3 sm:-mx-4 sm:px-4">
-        <ul className="flex w-max items-stretch gap-0.5">
-          {SECTIONS.map((s) => (
-            <li key={s.to}>
-              <NavLink
-                to={`/manage/vessels/${s.to}`}
-                className={({ isActive }) =>
-                  cn(
-                    'flex flex-col whitespace-nowrap border-b-2 px-3 py-1.5 transition-colors',
-                    isActive
-                      ? 'border-b-brand-strong text-brand-strong'
-                      : 'border-b-transparent text-muted-foreground hover:border-b-border hover:text-foreground',
-                  )
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    {/* Underline, weight and aria-current — never colour alone. */}
-                    <span className={cn('text-sm', isActive && 'font-semibold')}>{s.label}</span>
-                    <span className="text-xs text-muted-foreground">{s.hint}</span>
-                  </>
-                )}
-              </NavLink>
-            </li>
-          ))}
-        </ul>
-      </nav>
+      <SectionTabs label="Vessel types" tabs={SECTIONS} />
 
       <Outlet />
     </PageContainer>

@@ -1,9 +1,9 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { Outlet } from 'react-router-dom'
 
 import { PageContainer, PageHeader } from '@/components/layout/PageContainer'
 import { PermissionDenied } from '@/components/states/AppStates'
 import { useAppUser } from '@/hooks/useAppUser'
-import { cn } from '@/lib/utils'
+import { SectionTabs } from '@/components/layout/SectionTabs'
 
 /**
  * The Reports workspace.
@@ -54,24 +54,7 @@ export function ReportsView() {
         title="Reports"
         description="Operational compliance reporting. Every figure is read from live records within your authorized Regions — nothing here is stored, cached or hard-coded."
       />
-      <nav aria-label="Report categories" className="flex flex-wrap gap-1 border-b">
-        {SECTIONS.map((section) => (
-          <NavLink
-            key={section.to}
-            to={section.to}
-            className={({ isActive }) =>
-              cn(
-                'border-b-2 px-2 py-1 text-sm',
-                isActive
-                  ? 'border-[--brand-strong] font-medium text-[--brand-strong]'
-                  : 'border-transparent text-muted-foreground hover:text-foreground',
-              )
-            }
-          >
-            {section.label}
-          </NavLink>
-        ))}
-      </nav>
+      <SectionTabs label="Report categories" tabs={SECTIONS} compact />
       <Outlet />
     </PageContainer>
   )

@@ -9,6 +9,7 @@ function builder() {
     ilike(c: string, v: unknown) { calls.push(['ilike', c, v]); return b },
     lte(c: string, v: unknown) { calls.push(['lte', c, v]); return b },
     gte(c: string, v: unknown) { calls.push(['gte', c, v]); return b },
+    lt(c: string, v: unknown) { calls.push(['lt', c, v]); return b },
     eq(c: string, v: unknown) { calls.push(['eq', c, v]); return b },
   }
   return { b, calls }
@@ -17,7 +18,7 @@ function builder() {
 describe('registry filters (Vessels, Gas Detectors, Hoses)', () => {
   it('serial, station, manufacturer and a pressure range', () => {
     const { b, calls } = builder()
-    applyAssetFilters(b, { serial: 'A1', station: 'الهرم', maker: 'Safe', pressure: '30-35', pressureUnit: 'BAR' },
+    applyAssetFilters(b, { ...EMPTY_ASSET_FILTERS, serial: 'A1', station: 'الهرم', maker: 'Safe', pressure: '30-35', pressureUnit: 'BAR' },
       { serial: 'serial_number', station: 'station_name', maker: 'manufacturer', pressure: 'working_pressure_value', pressureUnit: 'working_pressure_unit' })
     expect(calls).toEqual([
       ['ilike', 'serial_number', '%A1%'], ['ilike', 'station_name', '%الهرم%'], ['ilike', 'manufacturer', 'Safe'],
