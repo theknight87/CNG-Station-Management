@@ -98,7 +98,7 @@ export function SortableHeader({
   children: ReactNode
   sort?: SortDirection
   onSort?: () => void
-  align?: 'left' | 'right'
+  align?: 'left' | 'center' | 'right'
 } & ThHTMLAttributes<HTMLTableCellElement>) {
   const ariaSort = sort === 'asc' ? 'ascending' : sort === 'desc' ? 'descending' : 'none'
   const Arrow = sort === 'asc' ? ArrowUp : sort === 'desc' ? ArrowDown : ChevronsUpDown
@@ -109,7 +109,7 @@ export function SortableHeader({
       aria-sort={onSort ? ariaSort : undefined}
       className={cn(
         'whitespace-nowrap border-b px-[--table-cell-x] py-[--table-cell-y] text-xs font-semibold uppercase leading-tight tracking-wide text-muted-foreground',
-        align === 'right' ? 'text-right' : 'text-left',
+        align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left',
         className,
       )}
       {...rest}
@@ -121,6 +121,7 @@ export function SortableHeader({
           className={cn(
             'flex w-full items-center gap-1 rounded font-semibold uppercase tracking-wide hover:text-foreground',
             align === 'right' && 'justify-end',
+            align === 'center' && 'justify-center',
           )}
         >
           <span>{children}</span>
@@ -138,7 +139,7 @@ export function TableHeader({
   align = 'left',
   className,
   ...rest
-}: { children: ReactNode; align?: 'left' | 'right' } & ThHTMLAttributes<HTMLTableCellElement>) {
+}: { children: ReactNode; align?: 'left' | 'center' | 'right' } & ThHTMLAttributes<HTMLTableCellElement>) {
   return (
     <SortableHeader align={align} className={className} {...rest}>
       {children}
@@ -184,7 +185,7 @@ export function TableCell({
   dataLabel,
 }: {
   children: ReactNode
-  align?: 'left' | 'right'
+  align?: 'left' | 'center' | 'right'
   numeric?: boolean
   /** Opt in to wrapping, for a genuinely long free-text column such as notes. */
   wrap?: boolean
@@ -196,7 +197,7 @@ export function TableCell({
       data-label={dataLabel}
       className={cn(
         'h-[--table-row-height] whitespace-nowrap px-[--table-cell-x] py-[--table-cell-y] align-middle',
-        align === 'right' ? 'text-right' : 'text-left',
+        align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left',
         numeric && 'tabular',
         wrap && 'whitespace-normal',
         className,

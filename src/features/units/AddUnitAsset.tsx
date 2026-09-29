@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Plus } from 'lucide-react'
 
-import { parseRange } from '@/components/data/assetFilters'
+import { oneYearAfter, parsePressure } from '@/features/record-tools/recordTools'
 import { RecordDetailsDialog } from '@/components/data/RecordDetailsDialog'
 import { Button } from '@/components/ui/button'
 import { FormMessage } from '@/features/relief-valves/SrvWorkflowPieces'
@@ -22,15 +22,18 @@ const COMMON_DATES = (what: string): Field[] => [
   { key: 'next_date', label: `Next ${what}`, type: 'date' },
 ]
 
+/** Relief valves and gas detectors: next calibration is always one year after the last, so it is never typed. */
+const ANNUAL_DATES: Field[] = [{ key: 'last_date', label: 'Last calibration', type: 'date' }]
+
 const FIELDS: Record<AssetKind, { title: string; fields: Field[]; note?: string }> = {
   srv: {
     title: 'relief valve',
-    note: 'Installed on this Unit. Which compressor, vessel or dispenser it sits on is left for mapping — never guessed. Empty next calibration = one year after the last.',
+    note: 'Installed on this Unit. Which compressor, vessel or dispenser it sits on is left for mapping — never guessed. Next calibration is set to one year after the last.',
     fields: [
       { key: 'serial_number', label: 'Serial' }, { key: 'manufacturer', label: 'Manufacturer' }, { key: 'part_number', label: 'Part number' },
       { key: 'size_type', label: 'Size type', type: 'size' }, { key: 'inlet_size', label: 'Inlet' }, { key: 'outlet_size', label: 'Outlet' },
-      { key: 'pressure', label: 'Set pressure (275 or 270-280)', type: 'range' }, { key: 'pressure_unit', label: 'Unit', type: 'unit' },
-      { key: 'warehouse_code', label: 'Warehouse code' }, ...COMMON_DATES('calibration'), { key: 'notes', label: 'Notes' },
+      { key: 'pressure', label: 'Set pressure', type: 'number' }, { key: 'pressure_unit', label: 'Unit', type: 'unit' },
+      { key: 'warehouse_code', label: 'Warehouse code' }, ...ANNUAL_DATES, { key: 'notes', label: 'Notes' },
     ],
   },
   storage_vessel: { title: 'storage vessel', fields: [
@@ -39,9 +42,9 @@ const FIELDS: Record<AssetKind, { title: string; fields: Field[]; note?: string 
   recovery_tank: { title: 'recovery tank', fields: [
     { key: 'serial_number', label: 'Serial' }, { key: 'manufacturer', label: 'Manufacturer' }, { key: 'model', label: 'Model' },
     ...COMMON_DATES('inspection'), { key: 'notes', label: 'Notes' }] },
-  gas_detector: { title: 'gas detector', fields: [
+  gas_detector: { title: 'gas detector', note: 'Next calibration is set to one year after the last.', fields: [
     { key: 'serial_number', label: 'Serial' }, { key: 'manufacturer', label: 'Manufacturer' }, { key: 'model', label: 'Model' },
-    ...COMMON_DATES('calibration'), { key: 'notes', label: 'Notes' }] },
+    ...ANNUAL_DATES, { key: 'notes', label: 'Notes' }] },
   dispenser: { title: 'dispenser', fields: [
     { key: 'dispenser_name', label: 'Dispenser name' }, { key: 'manufacturer', label: 'Manufacturer' }, { key: 'model', label: 'Model' },
     { key: 'serial_number', label: 'Serial' }, { key: 'number_of_hoses', label: 'Number of hoses', type: 'number' }, { key: 'notes', label: 'Notes' }] },
@@ -86,13 +89,15 @@ function AddDialog({ kind, unitId, unitName, onClose, onAdded }: {
     setError(null)
     const p: Record<string, unknown> = { ...values }
     if ('pressure' in values) {
-      const range = parseRange(values.pressure)
-      if (values.pressure.trim() && !range) { setError('Set pressure: one value (275) or a range (270-280).'); return }
+      // One set pressure, no range (owner ruling 2026-09-29).
+      const value = parsePressure(values.pressure)
+      if (value === undefined) { setError('Set pressure: write one number, e.g. 275.'); return }
       delete p.pressure
-      p.pressure_min = range?.lo ?? null
-      p.pressure_max = range?.hi ?? null
-      if (!range) p.pressure_unit = null
+      p.pressure_min = value
+      p.pressure_max = value
+      if (value === null) p.pressure_unit = null
     }
+    if (kind === 'srv' || kind === 'gas_detector') p.next_date = values.last_date ? oneYearAfter(values.last_date) : null
     // A unit beside an empty value would record a unit for nothing.
     if ('working_pressure_value' in values && !values.working_pressure_value.trim()) p.working_pressure_unit = null
     if ('test_pressure_value' in values && !values.test_pressure_value.trim()) p.test_pressure_unit = null

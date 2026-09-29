@@ -5,8 +5,8 @@ import { Button } from '@/components/ui/button'
 import { useOptionalAppUser } from '@/hooks/useAppUser'
 import { useSupabaseClient } from '@/lib/supabase/client'
 import {
-  MAX_PHOTO_BYTES, PHOTO_BUCKET, PHOTO_TYPES, asText, columnLabel, toValue,
-  type ColumnMeta, type RecordRef, type Row,
+  ANNUAL_CALIBRATION_TABLES, MAX_PHOTO_BYTES, PHOTO_BUCKET, PHOTO_TYPES, asText, columnLabel, hiddenInEditor, oneYearAfter,
+  parsePressure, toValue, type ColumnMeta, type RecordRef, type Row,
 } from './recordTools'
 
 /**
@@ -19,6 +19,16 @@ import {
  * under each table's own RLS; only an admin can add or remove one, and removing
  * archives it.
  */
+
+/** The draft key of the single "Set pressure" field that stands for pressure_min and pressure_max. */
+const PRESSURE = 'set_pressure'
+
+/** What the single pressure field starts with: the one value, or the old range written out as recorded. */
+function pressureText(row: Row): string {
+  const min = row.pressure_min as number | null, max = row.pressure_max as number | null
+  if (min !== null && max !== null && min !== max) return `${min}-${max}`
+  return asText(min ?? max)
+}
 
 function friendly(error: { code?: string; message?: string } | null): string {
   if (!error) return 'The change could not be saved.'
@@ -48,6 +58,12 @@ function EditPanel({ record, onSaved }: { record: RecordRef; onSaved?: () => voi
   const [draft, setDraft] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
+  const has = (name: string) => columns.some((c) => c.name === name)
+  const singlePressure = has('pressure_min') && has('pressure_max')
+  const annual = ANNUAL_CALIBRATION_TABLES.includes(record.table)
+  // The fields an admin actually types. Precision, serial status, review flags and (for annual items) the next
+  // calibration are derived on save; pressure_min/pressure_max become one "Set pressure" field.
+  const shown = columns.filter((c) => !hiddenInEditor(record.table, c.name) && !(singlePressure && (c.name === 'pressure_min' || c.name === 'pressure_max')))
 
   const load = useCallback(async () => {
     if (!supabase) return
@@ -57,15 +73,28 @@ function EditPanel({ record, onSaved }: { record: RecordRef; onSaved?: () => voi
     const payload = data as { row: Row; columns: ColumnMeta[] }
     setRow(payload.row)
     setColumns(payload.columns)
-    setDraft(Object.fromEntries(payload.columns.map((c) => [c.name, asText(payload.row[c.name])])))
+    setDraft({ ...Object.fromEntries(payload.columns.map((c) => [c.name, asText(payload.row[c.name])])), [PRESSURE]: pressureText(payload.row) })
   }, [supabase, record.table, record.id])
 
   async function save(event: FormEvent) {
     event.preventDefault()
     if (!supabase || !row) return
     const changes: Record<string, unknown> = {}
-    for (const c of columns) {
+    for (const c of shown) {
       if (draft[c.name] !== asText(row[c.name])) changes[c.name] = toValue(c, draft[c.name])
+    }
+    // One set pressure, no range (owner ruling 2026-09-29): it is written to both ends.
+    if (singlePressure && draft[PRESSURE] !== pressureText(row)) {
+      const value = parsePressure(draft[PRESSURE])
+      if (value === undefined) { setMessage({ kind: 'error', text: 'Set pressure: write one number, e.g. 275.' }); return }
+      changes.pressure_min = value
+      changes.pressure_max = value
+    }
+    // The serial status follows the serial: typed means assigned, cleared means unknown.
+    if ('serial_number' in changes && has('serial_status')) changes.serial_status = changes.serial_number === null ? 'unknown' : 'assigned'
+    // Relief valves and gas detectors: next calibration is always one year after the last.
+    if ('last_calibration_date' in changes && ANNUAL_CALIBRATION_TABLES.includes(record.table) && has('next_calibration_date')) {
+      changes.next_calibration_date = changes.last_calibration_date === null ? null : oneYearAfter(String(changes.last_calibration_date))
     }
     // A date typed in full is an exact date; keep its precision column in step.
     for (const name of Object.keys(changes)) {
@@ -101,9 +130,19 @@ function EditPanel({ record, onSaved }: { record: RecordRef; onSaved?: () => voi
     <form onSubmit={save} className="space-y-3" aria-label="Edit record">
       <p className="text-xs text-muted-foreground">
         Hierarchy links, mapping state and the original source text are not editable here. Leave a field empty to clear it.
+        {annual && has('next_calibration_date') ? ' Next calibration is set automatically to one year after the last calibration.' : ''}
       </p>
       <div className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
-        {columns.map((c) => {
+        {columns.filter((c) => shown.includes(c) || (singlePressure && c.name === 'pressure_min')).map((c) => {
+          if (c.name === 'pressure_min' && singlePressure) {
+            return (
+              <label key={PRESSURE} htmlFor="edit-set-pressure" className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+                Set pressure
+                <input id="edit-set-pressure" inputMode="decimal" className="h-8 w-full rounded border bg-background px-2 text-sm"
+                       value={draft[PRESSURE] ?? ''} onChange={(e) => setDraft({ ...draft, [PRESSURE]: e.target.value })} />
+              </label>
+            )
+          }
           const id = `edit-${c.name}`
           const common = 'h-8 w-full rounded border bg-background px-2 text-sm'
           return (

@@ -63,7 +63,8 @@ describe('admin record tools', () => {
 
   it('ADMINUI-2 admin saves ONLY the changed fields with the version read, and a typed date becomes exact', async () => {
     const user = userEvent.setup()
-    render(<RecordAdminTools record={{ table: 'installed_relief_valves', id: 'r1' }} />)
+    // A table whose next date is typed (relief valves and gas detectors derive it: see recordEditorRules.test.tsx).
+    render(<RecordAdminTools record={{ table: 'compressors', id: 'r1' }} />)
     await user.click(await screen.findByRole('button', { name: /edit record/i }))
     const serial = await screen.findByLabelText('Serial number')
     await user.clear(serial); await user.type(serial, 'S-2')
@@ -72,7 +73,7 @@ describe('admin record tools', () => {
     await user.click(screen.getByRole('button', { name: /save changes/i }))
     const save = calls.rpc.find(([fn]) => fn === 'cng_admin_update_record')!
     expect(save[1]).toEqual({
-      p_table: 'installed_relief_valves', p_id: 'r1', p_expected_updated_at: row.updated_at,
+      p_table: 'compressors', p_id: 'r1', p_expected_updated_at: row.updated_at,
       p_changes: { serial_number: 'S-2', next_calibration_date: '2027-01-31', next_calibration_precision: 'exact_date' },
     })
     expect(await screen.findByText(/in the audit log/i)).toBeDefined()

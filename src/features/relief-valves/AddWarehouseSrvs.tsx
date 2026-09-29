@@ -3,7 +3,7 @@ import { Plus } from 'lucide-react'
 
 import { RecordDetailsDialog } from '@/components/data/RecordDetailsDialog'
 import { Button } from '@/components/ui/button'
-import { parseRange } from '@/components/data/assetFilters'
+import { oneYearAfter, parsePressure } from '@/features/record-tools/recordTools'
 import { FormMessage } from '@/features/relief-valves/SrvWorkflowPieces'
 import { useIsAdmin, useWorkflowAction } from '@/features/relief-valves/useSrvWorkflow'
 
@@ -45,25 +45,25 @@ function AddDialog({ onClose, onAdded }: { onClose: () => void; onAdded: () => v
   const [unit, setUnit] = useState('BAR')
   const [code, setCode] = useState('')
   const [lastCal, setLastCal] = useState('')
-  const [nextCal, setNextCal] = useState('')
   const [notes, setNotes] = useState('')
   const { run, busy } = useWorkflowAction()
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
 
   const serialList = serials.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean)
-  const range = parseRange(pressure)
+  const pressureValue = parsePressure(pressure)
   const count = serialList.length || Number(quantity) || 0
 
   async function save() {
     setError(null); setDone(null)
-    if (pressure.trim() && !range) { setError('Set pressure: write one value (275) or a range (270-280).'); return }
+    if (pressureValue === undefined) { setError('Set pressure: write one number, e.g. 275.'); return }
     const err = await run('cng_admin_add_warehouse_srvs', {
       p: {
         availability, serials: serialList, quantity: serialList.length ? null : Number(quantity) || null,
         manufacturer, part_number: partNumber, size_type: sizeType, inlet_size: inlet, outlet_size: outlet,
-        pressure_min: range?.lo ?? null, pressure_max: range?.hi ?? null, pressure_unit: range ? unit : null,
-        warehouse_code: code, last_calibration_date: lastCal || null, next_calibration_date: nextCal || null, notes,
+        // One set pressure, no range; next calibration one year after the last (owner ruling 2026-09-29).
+        pressure_min: pressureValue ?? null, pressure_max: pressureValue ?? null, pressure_unit: pressureValue == null ? null : unit,
+        warehouse_code: code, last_calibration_date: lastCal || null, next_calibration_date: lastCal ? oneYearAfter(lastCal) : null, notes,
       },
     })
     if (err) { setError(err); return }
@@ -118,8 +118,8 @@ function AddDialog({ onClose, onAdded }: { onClose: () => void; onAdded: () => v
         </label>
         <div className="flex gap-2">
           <label className={`${field} flex-1`}>Set pressure
-            <input inputMode="decimal" className={`${input} text-right tabular`} value={pressure} placeholder="275 or 270-280"
-                   onChange={(e) => setPressure(e.target.value.replace(/[^\d.\-– ]/g, ''))} />
+            <input inputMode="decimal" className={`${input} text-right tabular`} value={pressure} placeholder="275"
+                   onChange={(e) => setPressure(e.target.value.replace(/[^\d.]/g, ''))} />
           </label>
           <label className={field}>Unit
             <select className={input} value={unit} onChange={(e) => setUnit(e.target.value)}>
@@ -131,9 +131,7 @@ function AddDialog({ onClose, onAdded }: { onClose: () => void; onAdded: () => v
         <label className={field}>Last calibration
           <input type="date" className={input} value={lastCal} onChange={(e) => setLastCal(e.target.value)} />
         </label>
-        <label className={field}>Next calibration (empty = one year after the last)
-          <input type="date" className={input} value={nextCal} onChange={(e) => setNextCal(e.target.value)} />
-        </label>
+        <p className="self-end pb-2 text-xs text-muted-foreground">Next calibration: one year after the last, set automatically.</p>
         <label className={`${field} sm:col-span-2`}>Notes
           <input dir="auto" className={input} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </label>

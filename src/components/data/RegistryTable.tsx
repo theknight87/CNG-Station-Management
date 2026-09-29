@@ -36,7 +36,7 @@ export interface RegistryPage<T> {
 export interface RegistryColumn<T> {
   key: string
   header: string
-  align?: 'left' | 'right'
+  align?: 'left' | 'center' | 'right'
   numeric?: boolean
   rowHeader?: boolean
   /** Sort key understood by the query; omit for a non-sortable column. */

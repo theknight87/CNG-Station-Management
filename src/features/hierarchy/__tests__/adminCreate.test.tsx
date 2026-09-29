@@ -36,17 +36,20 @@ describe('Admin create forms (owner request 2026-09-28)', () => {
     expect(created).toHaveBeenCalled()
   })
 
-  it('Add relief valves: one per serial line, a pressure range, and the condition', async () => {
+  it('Add relief valves: one per serial line, one set pressure, the condition, and next calibration a year after the last', async () => {
     render(<AddWarehouseSrvsButton onAdded={() => {}} />)
     await userEvent.click(screen.getByRole('button', { name: /add relief valves/i }))
     await userEvent.selectOptions(screen.getByLabelText(/^condition$/i), 'available_calibrated')
     await userEvent.type(screen.getByLabelText(/^serials/i), 'A-1{enter}A-2')
-    await userEvent.type(screen.getByLabelText(/^set pressure$/i), '270-280')
+    await userEvent.type(screen.getByLabelText(/^set pressure$/i), '275')
+    await userEvent.type(screen.getByLabelText(/^last calibration$/i), '2024-02-29')
+    expect(screen.queryByLabelText(/^next calibration/i)).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: /add 2 valves/i }))
     const p = calls[0].args.p as Record<string, unknown>
     expect(calls[0].fn).toBe('cng_admin_add_warehouse_srvs')
     expect(p).toMatchObject({ availability: 'available_calibrated', serials: ['A-1', 'A-2'], quantity: null,
-      pressure_min: 270, pressure_max: 280, pressure_unit: 'BAR', last_calibration_date: null })
+      pressure_min: 275, pressure_max: 275, pressure_unit: 'BAR',
+      last_calibration_date: '2024-02-29', next_calibration_date: '2025-02-28' })
     expect(await screen.findByText(/2 relief valve\(s\) added/)).toBeDefined()
   })
 })

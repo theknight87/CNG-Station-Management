@@ -150,7 +150,7 @@ function WarehouseBulkActions({ picked, onClear, onDone }: { picked: WarehouseSr
 
 function columns(reload: () => void): RegistryColumn<WarehouseSrvRow>[] { return [
   {
-    key: 'pressure', header: 'Set pressure', align: 'right', sort: 'pressure',
+    key: 'pressure', header: 'Set pressure', align: 'center', numeric: true, sort: 'pressure',
     render: (r) => (
       <PressureRange min={r.pressure_min} max={r.pressure_max} unit={r.pressure_unit} raw={r.set_pressure_raw} />
     ),
@@ -181,7 +181,7 @@ function columns(reload: () => void): RegistryColumn<WarehouseSrvRow>[] { return
     render: (r) => <PrecisionDate display={r.last_calibration_display} precision={r.last_calibration_precision} />,
   },
   {
-    key: 'days_left', header: 'Days left', align: 'right', numeric: true, sort: 'next_due',
+    key: 'days_left', header: 'Days left', align: 'center', numeric: true, sort: 'next_due',
     render: (r) => (r.days_left === null ? <NullValue /> : <span>{r.days_left.toLocaleString()}</span>),
   },
   {
