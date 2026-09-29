@@ -1,7 +1,7 @@
 import { AddWarehouseSrvsButton } from '@/features/relief-valves/AddWarehouseSrvs'
 import { AvailabilityChip, ManufacturerChip, RegionChip } from '@/features/relief-valves/SrvPieces'
 import { useCallback, useState } from 'react'
-import { Plus, Search, X } from 'lucide-react'
+import { Plus, Search, Trash2, Wrench, X } from 'lucide-react'
 
 import { Identifier } from '@/components/data/TechnicalText'
 import { NullValue } from '@/components/data/NullValue'
@@ -18,8 +18,9 @@ import {
   type WarehouseQuery, type WarehouseSrvRow, type WarehouseSort,
 } from '@/features/relief-valves/useSrvManagement'
 import { RemoveValveButton } from '@/features/relief-valves/SrvAdminActions'
-import { IssuePanel, ValveHistory } from '@/features/relief-valves/SrvWorkflowPieces'
-import { useIsAdmin, useWorkflowAction } from '@/features/relief-valves/useSrvWorkflow'
+import { FormMessage, IssuePanel, ValveHistory } from '@/features/relief-valves/SrvWorkflowPieces'
+import { useIsAdmin, useWorkflowAction, workflowError } from '@/features/relief-valves/useSrvWorkflow'
+import { useSupabaseClient } from '@/lib/supabase/client'
 
 /**
  * Warehouse relief valves — INVENTORY, not hierarchy.
@@ -66,13 +67,84 @@ function SendToCalibration({ row, onSent }: { row: WarehouseSrvRow; onSent: () =
           if (err) setError(err)
           else onSent()
         }}
-        className="flex h-5 w-5 items-center justify-center rounded border text-muted-foreground hover:bg-muted hover:text-foreground"
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded border border-foreground/30 bg-background text-foreground hover:bg-muted disabled:opacity-50"
       >
         <Plus className="h-3.5 w-3.5" aria-hidden="true" />
         <span className="sr-only">Send serial {row.serial_number ?? ''} to Calibration (3rd party)</span>
       </button>
       {error ? <span role="alert" className="text-xs text-destructive">{error}</span> : null}
     </span>
+  )
+}
+
+/**
+ * Bulk actions over the ticked rows of this page (admin only; the database refuses anyone else).
+ * "Send to calibration" is one atomic call for the ticked valves that are under calibration; valves in
+ * any other state are left alone and said so. "Delete" archives each valve through the same audited
+ * function as the single delete, one call per valve, and reports any it could not remove.
+ */
+function WarehouseBulkActions({ picked, onClear, onDone }: { picked: WarehouseSrvRow[]; onClear: () => void; onDone: () => void }) {
+  const supabase = useSupabaseClient()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [done, setDone] = useState<string | null>(null)
+  const uc = picked.filter((r) => r.availability_status === 'available_in_store_uc')
+  const skipped = picked.length - uc.length
+
+  async function sendToCalibration() {
+    if (!supabase || uc.length === 0) return
+    setBusy(true); setError(null); setDone(null)
+    try {
+      const { error: err } = await supabase.rpc('cng_srv_calibration_send', { p_warehouse_valve_ids: uc.map((r) => r.id) })
+      if (err) { setError(workflowError(err)); return }
+      setDone(`${uc.length} valve(s) sent to Calibration (3rd party).${skipped ? ` ${skipped} not under calibration were left in the store.` : ''}`)
+      onDone()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'The request failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function remove() {
+    if (!supabase || picked.length === 0) return
+    if (!window.confirm(`Remove ${picked.length} relief valve(s) from the warehouse? They are archived (kept in the audit history), not destroyed.`)) return
+    setBusy(true); setError(null); setDone(null)
+    let removed = 0
+    const failed: string[] = []
+    for (const r of picked) {
+      try {
+        const { error: err } = await supabase.rpc('cng_admin_archive_srv', { p_table: 'warehouse_relief_valves', p_id: r.id })
+        if (err) failed.push(`${r.serial_number ?? r.warehouse_code ?? 'no serial'}: ${workflowError(err)}`)
+        else removed += 1
+      } catch (e) {
+        failed.push(`${r.serial_number ?? r.warehouse_code ?? 'no serial'}: ${e instanceof Error ? e.message : 'the request failed'}`)
+      }
+    }
+    setBusy(false)
+    if (removed > 0) setDone(`${removed} relief valve(s) removed.`)
+    if (failed.length > 0) setError(`${failed.length} could not be removed — ${failed.join('; ')}`)
+    if (removed > 0) onDone()
+  }
+
+  return (
+    <section aria-label="Actions on the selected valves" className="flex flex-wrap items-center gap-2 rounded border bg-card px-3 py-2">
+      <span className="text-sm font-medium">{picked.length} selected</span>
+      <Button size="sm" disabled={busy || uc.length === 0} onClick={() => void sendToCalibration()}
+              title={uc.length === 0 ? 'Only valves in the store under calibration (UC) can be sent' : undefined}>
+        <Wrench className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+        Send to calibration ({uc.length})
+      </Button>
+      <Button size="sm" variant="destructive" disabled={busy || picked.length === 0} onClick={() => void remove()}>
+        <Trash2 className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+        Delete ({picked.length})
+      </Button>
+      <Button size="sm" variant="ghost" disabled={busy} onClick={onClear}>Clear selection</Button>
+      {skipped > 0 && uc.length > 0 ? (
+        <span className="text-xs text-muted-foreground">{skipped} selected are not under calibration and are not sent.</span>
+      ) : null}
+      <div className="basis-full empty:hidden"><FormMessage error={error} done={done} /></div>
+    </section>
   )
 }
 
@@ -85,7 +157,14 @@ function columns(reload: () => void): RegistryColumn<WarehouseSrvRow>[] { return
   },
   {
     key: 'availability', header: 'Availability', sort: 'availability',
-    render: (r) => <AvailabilityChip status={r.availability_status} label={r.availability_status ? AVAILABILITY_LABEL[r.availability_status] ?? null : null} />,
+    // The + to send a valve to the calibration company sits beside its "in store (UC)" chip, so it is
+    // reachable straight from the table on every screen size.
+    render: (r) => (
+      <span className="inline-flex items-center gap-1.5">
+        <AvailabilityChip status={r.availability_status} label={r.availability_status ? AVAILABILITY_LABEL[r.availability_status] ?? null : null} />
+        <SendToCalibration row={r} onSent={reload} />
+      </span>
+    ),
   },
   { key: 'manufacturer', header: 'Manufacturer', sort: 'manufacturer', render: (r) => <ManufacturerChip value={r.manufacturer} /> },
   { key: 'size', header: 'Size', sort: 'size', render: (r) => <ValveSize type={r.size_type} inlet={r.inlet_size} outlet={r.outlet_size} /> },
@@ -104,10 +183,6 @@ function columns(reload: () => void): RegistryColumn<WarehouseSrvRow>[] { return
   {
     key: 'days_left', header: 'Days left', align: 'right', numeric: true, sort: 'next_due',
     render: (r) => (r.days_left === null ? <NullValue /> : <span>{r.days_left.toLocaleString()}</span>),
-  },
-  {
-    key: 'calibrate', header: 'Calibrate',
-    render: (r) => <SendToCalibration row={r} onSent={reload} />,
   },
   {
     // A DESTINATION, labelled as one. Never a hierarchy position.
@@ -135,12 +210,18 @@ function ValveSize({ type, inlet, outlet }: { type: string | null; inlet: string
 export function WarehouseSrvSection() {
   const [query, setQuery] = useState<WarehouseQuery>(DEFAULT_WAREHOUSE_QUERY)
   const { state, reload } = useWarehouseSrvs(query)
+  const isAdmin = useIsAdmin()
+  // Ticks belong to the rows on screen: any change of filter, sort or page clears them, so a bulk
+  // action can never reach a valve the user can no longer see.
+  const [selected, setSelected] = useState<Set<string>>(new Set())
 
   const update = useCallback((patch: Partial<WarehouseQuery>) => {
+    setSelected(new Set())
     setQuery((prev) => ({ ...prev, ...patch, page: 'page' in patch ? (patch.page as number) : 0 }))
   }, [])
 
   const onSort = useCallback((key: string) => {
+    setSelected(new Set())
     setQuery((prev) => ({
       ...prev,
       sort: key as WarehouseSort,
@@ -149,13 +230,15 @@ export function WarehouseSrvSection() {
     }))
   }, [])
 
-  const clearFilters = useCallback(() => setQuery(DEFAULT_WAREHOUSE_QUERY), [])
+  const clearFilters = useCallback(() => { setSelected(new Set()); setQuery(DEFAULT_WAREHOUSE_QUERY) }, [])
+  const reloadClear = useCallback(() => { setSelected(new Set()); reload() }, [reload])
   const hasFilters = Boolean(query.search.trim()) || query.availability !== null || query.due !== 'all' || hasSmartFilters(query.filters)
 
   const rows = state.status === 'ready' ? state.data.rows : []
   const total = state.status === 'ready' ? state.data.total : null
   const missingSerial = rows.filter((r) => !r.serial_number).length
   const overdue = rows.filter((r) => r.due_status === 'overdue').length
+  const picked = rows.filter((r) => selected.has(r.id))
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
@@ -228,6 +311,9 @@ export function WarehouseSrvSection() {
         <span className="ml-auto"><AddWarehouseSrvsButton onAdded={reload} /></span>
       </DataToolbar>
       <SmartFilterBar id="warehouse-srv" stationLabel="Destination Station" regionLabel="Destination Region" value={query.filters} onChange={(filters) => update({ filters })} />
+      {isAdmin && picked.length > 0 ? (
+        <WarehouseBulkActions picked={picked} onClear={() => setSelected(new Set())} onDone={reloadClear} />
+      ) : null}
 
       <RegistryTable
 
@@ -235,7 +321,8 @@ export function WarehouseSrvSection() {
         label="Warehouse relief valves"
         state={state}
         reload={reload}
-        columns={columns(reload)}
+        columns={columns(reloadClear)}
+        selection={isAdmin ? { selected, onChange: setSelected } : undefined}
         extra={(r, done) => (
           <>
             <IssuePanel row={r} onDone={done} />
@@ -249,7 +336,7 @@ export function WarehouseSrvSection() {
         onSort={onSort}
         page={query.page}
         pageSize={query.pageSize}
-        onPage={(p) => setQuery((prev) => ({ ...prev, page: p }))}
+        onPage={(p) => { setSelected(new Set()); setQuery((prev) => ({ ...prev, page: p })) }}
         onClearFilters={clearFilters}
         emptyTitle="No relief valves in the store"
         emptyDescription="Valves in the store (new, calibrated or under calibration) appear here. Issued valves are in Installed SRVs and the SRV Log."

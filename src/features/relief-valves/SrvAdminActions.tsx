@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useState, type ComponentType, type ReactNode } from 'react'
 
 import { RecordDetailsDialog } from '@/components/data/RecordDetailsDialog'
 import { Button } from '@/components/ui/button'
@@ -14,8 +14,25 @@ import { useConfirmedAction, useIsAdmin, useWorkflowAction } from '@/features/re
  * and writes an audit row; hiding the buttons from non-admins is UX only — the database refuses them anyway.
  */
 
-/** A small button inside a clickable row: it never opens the row's details. */
-export function RowAction({ label, onClick, danger, disabled }: { label: string; onClick: () => void; danger?: boolean; disabled?: boolean }) {
+/**
+ * A small button inside a clickable row: it never opens the row's details. With an `icon` it renders
+ * icon-only (the label becomes its accessible name and tooltip) so a row of actions stays narrow enough
+ * for the table to fit the page without sideways scrolling.
+ */
+export function RowAction({ label, onClick, danger, disabled, icon: Icon }: {
+  label: string; onClick: () => void; danger?: boolean; disabled?: boolean; icon?: ComponentType<{ className?: string }>
+}) {
+  if (Icon) {
+    return (
+      <button type="button" aria-label={label} title={label} disabled={disabled}
+              onClick={(e) => { e.stopPropagation(); onClick() }}
+              className={'flex h-7 w-7 shrink-0 items-center justify-center rounded border bg-background disabled:opacity-50 '
+                + (danger ? 'border-destructive/40 text-destructive hover:bg-destructive hover:text-destructive-foreground'
+                          : 'text-muted-foreground hover:bg-muted hover:text-foreground')}>
+        <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+      </button>
+    )
+  }
   return (
     <Button type="button" size="sm" variant={danger ? 'destructive' : 'outline'} className="h-6 px-2 text-xs" disabled={disabled}
             onClick={(e) => { e.stopPropagation(); onClick() }}>

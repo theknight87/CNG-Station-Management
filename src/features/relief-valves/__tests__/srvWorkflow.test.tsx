@@ -56,7 +56,9 @@ describe('SRV Log', () => {
     const user = userEvent.setup()
     render(<SrvLogSection />)
     const table = await screen.findByRole('table', { name: 'SRV Log' })
-    expect(within(table).getByText(/At station — awaiting return · Emergency/)).toBeDefined()
+    // Status and Emergency are two chips stacked in one cell, so the column stays narrow.
+    const statusCell = within(table).getByText('At station — awaiting return').closest('td')!
+    expect(within(statusCell).getByText('Emergency')).toBeDefined()
     await user.click(within(table).getAllByRole('checkbox', { name: 'Select row' })[1])
     await user.click(screen.getByRole('button', { name: /arrived at warehouse \(1\)/i }))
     expect(calls.rpc.find(([fn]) => fn === 'cng_srv_log_receive')![1]).toEqual({ p_log_ids: ['l2'] })

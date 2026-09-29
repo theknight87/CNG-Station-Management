@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ArrowRightLeft, Pencil, Trash2, Undo2 } from 'lucide-react'
 
 import { RecordDetailsDialog } from '@/components/data/RecordDetailsDialog'
 import { NullValue } from '@/components/data/NullValue'
@@ -115,22 +116,27 @@ export function SrvLogSection() {
             { key: 'manufacturer', header: 'Manufacturer', sortValue: (r) => r.manufacturer, render: (r) => <ManufacturerChip value={r.manufacturer} /> },
             { key: 'size', header: 'Size', sortValue: sizeOf, render: (r) => <ValveSize v={r} /> },
             { key: 'region', header: 'Region', sortValue: (r) => r.region_name, render: (r) => <RegionChip name={r.region_name} /> },
-            { key: 'station', header: 'Station', sortValue: (r) => r.station_display, render: (r) => (
-              <span dir="auto">{r.station_display ?? <NullValue />}
-                {r.unit_name ? <span className="ml-1 text-xs text-muted-foreground">/ {r.unit_name}</span> : null}
+            { key: 'station', header: 'Station', wrap: true, sortValue: (r) => r.station_display, render: (r) => (
+              // Unit on its own line: a mixed Arabic "Station / Unit" on one line reorders under bidi.
+              <span className="flex flex-col items-start">
+                <span dir="auto">{r.station_display ?? <NullValue />}</span>
+                {r.unit_name ? <span dir="auto" className="text-xs text-muted-foreground">{r.unit_name}</span> : null}
               </span>) },
             { key: 'status', header: 'Status', sortValue: (r) => LOG_STATUS[r.status], render: (r) => (
-              <ToneChip tone={LOG_TONE[r.status]}>{LOG_STATUS[r.status]}{r.is_emergency ? ' · Emergency' : ''}</ToneChip>) },
+              <span className="flex flex-col items-start gap-0.5">
+                <ToneChip tone={LOG_TONE[r.status]}>{LOG_STATUS[r.status]}</ToneChip>
+                {r.is_emergency ? <ToneChip tone={LOG_TONE[r.status]}>Emergency</ToneChip> : null}
+              </span>) },
             { key: 'since', header: 'Since', sortValue: logSince, render: (r) => day(logSince(r)) },
             ...(isAdmin ? [{ key: 'actions', header: 'Actions', render: (r: FieldLogRow) => (
               <RowActions>
                 {r.installed_valve_id && r.status !== 'returned' ? (
-                  <RowAction label="Back to its station" disabled={admin.busy}
+                  <RowAction label="Back to its station" icon={Undo2} disabled={admin.busy}
                     onClick={() => void admin.act('Put this valve back as installed at its station and remove it from the SRV Log?',
                       'cng_srv_log_restore_to_station', { p_log_id: r.id }, 'The valve is installed at its station again.')} />
-                ) : null}
-                <RowAction label="Move" disabled={admin.busy} onClick={() => setMoving(r.id)} />
-                <RowAction label="Delete" danger disabled={admin.busy}
+                ) : <span aria-hidden="true" className="w-7 shrink-0" />}
+                <RowAction label="Move" icon={ArrowRightLeft} disabled={admin.busy} onClick={() => setMoving(r.id)} />
+                <RowAction label="Delete" icon={Trash2} danger disabled={admin.busy}
                   onClick={() => void admin.act('Remove this entry from the SRV Log? It is archived (kept in the audit history).',
                     'cng_srv_log_archive', { p_log_id: r.id }, 'Entry removed from the SRV Log.')} />
               </RowActions>) }] : []),
@@ -249,8 +255,8 @@ export function SrvCalibrationSection() {
               ? <span className="tabular">{r.certificate_date}{r.certificate_number ? ` · ${r.certificate_number}` : ''}</span> : <NullValue /> },
             ...(isAdmin ? [{ key: 'actions', header: 'Actions', render: (r: CalibrationRow) => (
               <RowActions>
-                <RowAction label="Edit" disabled={admin.busy} onClick={() => setEditing(r)} />
-                <RowAction label="Delete" danger disabled={admin.busy}
+                <RowAction label="Edit" icon={Pencil} disabled={admin.busy} onClick={() => setEditing(r)} />
+                <RowAction label="Delete" icon={Trash2} danger disabled={admin.busy}
                   onClick={() => void admin.act('Remove this calibration entry? The valve returns to warehouse stock; the entry is archived.',
                     'cng_srv_calibration_archive', { p_job_id: r.id }, 'Calibration entry removed; the valve is back in warehouse stock.')} />
               </RowActions>) }] : []),
@@ -298,7 +304,7 @@ export function SrvEmergencySection() {
           columns={[
             { key: 'date', header: 'Issued', sortValue: (r) => r.issued_at, render: (r) => day(r.issued_at) },
             { key: 'region', header: 'Region', sortValue: (r) => r.region_name, render: (r) => <RegionChip name={r.region_name} /> },
-            { key: 'station', header: 'Station / Unit', sortValue: (r) => r.station_name, render: (r) => (
+            { key: 'station', header: 'Station / Unit', wrap: true, sortValue: (r) => r.station_name, render: (r) => (
               <span dir="auto">{r.station_name} / {r.unit_name}</span>) },
             { key: 'issued', header: 'Issued valve', sortValue: (r) => r.issued_serial, render: (r) => <span className="whitespace-nowrap"><Code value={r.issued_serial} /> <Code value={r.issued_code} /></span> },
             { key: 'pressure', header: 'Set pressure', align: 'right', sortValue: pressureBar, render: (r) => <Pressure v={r} /> },
@@ -309,11 +315,11 @@ export function SrvEmergencySection() {
             { key: 'rstatus', header: 'Replaced valve status', sortValue: (r) => r.replaced_status, render: (r) => r.replaced_status === 'returned'
               ? <ToneChip tone="teal">Returned to warehouse</ToneChip>
               : r.replaced_status === 'at_station' ? <ToneChip tone="sky">At station — awaiting return</ToneChip> : <NullValue /> },
-            { key: 'notes', header: 'Notes', render: (r) => r.notes ? <span dir="auto">{r.notes}</span> : <NullValue /> },
+            { key: 'notes', header: 'Notes', wrap: true, render: (r) => r.notes ? <span dir="auto">{r.notes}</span> : <NullValue /> },
             ...(isAdmin ? [{ key: 'actions', header: 'Actions', render: (r: EmergencyRow) => (
               <RowActions>
-                <RowAction label="Edit" disabled={admin.busy} onClick={() => void editNotes(r)} />
-                <RowAction label="Delete" danger disabled={admin.busy}
+                <RowAction label="Edit" icon={Pencil} disabled={admin.busy} onClick={() => void editNotes(r)} />
+                <RowAction label="Delete" icon={Trash2} danger disabled={admin.busy}
                   onClick={() => void admin.act('Remove this issue from the Emergency list? The issue itself and its valves are not changed.',
                     'cng_srv_emergency_remove', { p_issue_id: r.id }, 'Removed from the Emergency list.')} />
               </RowActions>) }] : []),

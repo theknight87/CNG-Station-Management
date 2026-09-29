@@ -44,6 +44,14 @@ export interface RegistryColumn<T> {
   render: (row: T) => ReactNode
 }
 
+/** Row tick boxes for bulk actions. The caller owns the set; ticks cover the rows on this page. */
+export interface RegistrySelection<T> {
+  selected: Set<string>
+  onChange: (next: Set<string>) => void
+  /** A row that cannot take part in any bulk action shows no box. */
+  selectable?: (row: T) => boolean
+}
+
 export function RegistryTable<T>({
   label,
   state,
@@ -64,6 +72,7 @@ export function RegistryTable<T>({
   footnote,
   record,
   extra,
+  selection,
 }: {
   label: string
   state: Loadable<RegistryPage<T>>
@@ -86,6 +95,8 @@ export function RegistryTable<T>({
   record?: (row: T) => RecordRef | null
   /** Extra dialog content (workflow actions, history). `done` closes the dialog and reloads. */
   extra?: (row: T, done: () => void) => ReactNode
+  /** Present = a tick-box column for bulk actions. */
+  selection?: RegistrySelection<T>
 }) {
   const [selected, setSelected] = useState<T | null>(null)
 
@@ -103,6 +114,16 @@ export function RegistryTable<T>({
   // identifying columns plus the final operational state; the dialog owns the
   // complete technical record.
   const visibleColumns = columns.slice(0, 8)
+  const canPick = (row: T) => selection !== undefined && (selection.selectable ? selection.selectable(row) : true)
+  const pickable = rows.filter(canPick).map(rowKey)
+  const allPicked = pickable.length > 0 && pickable.every((k) => selection!.selected.has(k))
+  const toggle = (key: string) => {
+    if (!selection) return
+    const next = new Set(selection.selected)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    selection.onChange(next)
+  }
 
   return (
     <div className="flex min-w-0 flex-col gap-2">
@@ -110,6 +131,12 @@ export function RegistryTable<T>({
         <DataTable className="responsive-records compact-records" caption={`${label}, with mapping state and calibration status`}>
           <TableHead>
             <TableRow>
+              {selection ? (
+                <SortableHeader className="w-8">
+                  <input type="checkbox" aria-label="Select all on this page" checked={allPicked} disabled={pickable.length === 0}
+                         onChange={() => selection.onChange(allPicked ? new Set() : new Set(pickable))} />
+                </SortableHeader>
+              ) : null}
               <SortableHeader className="w-8">
                 <span className="sr-only">Expand technical record</span>
               </SortableHeader>
@@ -131,6 +158,16 @@ export function RegistryTable<T>({
               const key = rowKey(row)
               return (
                   <TableRow key={key} onClick={() => setSelected(row)} className="cursor-pointer">
+                    {selection ? (
+                      <TableCell className="w-8" dataLabel="Select">
+                        {canPick(row) ? (
+                          // The whole cell toggles the box and never opens the record.
+                          <label className="flex items-center" onClick={(event) => event.stopPropagation()}>
+                            <input type="checkbox" aria-label="Select row" checked={selection.selected.has(key)} onChange={() => toggle(key)} />
+                          </label>
+                        ) : null}
+                      </TableCell>
+                    ) : null}
                     <TableCell className="w-8" dataLabel="Details">
                       <button
                         type="button"

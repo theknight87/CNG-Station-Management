@@ -193,6 +193,8 @@ export interface SelectableColumn<T> {
   align?: 'right'
   /** Present = the header sorts by this value (nulls always last). */
   sortValue?: (r: T) => SortValue
+  /** Let long text (Station names) wrap instead of widening the table. */
+  wrap?: boolean
 }
 
 /**
@@ -235,7 +237,7 @@ export function SelectableTable<T extends { id: string }>({
               const active = sort?.key === c.key
               return (
                 <th key={c.key} aria-sort={active ? (sort!.asc ? 'ascending' : 'descending') : undefined}
-                    className={cn('whitespace-nowrap px-2 py-1.5 text-left font-semibold', c.align === 'right' && 'text-right')}>
+                    className={cn('whitespace-nowrap px-1.5 py-1.5 text-left font-semibold', c.align === 'right' && 'text-right')}>
                   {c.sortValue ? (
                     <button type="button" className="inline-flex items-center gap-1 uppercase tracking-wide hover:text-foreground"
                             onClick={() => setSort(active ? { key: c.key, asc: !sort!.asc } : { key: c.key, asc: true })}>
@@ -262,7 +264,7 @@ export function SelectableTable<T extends { id: string }>({
                 ) : null}
               </td>
               {columns.map((c) => (
-                <td key={c.key} className={cn('whitespace-nowrap px-2 py-1 align-middle', c.align === 'right' && 'text-right tabular')}>{c.render(r)}</td>
+                <td key={c.key} className={cn('px-1.5 py-1 align-middle', c.wrap ? 'min-w-36 break-words' : 'whitespace-nowrap', c.align === 'right' && 'text-right tabular')}>{c.render(r)}</td>
               ))}
             </tr>
           ))}
