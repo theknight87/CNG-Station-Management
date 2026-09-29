@@ -180,17 +180,17 @@ export function SrvLogSection() {
                        info={{ label: 'About the SRV Log', text: 'Valves out at stations, expected back at the warehouse. Tick the ones that arrived and confirm: they return to stock as under calibration.' }} placeholder="Serial, code, part number, station…"
                        filters={filters} onFilters={(f) => { setFilters(f); setSelected(new Set()) }} date={WORKFLOW_DATES.log}
                        filtersBefore={
-                         // The movement: still out (issued, awaiting return) or back at the warehouse. Kept in step
-                         // with the count strip above, which sets the same view.
+                         // The movement, two choices only (owner request 2026-09-29): Issue — out, awaiting return —
+                         // or Return — back at the warehouse. Kept in step with the count strip above, which can also
+                         // pick a finer view; the box then shows neither choice until one is picked here.
                          <label className={filterLabel} htmlFor="srv-log-movement">
                            Movement
-                           <select id="srv-log-movement" className={filterControl} value={view}
+                           <select id="srv-log-movement" className={filterControl}
+                                   value={view === 'open' || view === 'returned' ? view : ''}
                                    onChange={(e) => { setView(e.target.value as LogView); setSelected(new Set()) }}>
-                             <option value="open">Out — awaiting return</option>
-                             <option value="at_station">Out — at station</option>
-                             <option value="location_unconfirmed">Out — location unconfirmed</option>
-                             <option value="returned">Returned to warehouse</option>
-                             <option value="all">All movements</option>
+                             <option value="" disabled hidden>—</option>
+                             <option value="open">Issue</option>
+                             <option value="returned">Return</option>
                            </select>
                          </label>
                        }>

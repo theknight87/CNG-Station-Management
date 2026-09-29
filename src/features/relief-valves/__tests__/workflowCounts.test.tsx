@@ -125,12 +125,14 @@ describe('SRV Log count strip', () => {
     render(<SrvLogSection />)
     await screen.findByRole('region', { name: 'SRV Log counts' })
     const movement = screen.getByLabelText('Movement') as HTMLSelectElement
+    // Only two movements to choose (owner request 2026-09-29).
+    expect([...movement.options].filter((o) => !o.disabled).map((o) => o.textContent)).toEqual(['Issue', 'Return'])
     expect(movement.value).toBe('open')
     await user.selectOptions(movement, 'returned')
     await waitFor(() => expect(lastRows()).toContain('in:status=returned'))
     expect(screen.getByRole('button', { name: /^returned/i }).getAttribute('aria-pressed')).toBe('true')
-    await user.click(screen.getByRole('button', { name: /at station/i }))
-    expect((screen.getByLabelText('Movement') as HTMLSelectElement).value).toBe('at_station')
+    await user.selectOptions(movement, 'open')
+    await waitFor(() => expect(lastRows()).toContain('in:status=at_station,location_unconfirmed'))
   })
 
   it('INFO-1 the explanation is hidden behind an (i) and opens on click', async () => {
