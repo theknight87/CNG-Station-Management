@@ -193,6 +193,26 @@ describe('Admin delete / edit (owner request 2026-09-28)', () => {
     confirm.mockRestore()
   })
 
+  it('WF-EMG the Emergency table fits: no Notes column, no tick boxes; the notes are in the details', async () => {
+    state.rows = [{ id: 'e1', issued_at: '2026-09-24T00:00:00Z', notes: 'Stage 3 leak', region_id: 'r', region_name: 'East', station_name: 'شبرا', unit_name: 'شبرا 1',
+      warehouse_valve_id: 'w1', issued_serial: 'a75605', issued_code: 'kcc 17', pressure_min: 5500, pressure_max: 5500, pressure_unit: 'PSI', set_pressure_raw: '5500',
+      replaced_installed_valve_id: 'iv1', replaced_serial: '1237088', replaced_code: null, replaced_status: 'returned' }]
+    const user = userEvent.setup()
+    render(<SrvEmergencySection />)
+    const table = await screen.findByRole('table', { name: 'SRV Emergency' })
+    const headers = within(table).getAllByRole('columnheader').map((h) => h.textContent ?? '')
+    expect(headers.some((h) => /notes/i.test(h))).toBe(false)
+    expect(within(table).queryByRole('checkbox')).toBeNull()
+    expect(within(table).queryByText('Stage 3 leak')).toBeNull()
+    // The replaced valve and its status share one cell.
+    const cell = within(table).getByText('1237088').closest('td')!
+    expect(within(cell).getByText('Returned to warehouse')).toBeDefined()
+    await user.click(within(table).getByText('a75605'))
+    const details = await screen.findByRole('region', { name: 'Emergency issue' })
+    expect(within(details).getByText('Stage 3 leak')).toBeDefined()
+    expect(within(details).getByRole('button', { name: /edit notes/i })).toBeDefined()
+  })
+
   it('WF-10 a viewer sees no delete, move or edit controls', async () => {
     state.role = 'viewer'
     state.rows = [log]

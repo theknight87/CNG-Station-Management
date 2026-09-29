@@ -22,7 +22,7 @@ import {
   AreaType, DetectorMappingBadge, DetectorStationCell, DetectorUnitCell, PresenceBadge,
 } from '@/features/gas-detectors/GasDetectorPieces'
 import {
-  DETECTOR_DATES,
+  DETECTOR_DATE,
   DEFAULT_DETECTOR_QUERY, detectorRowKey, useGasDetectorSummary, useGasDetectors,
   type DetectorQuery, type DetectorRegistryRow, type DetectorSort,
   detectorRequest,
@@ -316,6 +316,8 @@ export function GasDetectorsView() {
             </select>
           </label>
 
+          <AssetFilterBar id="gas-detectors" value={query.filters} onChange={(filters) => update({ filters })}
+                          makers={makers.length ? makers : undefined} date={DETECTOR_DATE} />
           {hasFilters ? (
             <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7">
               <X className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
@@ -326,8 +328,6 @@ export function GasDetectorsView() {
             <ExportButtons name="gas-detectors" load={queryLoader(supabase, 'Gas detectors', GAS_DETECTOR_COLUMNS, (c) => detectorRequest(c, query))} />
           </span>
         </DataToolbar>
-        <AssetFilterBar id="gas-detectors" value={query.filters} onChange={(filters) => update({ filters })}
-                        makers={makers.length ? makers : undefined} dates={DETECTOR_DATES} />
 
         <RegistryTable
 

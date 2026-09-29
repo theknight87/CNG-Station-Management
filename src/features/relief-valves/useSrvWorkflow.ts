@@ -110,22 +110,16 @@ const SPECS = {
     columns: `id, reason, status, is_emergency, region_id, region_name, station_display, unit_name, installed_valve_id, ` +
       `warehouse_valve_id, warehouse_issue_date, logged_at, returned_at, ${VALVE}`,
     order: 'logged_at', station: 'station_display', region: 'region_id',
-    dates: [
-      { column: 'logged_at', label: 'Entered the log' },
-      { column: 'warehouse_issue_date', label: 'Issued from warehouse' },
-      { column: 'returned_at', label: 'Returned' },
-    ],
+    date: { column: 'logged_at', label: 'Since' },
+    search: ['serial_number', 'warehouse_code', 'part_number', 'station_display', 'unit_name'],
   },
   calibration: {
     view: 'v_srv_calibration',
     columns: `id, status, warehouse_valve_id, sent_at, returned_at, certified_at, certificate_date, certificate_number, ` +
       `next_calibration_date, ${VALVE}`,
     order: 'sent_at', station: null, region: null,
-    dates: [
-      { column: 'sent_at', label: 'Sent' },
-      { column: 'returned_at', label: 'Returned' },
-      { column: 'certificate_date', label: 'Certificate' },
-    ],
+    date: { column: 'sent_at', label: 'Sent' },
+    search: ['serial_number', 'warehouse_code', 'part_number', 'certificate_number'],
   },
   emergency: {
     view: 'v_srv_emergency',
@@ -133,24 +127,28 @@ const SPECS = {
       'issued_code, set_pressure_raw, pressure_min, pressure_max, pressure_unit, replaced_installed_valve_id, ' +
       'replaced_serial, replaced_code, replaced_status, serial_number, manufacturer, size_type, inlet_size, outlet_size',
     order: 'issued_at', station: 'station_name', region: 'region_id',
-    dates: [{ column: 'issued_at', label: 'Issued' }],
+    date: { column: 'issued_at', label: 'Issued' },
+    search: ['issued_serial', 'issued_code', 'replaced_serial', 'replaced_code', 'station_name', 'unit_name'],
   },
-} as const satisfies Record<string, { view: string; columns: string; order: string; station: string | null; region: string | null; dates: DateOption[] }>
+} as const satisfies Record<string, {
+  view: string; columns: string; order: string; station: string | null; region: string | null; date: DateOption; search: readonly string[]
+}>
 
-/** The dates each workflow tab can be filtered by. */
-export const WORKFLOW_DATES = {
-  log: SPECS.log.dates, calibration: SPECS.calibration.dates, emergency: SPECS.emergency.dates,
-} as { log: DateOption[]; calibration: DateOption[]; emergency: DateOption[] }
+/** The date each workflow tab is filtered by (one per tab). */
+export const WORKFLOW_DATES: Record<keyof typeof SPECS, DateOption> = {
+  log: SPECS.log.date, calibration: SPECS.calibration.date, emergency: SPECS.emergency.date,
+}
 
 /** The tab's filters on a workflow query (everything except status), shared by the list and its counts. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function workflowFilters<B extends { ilike: any; lte: any; gte: any; lt: any; eq: any }>(b: B, kind: keyof typeof SPECS, f?: SrvSmartFilters): B {
+function workflowFilters<B extends { ilike: any; lte: any; gte: any; lt: any; eq: any; or: any }>(b: B, kind: keyof typeof SPECS, f?: SrvSmartFilters): B {
   if (!f) return b
   const spec = SPECS[kind]
-  const dates = [...spec.dates] as DateOption[]
+  const term = (f.search ?? '').trim().replace(/[,()*%]/g, ' ').trim()
+  if (term) b = b.or(spec.search.map((c) => `${c}.ilike.*${term}*`).join(','))
   // Emergency rows carry the ISSUED valve's serial, manufacturer, size and pressure (view 20260928170000).
-  if (spec.station) return applySmartFilters(b, f, spec.station, spec.region ?? 'region_id', dates)
-  return applySmartFilters(b, { ...f, station: '', region: '' }, 'serial_number', 'region_id', dates)
+  if (spec.station) return applySmartFilters(b, f, spec.station, spec.region ?? 'region_id', spec.date)
+  return applySmartFilters(b, { ...f, station: '', region: '' }, 'serial_number', 'region_id', spec.date)
 }
 
 /**

@@ -21,7 +21,7 @@ import {
   HoseDescription, HoseMappingBadge, HoseSerial, HoseStationCell, HoseUnitCell,
 } from '@/features/hoses/HosePieces'
 import {
-  HOSE_DATES,
+  HOSE_DATE,
   DEFAULT_HOSE_QUERY, useHoseSummary, useHoses,
   type HoseQuery, type HoseRegistryRow, type HoseSort,
   hoseRequest,
@@ -284,6 +284,7 @@ export function HosesManagementView() {
             </select>
           </label>
 
+          <AssetFilterBar id="hoses" value={query.filters} onChange={(filters) => update({ filters })} pressureLabel="Working pressure" date={HOSE_DATE} />
           {hasFilters ? (
             <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7">
               <X className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
@@ -294,7 +295,6 @@ export function HosesManagementView() {
             <ExportButtons name="hoses" load={queryLoader(supabase, 'Hoses', HOSE_COLUMNS, (c) => hoseRequest(c, query))} />
           </span>
         </DataToolbar>
-        <AssetFilterBar id="hoses" value={query.filters} onChange={(filters) => update({ filters })} pressureLabel="Working pressure" dates={HOSE_DATES} />
 
         <RegistryTable
 

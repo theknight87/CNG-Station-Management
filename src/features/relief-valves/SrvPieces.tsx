@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react'
 
 import { RegionChip } from '@/components/data/AssetChips'
-import { DateRangeFilter } from '@/components/data/DateRangeFilter'
+import { DateRangePicker } from '@/components/data/DateRangePicker'
+import { PressureFilter } from '@/components/data/FilterControls'
+import { filterControl, filterLabel } from '@/components/data/filterStyles'
 import type { DateOption } from '@/components/data/dateRange'
 import { StatusBadge } from '@/components/data/StatusBadge'
 import { Identifier } from '@/components/data/TechnicalText'
@@ -155,81 +157,55 @@ export function Metric({
 }
 
 /**
- * The dedicated SRV filters: serial, Station, size and set pressure. Each input
- * narrows one column server-side; they combine with each other and with search.
+ * The dedicated SRV filters, drawn INSIDE the tab's toolbar beside its search (owner request 2026-09-29: one tidy
+ * filter row, nothing repeated): Region where the tab has one, size, set pressure with its unit, manufacturer and
+ * the tab's date range. Serial and Station are not repeated — the search box finds both. Each narrows one column
+ * server-side; they combine with each other and with the search.
  */
-export function SmartFilterBar({ id, value, onChange, stationLabel = 'Station', regionLabel = 'Region', showRegion = true, showStation = true, dates }: {
+export function SmartFilterBar({ id, value, onChange, regionLabel = 'Region', showRegion = true, date }: {
   id: string
-  /** The dates this tab can be filtered by; omit for no date filter. */
-  dates?: DateOption[]
   value: SrvSmartFilters
   onChange: (next: SrvSmartFilters) => void
-  stationLabel?: string
   regionLabel?: string
   showRegion?: boolean
-  showStation?: boolean
+  /** The date this tab is filtered by; omit for no date filter. */
+  date?: DateOption
 }) {
   const regions = useRegions()
   const set = (patch: Partial<SrvSmartFilters>) => onChange({ ...value, ...patch })
-  const input = 'h-7 rounded border bg-background px-2 text-sm placeholder:text-muted-foreground'
   return (
-    <div role="group" aria-label="Filter by serial, region, station, size and set pressure" className="flex flex-wrap items-end gap-2">
-      <label className="flex flex-col gap-0.5 text-xs text-muted-foreground" htmlFor={`${id}-serial`}>
-        Serial
-        <input id={`${id}-serial`} className={cn(input, 'w-32 font-technical')} value={value.serial} placeholder="contains…"
-               onChange={(e) => set({ serial: e.target.value })} />
-      </label>
+    <>
       {showRegion ? (
-        <label className="flex flex-col gap-0.5 text-xs text-muted-foreground" htmlFor={`${id}-region`}>
+        <label className={filterLabel} htmlFor={`${id}-region`}>
           {regionLabel}
-          <select id={`${id}-region`} className={cn(input, 'px-1.5 text-foreground')} value={value.region}
-                  onChange={(e) => set({ region: e.target.value })}>
+          <select id={`${id}-region`} className={filterControl} value={value.region} onChange={(e) => set({ region: e.target.value })}>
             <option value="">All</option>
             {regions.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
           </select>
         </label>
       ) : null}
-      {showStation ? (
-        <label className="flex flex-col gap-0.5 text-xs text-muted-foreground" htmlFor={`${id}-station`}>
-          {stationLabel}
-          <input id={`${id}-station`} dir="auto" className={cn(input, 'w-40')} value={value.station} placeholder="name contains…"
-                 onChange={(e) => set({ station: e.target.value })} />
-        </label>
-      ) : null}
-      <label className="flex flex-col gap-0.5 text-xs text-muted-foreground" htmlFor={`${id}-size`}>
+      <label className={filterLabel} htmlFor={`${id}-size`}>
         Size
-        <input id={`${id}-size`} list={`${id}-sizes`} className={cn(input, 'w-36 font-technical')} value={value.size} placeholder='e.g. M 3/4" X 1" or Flange'
+        <input id={`${id}-size`} list={`${id}-sizes`} className={cn(filterControl, 'w-32 px-2 font-technical')} value={value.size}
+               placeholder={'M 3/4" X 1"'} title={'The full size (M 3/4" X 1") or part of it (Flange, 1/2")'}
                onChange={(e) => set({ size: e.target.value })} />
         <datalist id={`${id}-sizes`}>
           {['M 1/4" X 1/4"', 'M 1/4" X 1/2"', 'M 1/2" X 3/4"', 'M 1/2" X 1"', 'M 3/4" X 1"', 'M 1" X 1"', 'M 1" X 1-1/4"',
             'F 1/2" X 3/4"', 'F 1" X 1"', 'Flange 1" X 1"', 'Flange 1" X 1-1/4"', 'Flange'].map((s) => <option key={s} value={s} />)}
         </datalist>
       </label>
-      <label className="flex flex-col gap-0.5 text-xs text-muted-foreground" htmlFor={`${id}-pressure`}>
-        Set pressure
-        <input id={`${id}-pressure`} inputMode="decimal" className={cn(input, 'w-28 text-right tabular')} value={value.pressure}
-               title="One value (30) or a range (30-35)"
-               placeholder="30 or 30-35" onChange={(e) => set({ pressure: e.target.value.replace(/[^\d.\-– ]/g, '') })} />
-      </label>
-      <label className="flex flex-col gap-0.5 text-xs text-muted-foreground" htmlFor={`${id}-unit`}>
-        Unit
-        <select id={`${id}-unit`} className={cn(input, 'px-1.5 text-foreground')} value={value.pressureUnit}
-                onChange={(e) => set({ pressureUnit: e.target.value as SrvSmartFilters['pressureUnit'] })}>
-          <option value="">Any</option>
-          <option value="BAR">BAR</option>
-          <option value="PSI">PSI</option>
-        </select>
-      </label>
-      <label className="flex flex-col gap-0.5 text-xs text-muted-foreground" htmlFor={`${id}-manufacturer`}>
+      <PressureFilter id={id} label="Set pressure" value={value.pressure} unit={value.pressureUnit}
+                      onChange={(p) => set({ ...(p.value !== undefined ? { pressure: p.value } : {}), ...(p.unit !== undefined ? { pressureUnit: p.unit } : {}) })} />
+      <label className={filterLabel} htmlFor={`${id}-manufacturer`}>
         Manufacturer
-        <select id={`${id}-manufacturer`} className={cn(input, 'px-1.5 text-foreground')} value={value.manufacturer}
+        <select id={`${id}-manufacturer`} className={filterControl} value={value.manufacturer}
                 onChange={(e) => set({ manufacturer: e.target.value })}>
           <option value="">All</option>
           {MANUFACTURERS.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
       </label>
-      {dates ? <DateRangeFilter id={id} value={value} onChange={set} options={dates} /> : null}
-    </div>
+      {date ? <DateRangePicker id={id} value={value} onChange={set} option={date} /> : null}
+    </>
   )
 }
 

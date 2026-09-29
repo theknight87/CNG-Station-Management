@@ -209,7 +209,7 @@ export interface SelectableColumn<T> {
  * `defaultOrder` until a header is clicked, then that column, click again to reverse.
  */
 export function SelectableTable<T extends { id: string }>({
-  label, rows, columns, selected, onSelected, selectable, onOpen, defaultOrder,
+  label, rows, columns, selected, onSelected, selectable, onOpen, defaultOrder, selection = true,
 }: {
   label: string
   rows: T[]
@@ -219,6 +219,8 @@ export function SelectableTable<T extends { id: string }>({
   selectable: (r: T) => boolean
   onOpen?: (r: T) => void
   defaultOrder?: (a: T, b: T) => number
+  /** False for a list nothing can be ticked in: no tick-box column at all. */
+  selection?: boolean
 }) {
   const [sort, setSort] = useState<{ key: string; asc: boolean } | null>(null)
   const col = sort ? columns.find((c) => c.key === sort.key && c.sortValue) : undefined
@@ -236,10 +238,12 @@ export function SelectableTable<T extends { id: string }>({
       <table className="w-full text-sm" aria-label={label}>
         <thead className="bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
-            <th className="w-8 px-2 py-1.5">
-              <input type="checkbox" aria-label="Select all" checked={all} disabled={pickable.length === 0}
-                     onChange={() => onSelected(all ? new Set() : new Set(pickable.map((r) => r.id)))} />
-            </th>
+            {selection ? (
+              <th className="w-8 px-2 py-1.5">
+                <input type="checkbox" aria-label="Select all" checked={all} disabled={pickable.length === 0}
+                       onChange={() => onSelected(all ? new Set() : new Set(pickable.map((r) => r.id)))} />
+              </th>
+            ) : null}
             {columns.map((c) => {
               const active = sort?.key === c.key
               return (
@@ -259,7 +263,7 @@ export function SelectableTable<T extends { id: string }>({
         <tbody>
           {ordered.map((r) => (
             <tr key={r.id} className={cn('border-t', onOpen && 'cursor-pointer hover:bg-muted/40')} onClick={() => onOpen?.(r)}>
-              <td className="px-2 py-1" onClick={(e) => e.stopPropagation()}>
+              {selection ? <td className="px-2 py-1" onClick={(e) => e.stopPropagation()}>
                 {selectable(r) ? (
                   <input type="checkbox" aria-label="Select row" checked={selected.has(r.id)}
                          onChange={() => {
@@ -269,7 +273,7 @@ export function SelectableTable<T extends { id: string }>({
                            onSelected(next)
                          }} />
                 ) : null}
-              </td>
+              </td> : null}
               {columns.map((c) => (
                 <td key={c.key} className={cn('px-1.5 py-1 align-middle', c.wrap ? 'min-w-36 break-words' : 'whitespace-nowrap', c.align === 'right' && 'text-right tabular')}>{c.render(r)}</td>
               ))}

@@ -540,7 +540,7 @@ describe('smart filters and warehouse code', () => {
       lt(c: string, v: unknown) { calls.push(['lt', c, v]); return b },
       eq(c: string, v: unknown) { calls.push(['eq', c, v]); return b },
     }
-    applySmartFilters(b, { serial: ' 0003,262 ', region: 'r-1', station: 'الهرم', size: 'M 3/4" X 1"', pressure: '316', pressureUnit: 'BAR', manufacturer: 'COI', dateField: '', dateFrom: '', dateTo: '' }, 'station_display')
+    applySmartFilters(b, { serial: ' 0003,262 ', region: 'r-1', station: 'الهرم', size: 'M 3/4" X 1"', pressure: '316', pressureUnit: 'BAR', manufacturer: 'COI', search: '', dateFrom: '', dateTo: '' }, 'station_display')
     expect(calls).toEqual([
       ['ilike', 'serial_number', '%0003 262%'],
       ['eq', 'region_id', 'r-1'],

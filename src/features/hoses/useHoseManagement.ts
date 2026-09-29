@@ -153,10 +153,7 @@ const SORT_COLUMNS: Record<HoseSort, string[]> = {
   mapping: ['mapping_status'],
 }
 
-export const HOSE_DATES: DateOption[] = [
-  { column: 'next_test_date', label: 'Next test', precision: 'next_test_precision' },
-  { column: 'last_test_date', label: 'Last test', precision: 'last_test_precision' },
-]
+export const HOSE_DATE: DateOption = { column: 'next_test_date', label: 'Next test', precision: 'next_test_precision' }
 
 /** Every filter the registry applies (no sort, no paging): the table AND its summary use this, so they agree. */
 export function applyHoseQuery<B extends { eq: any; in: any; or: any; ilike: any; lte: any; gte: any; lt: any }>(b: B, q: HoseQuery): B { // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -174,7 +171,7 @@ export function applyHoseQuery<B extends { eq: any; in: any; or: any; ilike: any
   if (q.serial === 'recorded') b = b.eq('serial_missing', false)
   b = applyAssetFilters(b, q.filters, {
     serial: 'serial_number', station: 'station_name', pressure: 'working_pressure_value', pressureUnit: 'working_pressure_unit',
-    dates: HOSE_DATES,
+    date: HOSE_DATE,
   })
   if (term) {
     // Retrieval only. A search hit resolves no mapping and never merges two

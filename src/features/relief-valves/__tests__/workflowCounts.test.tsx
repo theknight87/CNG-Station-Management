@@ -20,7 +20,7 @@ const client = {
     let head = false
     let status: string | null = null
     const q: Record<string, unknown> = {}
-    for (const m of ['ilike', 'lte', 'gte', 'lt', 'order', 'in']) {
+    for (const m of ['ilike', 'lte', 'gte', 'lt', 'order', 'in', 'or']) {
       q[m] = (...a: unknown[]) => { log.push(`${m}:${a.map(String).join('=')}`); return q }
     }
     q.select = (_c: string, opts?: { head?: boolean }) => { head = Boolean(opts?.head); log.push(head ? 'head' : 'rows'); return q }
@@ -64,10 +64,13 @@ describe('Calibration count strip', () => {
     await waitFor(() => expect(lastRows().some((c) => c.startsWith('in:status'))).toBe(false))
   })
 
-  it('COUNT-3 the counts follow the filters, including the date range', async () => {
+  it('COUNT-3 the counts follow the filters, including the date range picked in the calendar', async () => {
     const user = userEvent.setup()
     render(<SrvCalibrationSection />)
     await screen.findByRole('region', { name: 'Calibration counts' })
+    // One button opens the calendar; From and To live inside it (owner request 2026-09-29).
+    expect(screen.queryByLabelText('From')).toBeNull()
+    await user.click(screen.getByRole('button', { name: /sent:\s*any date/i }))
     await user.type(screen.getByLabelText('From'), '2026-09-01')
     await user.type(screen.getByLabelText('To'), '2026-09-30')
     await waitFor(() => {
@@ -79,14 +82,28 @@ describe('Calibration count strip', () => {
     expect(screen.getByText('Counts follow the filters below.')).toBeDefined()
   })
 
-  it('COUNT-4 the date filter can use another date: the certificate date', async () => {
+  it('COUNT-4 two clicks in the calendar make the range; no date chooser and no status box repeat other controls', async () => {
     const user = userEvent.setup()
     render(<SrvCalibrationSection />)
     await screen.findByRole('region', { name: 'Calibration counts' })
-    await user.selectOptions(screen.getByLabelText('Date'), 'certificate_date')
-    await user.type(screen.getByLabelText('From'), '2026-01-01')
-    await waitFor(() => expect(lastRows()).toContain('gte:certificate_date=2026-01-01'))
-    expect(lastRows().some((c) => c.includes('sent_at=2026'))).toBe(false)
+    expect(screen.queryByLabelText('Date')).toBeNull()
+    expect(screen.queryByLabelText('Status')).toBeNull()
+    await user.click(screen.getByRole('button', { name: /sent:/i }))
+    const days = screen.getAllByRole('button').filter((b) => /^\d{4}-\d{2}-\d{2}$/.test(b.getAttribute('aria-label') ?? ''))
+    const first = days[10].getAttribute('aria-label')!, last = days[14].getAttribute('aria-label')!
+    await user.click(days[14]); await user.click(days[10]) // picked backwards: read the right way round
+    await waitFor(() => expect(lastRows()).toContain(`gte:sent_at=${first}`))
+    const next = new Date(`${last}T00:00:00Z`); next.setUTCDate(next.getUTCDate() + 1)
+    expect(lastRows()).toContain(`lt:sent_at=${next.toISOString().slice(0, 10)}`)
+  })
+
+  it('COUNT-6 the search box searches serial, code, part number and certificate together', async () => {
+    const user = userEvent.setup()
+    render(<SrvCalibrationSection />)
+    await screen.findByRole('region', { name: 'Calibration counts' })
+    await user.type(screen.getByRole('searchbox'), 'acu')
+    await waitFor(() => expect(lastRows()).toContain(
+      'or:serial_number.ilike.*acu*,warehouse_code.ilike.*acu*,part_number.ilike.*acu*,certificate_number.ilike.*acu*'))
   })
 })
 
@@ -99,7 +116,7 @@ describe('SRV Log count strip', () => {
     expect(strip.textContent).toMatch(/All entries\s*14/)
     await user.click(screen.getByRole('button', { name: /^returned/i }))
     await waitFor(() => expect(lastRows()).toContain('in:status=returned'))
-    // The "Include valves already returned" box agrees with the view chosen.
-    expect((screen.getByRole('checkbox', { name: /include valves already returned/i }) as HTMLInputElement).checked).toBe(true)
+    // The counts choose the statuses; no separate "include returned" box repeats them.
+    expect(screen.queryByRole('checkbox', { name: /include valves already returned/i })).toBeNull()
   })
 })

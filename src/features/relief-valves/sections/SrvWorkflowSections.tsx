@@ -1,6 +1,9 @@
-import { useState } from 'react'
-import { ArrowRightLeft, Pencil, Trash2, Undo2 } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import { ArrowRightLeft, Pencil, Trash2, Undo2, X } from 'lucide-react'
 
+import { SearchBox } from '@/components/data/FilterControls'
+import type { DateOption } from '@/components/data/dateRange'
+import { DataToolbar } from '@/components/layout/PageContainer'
 import { RecordDetailsDialog } from '@/components/data/RecordDetailsDialog'
 import { ExportButtons } from '@/features/export/ExportButtons'
 import { CALIBRATION_COLUMNS, EMERGENCY_COLUMNS, SRV_LOG_COLUMNS } from '@/features/export/exportColumns'
@@ -34,11 +37,45 @@ function Truncated({ shown, total }: { shown: number; total: number }) {
   ) : null
 }
 
-function HistoryDialog({ valveId, title, onClose, note }: { valveId: string | null; title: string; onClose: () => void; note?: string }) {
+function HistoryDialog({ valveId, title, onClose, note, children }: {
+  valveId: string | null; title: string; onClose: () => void; note?: string
+  /** Details shown above the movements (e.g. an emergency issue's notes). */
+  children?: ReactNode
+}) {
   return (
     <RecordDetailsDialog open={valveId !== null} title={title} description={note ?? 'Movements of this valve'} onClose={onClose}>
+      {children}
       {valveId ? <ValveHistory valveId={valveId} /> : null}
     </RecordDetailsDialog>
+  )
+}
+
+/**
+ * One toolbar per workflow tab, the same shape as the registries' (owner request 2026-09-29): the search box, the
+ * dedicated filters, Clear, and the tab's actions on the right.
+ */
+function WorkflowToolbar({ id, label, placeholder, filters, onFilters, showRegion = true, date, children }: {
+  id: string
+  label: string
+  placeholder: string
+  filters: SrvSmartFilters
+  onFilters: (f: SrvSmartFilters) => void
+  showRegion?: boolean
+  date: DateOption
+  children?: ReactNode
+}) {
+  return (
+    <DataToolbar label={label}>
+      <SearchBox id={`${id}-search`} label={label} placeholder={placeholder} value={filters.search}
+                 onChange={(search) => onFilters({ ...filters, search })} />
+      <SmartFilterBar id={id} value={filters} onChange={onFilters} showRegion={showRegion} date={date} />
+      {hasSmartFilters(filters) ? (
+        <Button variant="ghost" size="sm" className="h-7" onClick={() => onFilters(EMPTY_SMART_FILTERS)}>
+          <X className="mr-1 h-3.5 w-3.5" aria-hidden="true" />Clear
+        </Button>
+      ) : null}
+      <span className="ml-auto flex flex-wrap items-center gap-2">{children}</span>
+    </DataToolbar>
   )
 }
 
@@ -135,22 +172,16 @@ export function SrvLogSection() {
         Valves that left the warehouse loop and are expected back. Tick the ones that arrived at the warehouse and
         confirm: they return to warehouse stock as available — under calibration.
       </p>
-      <SmartFilterBar id="srv-log" value={filters} onChange={(f) => { setFilters(f); setSelected(new Set()) }} dates={WORKFLOW_DATES.log} />
-      <div className="flex flex-wrap items-center gap-3">
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={view === 'all' || view === 'returned'}
-                 onChange={(e) => { setView(e.target.checked ? 'all' : 'open'); setSelected(new Set()) }} />
-          Include valves already returned
-        </label>
+      {/* Which statuses are shown is chosen with the counts above, so no second status control repeats it. */}
+      <WorkflowToolbar id="srv-log" label="Search and filter the SRV Log" placeholder="Serial, code, part number, station…"
+                       filters={filters} onFilters={(f) => { setFilters(f); setSelected(new Set()) }} date={WORKFLOW_DATES.log}>
         {isAdmin ? (
-          <Button size="sm" disabled={selected.size === 0 || busy} onClick={() => void receive()}>
+          <Button size="sm" className="h-7" disabled={selected.size === 0 || busy} onClick={() => void receive()}>
             {busy ? 'Saving…' : `Arrived at warehouse (${selected.size})`}
           </Button>
         ) : null}
-        <span className="ml-auto">
-          <ExportButtons name="srv-log" load={rowsLoader('SRV Log', SRV_LOG_COLUMNS, rows, state.status === 'ready' && state.data.total > rows.length)} />
-        </span>
-      </div>
+        <ExportButtons name="srv-log" load={rowsLoader('SRV Log', SRV_LOG_COLUMNS, rows, state.status === 'ready' && state.data.total > rows.length)} />
+      </WorkflowToolbar>
       <FormMessage error={error ?? admin.error} done={done ?? admin.done} />
       <LogMoveDialog logId={moving} onClose={() => setMoving(null)} onDone={reload} />
       <ListStates state={state} label="the SRV Log" reload={reload} empty={rows.length === 0}>
@@ -285,23 +316,12 @@ export function SrvCalibrationSection() {
         Valves sent from the store to the calibration company. With the certificate they return to the warehouse as
         available — calibrated, dated by the certificate and due again one year later. Send a valve here with the + beside it in Warehouse SRVs.
       </p>
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-0.5 text-xs text-muted-foreground">
-          Status
-          <select className="h-7 rounded border bg-background px-1.5 text-sm text-foreground" value={status}
-                  onChange={(e) => { setStatus(e.target.value as typeof status); setSelected(new Set()) }}>
-            <option value="open">Not yet certified</option>
-            <option value="sent">At the calibration company</option>
-            <option value="returned_awaiting_certificate">Returned — certificate awaited</option>
-            <option value="certified">Returned with certificate</option>
-            <option value="all">All entries</option>
-          </select>
-        </label>
-        <SmartFilterBar id="srv-cal" value={filters} onChange={(f) => { setFilters(f); setSelected(new Set()) }}
-                        showRegion={false} showStation={false} dates={WORKFLOW_DATES.calibration} />
-        <span className="ml-auto">
-          {/* Excel is the owner's request form; ticked rows only when any are ticked, otherwise the whole list shown. */}
-          <ExportButtons name="srv-calibration" label={picked.length ? `Export ${picked.length} selected` : undefined}
+      {/* The status shown is chosen with the counts above, so no second status control repeats it. */}
+      <WorkflowToolbar id="srv-cal" label="Search and filter calibration" placeholder="Serial, code, part number, certificate…"
+                       filters={filters} onFilters={(f) => { setFilters(f); setSelected(new Set()) }} showRegion={false}
+                       date={WORKFLOW_DATES.calibration}>
+        {/* Excel is the owner's request form; ticked rows only when any are ticked, otherwise the whole list shown. */}
+        <ExportButtons name="srv-calibration" label={picked.length ? `Export ${picked.length} selected` : undefined}
             load={rowsLoader('Calibration (3rd party)', CALIBRATION_COLUMNS, picked.length ? picked : rows,
                              !picked.length && state.status === 'ready' && state.data.total > rows.length)}
             excel={async (sheets) => {
@@ -312,8 +332,7 @@ export function SrvCalibrationSection() {
               const date = formIsoDate(list)
               return { blob: await buildCalibrationForm(formRows, date), fileName: `cng-calibration-request-${date}.xlsx` }
             }} />
-        </span>
-      </div>
+      </WorkflowToolbar>
       {isAdmin && picked.length > 0 ? (
         <section aria-label="Calibration actions" className="flex flex-wrap items-end gap-2 rounded border bg-card px-3 py-2">
           <Button size="sm" variant="outline" disabled={busy || picked.some((r) => r.status !== 'sent')}
@@ -396,12 +415,10 @@ export function SrvEmergencySection() {
       <p className="text-sm text-muted-foreground">
         Every issue marked Emergency. The valve it replaced is also in the SRV Log until it returns to the warehouse.
       </p>
-      <div className="flex flex-wrap items-end gap-3">
-        <SmartFilterBar id="srv-emergency" value={filters} onChange={setFilters} dates={WORKFLOW_DATES.emergency} />
-        <span className="ml-auto">
-          <ExportButtons name="srv-emergency" load={rowsLoader('SRV Emergency', EMERGENCY_COLUMNS, rows, state.status === 'ready' && state.data.total > rows.length)} />
-        </span>
-      </div>
+      <WorkflowToolbar id="srv-emergency" label="Search and filter emergency issues" placeholder="Serial, code, station…"
+                       filters={filters} onFilters={setFilters} date={WORKFLOW_DATES.emergency}>
+        <ExportButtons name="srv-emergency" load={rowsLoader('SRV Emergency', EMERGENCY_COLUMNS, rows, state.status === 'ready' && state.data.total > rows.length)} />
+      </WorkflowToolbar>
       <FormMessage error={admin.error} done={admin.done} />
       <ListStates state={state} label="emergency issues" reload={reload} empty={rows.length === 0}>
         <SelectableTable
@@ -410,6 +427,7 @@ export function SrvEmergencySection() {
           selected={new Set()}
           onSelected={() => {}}
           selectable={() => false}
+          selection={false}
           onOpen={setOpen}
           defaultOrder={byValues<EmergencyRow>((r) => r.region_name, (r) => r.station_name, pressureBar)}
           columns={[
@@ -417,16 +435,19 @@ export function SrvEmergencySection() {
             { key: 'region', header: 'Region', sortValue: (r) => r.region_name, render: (r) => <RegionChip name={r.region_name} /> },
             { key: 'station', header: 'Station / Unit', wrap: true, sortValue: (r) => r.station_name, render: (r) => (
               <span dir="auto">{r.station_name} / {r.unit_name}</span>) },
-            { key: 'issued', header: 'Issued valve', sortValue: (r) => r.issued_serial, render: (r) => <span className="whitespace-nowrap"><Code value={r.issued_serial} /> <Code value={r.issued_code} /></span> },
+            { key: 'issued', header: 'Issued valve', sortValue: (r) => r.issued_serial, render: (r) => (
+              <span className="flex flex-col items-start"><Code value={r.issued_serial} /><span className="text-xs"><Code value={r.issued_code} /></span></span>) },
             { key: 'pressure', header: 'Set pressure', align: 'right', sortValue: pressureBar, render: (r) => <Pressure v={r} /> },
             { key: 'manufacturer', header: 'Manufacturer', sortValue: (r) => r.manufacturer, render: (r) => <ManufacturerChip value={r.manufacturer} /> },
             { key: 'size', header: 'Size', sortValue: sizeOf, render: (r) => <ValveSize v={r} /> },
-            { key: 'replaced', header: 'Replaced valve', sortValue: (r) => r.replaced_serial, render: (r) => r.replaced_installed_valve_id
-              ? <Code value={r.replaced_serial} /> : <span className="text-muted-foreground">None — added only</span> },
-            { key: 'rstatus', header: 'Replaced valve status', sortValue: (r) => r.replaced_status, render: (r) => r.replaced_status === 'returned'
-              ? <ToneChip tone="teal">Returned to warehouse</ToneChip>
-              : r.replaced_status === 'at_station' ? <ToneChip tone="sky">At station — awaiting return</ToneChip> : <NullValue /> },
-            { key: 'notes', header: 'Notes', wrap: true, render: (r) => r.notes ? <span dir="auto">{r.notes}</span> : <NullValue /> },
+            // Replaced valve and where it is now, stacked in one column; the notes are in the details (owner request
+            // 2026-09-29), so the table fits the page.
+            { key: 'replaced', header: 'Replaced valve', sortValue: (r) => r.replaced_serial, render: (r) => r.replaced_installed_valve_id ? (
+              <span className="flex flex-col items-start gap-0.5">
+                <Code value={r.replaced_serial} />
+                {r.replaced_status === 'returned' ? <ToneChip tone="teal">Returned to warehouse</ToneChip>
+                  : r.replaced_status === 'at_station' ? <ToneChip tone="sky">At station — awaiting return</ToneChip> : null}
+              </span>) : <span className="text-muted-foreground">None — added only</span> },
             ...(isAdmin ? [{ key: 'actions', header: 'Actions', render: (r: EmergencyRow) => (
               <RowActions>
                 <RowAction label="Edit" icon={Pencil} disabled={admin.busy} onClick={() => void editNotes(r)} />
@@ -438,7 +459,26 @@ export function SrvEmergencySection() {
         />
         {state.status === 'ready' ? <Truncated shown={rows.length} total={state.data.total} /> : null}
       </ListStates>
-      <HistoryDialog valveId={open?.warehouse_valve_id ?? null} title={`SRV ${open?.issued_serial ?? ''}`} onClose={() => setOpen(null)} />
+      <HistoryDialog valveId={open?.warehouse_valve_id ?? null} title={`SRV ${open?.issued_serial ?? ''}`} onClose={() => setOpen(null)}
+                     note="Emergency issue and the movements of the issued valve">
+        {open ? (
+          <section aria-label="Emergency issue" className="mb-3 rounded border bg-muted/30 px-3 py-2 text-sm">
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+              <dt className="text-muted-foreground">Issued</dt><dd>{day(open.issued_at)}</dd>
+              <dt className="text-muted-foreground">Station / Unit</dt><dd dir="auto">{open.station_name} / {open.unit_name}</dd>
+              <dt className="text-muted-foreground">Replaced valve</dt>
+              <dd>{open.replaced_installed_valve_id ? <><Code value={open.replaced_serial} /> <Code value={open.replaced_code} /></> : 'None — added only'}</dd>
+              <dt className="text-muted-foreground">Notes</dt>
+              <dd dir="auto" className="whitespace-pre-wrap break-words">{open.notes ? open.notes : <NullValue />}</dd>
+            </dl>
+            {isAdmin ? (
+              <Button size="sm" variant="outline" className="mt-2 h-7" disabled={admin.busy} onClick={() => void editNotes(open)}>
+                <Pencil className="mr-1 h-3.5 w-3.5" aria-hidden="true" />Edit notes
+              </Button>
+            ) : null}
+          </section>
+        ) : null}
+      </HistoryDialog>
     </div>
   )
 }

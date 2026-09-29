@@ -17,7 +17,7 @@ import { Metric } from '@/features/relief-valves/SrvPieces'
 import { SmartFilterBar } from '@/features/relief-valves/SrvPieces'
 import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
 import {
-  WAREHOUSE_DATES,
+  WAREHOUSE_DATE,
   hasSmartFilters,
   AVAILABILITY_LABEL, DEFAULT_WAREHOUSE_QUERY, useWarehouseSrvs, warehouseRequest,
   type WarehouseQuery, type WarehouseSrvRow, type WarehouseSort,
@@ -297,7 +297,7 @@ export function WarehouseSrvSection() {
             id="warehouse-srv-search" name="warehouse-srv-search" type="search"
             value={query.search}
             onChange={(e) => update({ search: e.target.value })}
-            placeholder="Serial, part number, warehouse…"
+            placeholder="Serial, code, part number, destination…"
             dir="auto"
             className="h-7 w-full rounded border bg-background pl-7 pr-2 text-sm placeholder:text-muted-foreground"
           />
@@ -334,6 +334,7 @@ export function WarehouseSrvSection() {
           </select>
         </label>
 
+        <SmartFilterBar id="warehouse-srv" regionLabel="Destination Region" value={query.filters} onChange={(filters) => update({ filters })} date={WAREHOUSE_DATE} />
         {hasFilters ? (
           <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7">
             <X className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
@@ -345,7 +346,6 @@ export function WarehouseSrvSection() {
           <AddWarehouseSrvsButton onAdded={reload} />
         </span>
       </DataToolbar>
-      <SmartFilterBar id="warehouse-srv" stationLabel="Destination Station" regionLabel="Destination Region" value={query.filters} onChange={(filters) => update({ filters })} dates={WAREHOUSE_DATES} />
       {isAdmin && picked.length > 0 ? (
         <WarehouseBulkActions picked={picked} onClear={() => setSelected(new Set())} onDone={reloadClear} />
       ) : null}

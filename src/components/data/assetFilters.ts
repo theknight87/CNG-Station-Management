@@ -33,8 +33,8 @@ export interface AssetFilterColumns {
   /** A single recorded value column (hoses: working_pressure_value). */
   pressure?: string
   pressureUnit?: string
-  /** The dates the registry can be filtered by. */
-  dates?: DateOption[]
+  /** The date the registry can be filtered by. */
+  date?: DateOption
 }
 
 /** Applies the filters to a PostgREST builder; a column the dataset lacks is simply not filtered. */
@@ -47,5 +47,5 @@ export function applyAssetFilters<B extends { ilike: any; lte: any; gte: any; lt
   const range = parseRange(f.pressure)
   if (c.pressure && range) b = b.gte(c.pressure, range.lo).lte(c.pressure, range.hi)
   if (c.pressureUnit && f.pressureUnit) b = b.eq(c.pressureUnit, f.pressureUnit)
-  return applyDateRange(b, f, c.dates)
+  return applyDateRange(b, f, c.date)
 }

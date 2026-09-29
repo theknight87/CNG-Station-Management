@@ -155,6 +155,8 @@ const WAREHOUSE_COLUMNS =
  * size type, and the parts either side of X narrow inlet and outlet.
  */
 export interface SrvSmartFilters extends DateRange {
+  /** Free text over the tab's own columns (serial, codes, Station) — the workflow tabs' one search box. */
+  search: string
   serial: string
   region: string
   station: string
@@ -164,11 +166,11 @@ export interface SrvSmartFilters extends DateRange {
   manufacturer: string
 }
 export const EMPTY_SMART_FILTERS: SrvSmartFilters = {
-  serial: '', region: '', station: '', size: '', pressure: '', pressureUnit: '', manufacturer: '', ...EMPTY_DATE_RANGE,
+  search: '', serial: '', region: '', station: '', size: '', pressure: '', pressureUnit: '', manufacturer: '', ...EMPTY_DATE_RANGE,
 }
 
 export function hasSmartFilters(f: SrvSmartFilters): boolean {
-  return Boolean(f.serial.trim() || f.region || f.station.trim() || f.size.trim() || f.pressure.trim() || f.pressureUnit || f.manufacturer
+  return Boolean(f.search.trim() || f.serial.trim() || f.region || f.station.trim() || f.size.trim() || f.pressure.trim() || f.pressureUnit || f.manufacturer
     || hasDateRange(f))
 }
 
@@ -200,7 +202,7 @@ export function parsePressure(value: string): { lo: number; hi: number } | null 
 /** Applies the dedicated filters to a PostgREST builder. Station and Region columns differ per dataset. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function applySmartFilters<B extends { ilike: any; lte: any; gte: any; lt: any; eq: any }>(
-  b: B, f: SrvSmartFilters, stationColumn: string, regionColumn = 'region_id', dates?: DateOption[],
+  b: B, f: SrvSmartFilters, stationColumn: string, regionColumn = 'region_id', date?: DateOption,
 ): B {
   const clean = (v: string) => v.trim().replace(/[%*,()]/g, ' ').trim()
   if (clean(f.serial)) b = b.ilike('serial_number', `%${clean(f.serial)}%`)
@@ -216,18 +218,12 @@ export function applySmartFilters<B extends { ilike: any; lte: any; gte: any; lt
   if (range) b = b.lte('pressure_min', range.hi).gte('pressure_max', range.lo)
   if (f.manufacturer) b = b.ilike('manufacturer', clean(f.manufacturer))
   if (f.pressureUnit) b = b.eq('pressure_unit', f.pressureUnit)
-  return applyDateRange(b, f, dates)
+  return applyDateRange(b, f, date)
 }
 
-/** The dates each SRV registry can be filtered by. */
-export const INSTALLED_DATES: DateOption[] = [
-  { column: 'next_calibration_date', label: 'Next calibration', precision: 'next_calibration_precision' },
-  { column: 'last_calibration_date', label: 'Last calibration', precision: 'last_calibration_precision' },
-]
-export const WAREHOUSE_DATES: DateOption[] = [
-  ...INSTALLED_DATES,
-  { column: 'warehouse_issue_date', label: 'Issued from warehouse' },
-]
+/** The date each SRV registry is filtered by (one per tab, owner request 2026-09-29). */
+export const INSTALLED_DATE: DateOption = { column: 'next_calibration_date', label: 'Next calibration', precision: 'next_calibration_precision' }
+export const WAREHOUSE_DATE: DateOption = INSTALLED_DATE
 
 export type MappingFilter = 'all' | 'resolved' | 'needs_equipment_mapping' | 'needs_unit_mapping' | 'needs_station_mapping' | 'conflict'
 /** 'attention' is overdue OR any due bucket — stated, never left ambiguous. */
@@ -293,7 +289,7 @@ export function installedRequest(supabase: SupabaseClient, q: InstalledQuery) {
   if (q.due === 'overdue') b = b.eq('due_status', 'overdue')
   if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
   if (q.due === 'attention') b = b.in('due_status', ATTENTION_BUCKETS)
-  b = applySmartFilters(b, q.filters, 'station_display', 'region_id', INSTALLED_DATES)
+  b = applySmartFilters(b, q.filters, 'station_display', 'region_id', INSTALLED_DATE)
   if (term) {
     // Retrieval, never resolution: matching a station name here does not
     // map anything. The folded form is offered too so an Arabic query
@@ -418,7 +414,7 @@ export function warehouseRequest(supabase: SupabaseClient, q: WarehouseQuery) {
   if (q.due === 'overdue') b = b.eq('due_status', 'overdue')
   if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
   if (q.due === 'attention') b = b.in('due_status', ATTENTION_BUCKETS)
-  b = applySmartFilters(b, q.filters, 'target_station_name', 'target_region_id', WAREHOUSE_DATES)
+  b = applySmartFilters(b, q.filters, 'target_station_name', 'target_region_id', WAREHOUSE_DATE)
   if (term) {
     const raw = term.replace(/[,()]/g, ' ')
     b = b.or(
@@ -427,6 +423,8 @@ export function warehouseRequest(supabase: SupabaseClient, q: WarehouseQuery) {
         `part_number.ilike.*${raw}*`,
         `manufacturer.ilike.*${raw}*`,
         `warehouse_code.ilike.*${raw}*`,
+        // The destination Station, so the one search box also replaces a separate Station filter.
+        `target_station_name.ilike.*${raw}*`,
       ].join(','),
     )
   }

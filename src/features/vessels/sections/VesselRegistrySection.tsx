@@ -23,7 +23,7 @@ import {
 } from '@/features/vessels/VesselPieces'
 import { RelatedSrvs } from '@/features/vessels/RelatedSrvs'
 import {
-  VESSEL_DATES,
+  VESSEL_DATE,
   DEFAULT_VESSEL_QUERY, useVessels, useVesselSummary,
   type VesselAssetType, type VesselQuery, type VesselRegistryRow, type VesselSort,
   vesselRequest,
@@ -248,6 +248,7 @@ export function VesselRegistrySection({ assetType }: { assetType: VesselAssetTyp
           <span>Duplicate serial candidates only</span>
         </label>
 
+        <AssetFilterBar id={`vessel-${assetType}`} value={query.filters} onChange={(filters) => update({ filters })} makers={makers} date={VESSEL_DATE} />
         {hasFilters ? (
           <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7">
             <X className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
@@ -259,7 +260,6 @@ export function VesselRegistrySection({ assetType }: { assetType: VesselAssetTyp
                          load={queryLoader(supabase, label.plural, VESSEL_COLUMNS, (c) => vesselRequest(c, assetType, query))} />
         </span>
       </DataToolbar>
-      <AssetFilterBar id={`vessel-${assetType}`} value={query.filters} onChange={(filters) => update({ filters })} makers={makers} dates={VESSEL_DATES} />
 
       <RegistryTable
 

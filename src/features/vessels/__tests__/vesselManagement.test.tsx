@@ -204,8 +204,11 @@ describe('Server-side query', () => {
     replies.vessels = { data: [vessel()], error: null, count: 1 }
     renderVessels()
     await screen.findByText('SV-00001')
-    await userEvent.type(screen.getByLabelText(/^serial$/i), 'SV')
-    await waitFor(() => expect(calls.list).toContain('v_vessel_management.count.ilike:serial_number=%SV%'))
+    // Serial is found by the one search box (owner request 2026-09-29: no separate Serial filter repeating it).
+    expect(screen.queryByLabelText(/^serial$/i)).toBeNull()
+    calls.list = []
+    await userEvent.type(screen.getByLabelText(/^search storage vessels$/i), 'SV')
+    await waitFor(() => expect(calls.list.filter((c) => c.startsWith('v_vessel_management.or:') && c.includes('serial_number.ilike.*SV*')).length).toBeGreaterThanOrEqual(2))
     expect(await screen.findByText('Counts match the current filters.')).toBeDefined()
   })
 

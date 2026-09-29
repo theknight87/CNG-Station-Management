@@ -1,15 +1,13 @@
 import { cairoBusinessDate } from '@/features/reports/csv'
 
 /**
- * The date filter every registry and workflow tab offers (owner request 2026-09-29): pick which date (next
- * calibration, sent, issued, …), then From and/or To. Both ends are inclusive calendar days.
+ * The date filter every registry and workflow tab offers (owner request 2026-09-29): one date per tab (next
+ * calibration, sent, issued, …) and a From–To range chosen in one calendar. Both ends are inclusive calendar days.
  *
  * A date recorded at year-only (or unknown) precision is never matched by a day range — principle #17: only an
  * exact date is a calendar day. Where the dataset carries a precision column the filter requires `exact_date`.
  */
 export interface DateRange {
-  /** The chosen date column; '' means the first option offered. */
-  dateField: string
   /** `YYYY-MM-DD` or ''. */
   dateFrom: string
   dateTo: string
@@ -22,7 +20,7 @@ export interface DateOption {
   precision?: string
 }
 
-export const EMPTY_DATE_RANGE: DateRange = { dateField: '', dateFrom: '', dateTo: '' }
+export const EMPTY_DATE_RANGE: DateRange = { dateFrom: '', dateTo: '' }
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/
 
@@ -36,20 +34,13 @@ export function addDays(iso: string, days: number): string {
   return t.toISOString().slice(0, 10)
 }
 
-/** The option a range applies to: the chosen one, or the first offered. */
-export function dateOptionFor(f: Partial<DateRange>, options: DateOption[]): DateOption | null {
-  return options.find((o) => o.column === f.dateField) ?? options[0] ?? null
-}
-
 /**
  * Narrows a PostgREST builder to the range. The upper bound is "before the next day", so a timestamp anywhere on
  * the To day is included as well as a plain date. A reversed range is read the right way round.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function applyDateRange<B extends { gte: any; lt: any; eq: any }>(b: B, f: Partial<DateRange>, options: DateOption[] | undefined): B {
-  if (!options?.length || !hasDateRange(f)) return b
-  const opt = dateOptionFor(f, options)
-  if (!opt) return b
+export function applyDateRange<B extends { gte: any; lt: any; eq: any }>(b: B, f: Partial<DateRange>, opt: DateOption | undefined): B {
+  if (!opt || !hasDateRange(f)) return b
   let from = f.dateFrom && ISO_DAY.test(f.dateFrom) ? f.dateFrom : ''
   let to = f.dateTo && ISO_DAY.test(f.dateTo) ? f.dateTo : ''
   if (from && to && from > to) [from, to] = [to, from]
@@ -60,10 +51,8 @@ export function applyDateRange<B extends { gte: any; lt: any; eq: any }>(b: B, f
 }
 
 /** The same test for rows already in memory. */
-export function inDateRange(row: Record<string, unknown>, f: Partial<DateRange>, options: DateOption[] | undefined): boolean {
-  if (!options?.length || !hasDateRange(f)) return true
-  const opt = dateOptionFor(f, options)
-  if (!opt) return true
+export function inDateRange(row: Record<string, unknown>, f: Partial<DateRange>, opt: DateOption | undefined): boolean {
+  if (!opt || !hasDateRange(f)) return true
   const raw = row[opt.column]
   if (typeof raw !== 'string' || raw.length < 10) return false
   if (opt.precision && row[opt.precision] !== 'exact_date') return false
@@ -71,6 +60,23 @@ export function inDateRange(row: Record<string, unknown>, f: Partial<DateRange>,
   let from = f.dateFrom ?? '', to = f.dateTo ?? ''
   if (from && to && from > to) [from, to] = [to, from]
   return (!from || day >= from) && (!to || day <= to)
+}
+
+/** `1 Sep 2026` — for the picker's button. */
+export function shortDay(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+}
+
+/** What the picker's button says: the range, one open end, or "Any date". */
+export function rangeText(f: Partial<DateRange>): string {
+  let from = f.dateFrom && ISO_DAY.test(f.dateFrom) ? f.dateFrom : ''
+  let to = f.dateTo && ISO_DAY.test(f.dateTo) ? f.dateTo : ''
+  if (from && to && from > to) [from, to] = [to, from]
+  if (from && to) return from === to ? shortDay(from) : `${shortDay(from)} – ${shortDay(to)}`
+  if (from) return `From ${shortDay(from)}`
+  if (to) return `Until ${shortDay(to)}`
+  return 'Any date'
 }
 
 export type DatePreset = 'past' | 'last30' | 'next30' | 'next60' | 'thisMonth' | 'thisYear'

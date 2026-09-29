@@ -157,7 +157,7 @@ export function applyVesselQuery<B extends { eq: any; in: any; or: any; ilike: a
   if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
   if (q.due === 'attention') b = b.in('due_status', ATTENTION_BUCKETS)
   if (q.duplicateSerial) b = b.eq('serial_duplicate', true)
-  b = applyAssetFilters(b, q.filters, { serial: 'serial_number', station: 'station_name', maker: 'manufacturer', dates: VESSEL_DATES })
+  b = applyAssetFilters(b, q.filters, { serial: 'serial_number', station: 'station_name', maker: 'manufacturer', date: VESSEL_DATE })
   if (term) {
     // Retrieval only. Matching a station name here resolves nothing; the
     // folded form is offered so an Arabic query typed one way finds the
@@ -177,10 +177,7 @@ export function applyVesselQuery<B extends { eq: any; in: any; or: any; ilike: a
   return b
 }
 
-export const VESSEL_DATES: DateOption[] = [
-  { column: 'next_inspection_date', label: 'Next inspection', precision: 'next_inspection_precision' },
-  { column: 'last_inspection_date', label: 'Last inspection', precision: 'last_inspection_precision' },
-]
+export const VESSEL_DATE: DateOption = { column: 'next_inspection_date', label: 'Next inspection', precision: 'next_inspection_precision' }
 
 /** Overdue PLUS every due bucket out to 60 days. Stated, never left ambiguous. */
 const ATTENTION_BUCKETS = ['overdue', 'due_today', 'due_7', 'due_15', 'due_30', 'due_60']

@@ -174,10 +174,7 @@ const SORT_COLUMNS: Record<DetectorSort, string[]> = {
 
 const TIE_BREAK = ['detector_id', 'station_id', 'unit_id']
 
-export const DETECTOR_DATES: DateOption[] = [
-  { column: 'next_calibration_date', label: 'Next calibration', precision: 'next_calibration_precision' },
-  { column: 'last_calibration_date', label: 'Last calibration', precision: 'last_calibration_precision' },
-]
+export const DETECTOR_DATE: DateOption = { column: 'next_calibration_date', label: 'Next calibration', precision: 'next_calibration_precision' }
 
 /**
  * Every filter the registry applies (no sort, no paging): the table AND its summary use this, so they agree.
@@ -195,7 +192,7 @@ export function applyDetectorQuery<B extends { eq: any; in: any; or: any; ilike:
   if (q.due === 'overdue') b = b.eq('due_status', 'overdue')
   if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
   if (q.due === 'attention') b = b.in('due_status', ATTENTION_BUCKETS)
-  b = applyAssetFilters(b, q.filters, { serial: 'serial_number', station: 'station_name', maker: 'manufacturer', dates: DETECTOR_DATES })
+  b = applyAssetFilters(b, q.filters, { serial: 'serial_number', station: 'station_name', maker: 'manufacturer', date: DETECTOR_DATE })
   if (term) {
     // Retrieval only. Matching a station name here RESOLVES NOTHING — no
     // mapping state is advanced by a search hit. The folded form is offered
