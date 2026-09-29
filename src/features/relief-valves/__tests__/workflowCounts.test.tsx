@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -7,7 +7,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * filters, and each count is a button that shows its rows. Also: the date filter reaches the database query.
  */
 
-const COUNTS: Record<string, number> = { sent: 7, returned_awaiting_certificate: 3, certified: 12, at_station: 4, location_unconfirmed: 1, returned: 9 }
+const COUNTS: Record<string, number> = { sent: 7, returned_awaiting_certificate: 3, certified: 12, at_station: 4, location_unconfirmed: 1, returned: 9,
+  awaiting_replaced: 2, replaced_returned: 3, no_replacement: 1, replaced_entry_removed: 0 }
 const queries = vi.hoisted(() => ({ list: [] as string[][] }))
 
 vi.mock('@/hooks/useAppUser', () => ({ useOptionalAppUser: () => ({ status: 'active', user: { id: 'u1', role: 'viewer' } }) }))
@@ -108,40 +109,44 @@ describe('Calibration count strip', () => {
 })
 
 describe('SRV Log count strip', () => {
-  it('COUNT-5 shows awaiting-return and per-status counts; Returned shows returned rows', async () => {
+  it('COUNT-5 the strip shows Issue, Awaiting return (with its two parts) and Return; Return shows returned rows', async () => {
     const user = userEvent.setup()
     render(<SrvLogSection />)
     const strip = await screen.findByRole('region', { name: 'SRV Log counts' })
     await waitFor(() => expect(strip.textContent).toMatch(/Awaiting return\s*5/))
-    expect(strip.textContent).toMatch(/All entries\s*14/)
-    await user.click(screen.getByRole('button', { name: /^returned/i }))
+    expect(strip.textContent).toMatch(/Issue\s*6/)
+    expect(strip.textContent).toMatch(/2 still waiting for the replaced valve/)
+    expect(strip.textContent).toMatch(/Return\s*9/)
+    await user.click(within(strip).getByRole('button', { name: /^return\d/i }))
     await waitFor(() => expect(lastRows()).toContain('in:status=returned'))
-    // The counts choose the statuses; no separate "include returned" box repeats them.
     expect(screen.queryByRole('checkbox', { name: /include valves already returned/i })).toBeNull()
   })
 
-  it('COUNT-7 the Movement filter (out / returned) is back and agrees with the counts', async () => {
+  it('COUNT-7 Movement: Issue, Awaiting return, Return — Issue lists the issued valves, not the replaced ones', async () => {
     const user = userEvent.setup()
     render(<SrvLogSection />)
     await screen.findByRole('region', { name: 'SRV Log counts' })
     const movement = screen.getByLabelText('Movement') as HTMLSelectElement
-    // Only two movements to choose (owner request 2026-09-29).
-    expect([...movement.options].filter((o) => !o.disabled).map((o) => o.textContent)).toEqual(['Issue', 'Return'])
+    expect([...movement.options].map((o) => o.textContent)).toEqual(['Issue', 'Awaiting return', 'Return'])
     expect(movement.value).toBe('open')
+    await user.selectOptions(movement, 'issue')
+    await waitFor(() => expect(queries.list.some((q) => q[0] === 'v_srv_issue_log' && q.includes('rows'))).toBe(true))
+    const strip = screen.getByRole('region', { name: 'SRV Log counts' })
+    expect(within(strip).getByRole('button', { name: /^issue\d/i }).getAttribute('aria-pressed')).toBe('true')
     await user.selectOptions(movement, 'returned')
     await waitFor(() => expect(lastRows()).toContain('in:status=returned'))
-    expect(screen.getByRole('button', { name: /^returned/i }).getAttribute('aria-pressed')).toBe('true')
-    await user.selectOptions(movement, 'open')
-    await waitFor(() => expect(lastRows()).toContain('in:status=at_station,location_unconfirmed'))
+    await user.click(screen.getByRole('button', { name: /^at station/i }))
+    // A finer view from the counts reads as Awaiting return here.
+    expect((screen.getByLabelText('Movement') as HTMLSelectElement).value).toBe('open')
   })
 
   it('INFO-1 the explanation is hidden behind an (i) and opens on click', async () => {
     const user = userEvent.setup()
     render(<SrvLogSection />)
     await screen.findByRole('region', { name: 'SRV Log counts' })
-    expect(screen.queryByText(/expected back at the warehouse/i)).toBeNull()
+    expect(screen.queryByText(/expected back/i)).toBeNull()
     await user.click(screen.getByRole('button', { name: 'About the SRV Log' }))
-    expect(screen.getByRole('note').textContent).toMatch(/expected back at the warehouse/i)
+    expect(screen.getByRole('note').textContent).toMatch(/expected back/i)
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('note')).toBeNull()
   })

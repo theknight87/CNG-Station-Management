@@ -8,10 +8,11 @@ import type { DateOption } from '@/components/data/dateRange'
 import { DataToolbar } from '@/components/layout/PageContainer'
 import { RecordDetailsDialog } from '@/components/data/RecordDetailsDialog'
 import { ExportButtons } from '@/features/export/ExportButtons'
-import { CALIBRATION_COLUMNS, EMERGENCY_COLUMNS, SRV_LOG_COLUMNS } from '@/features/export/exportColumns'
+import { CALIBRATION_COLUMNS, EMERGENCY_COLUMNS, ISSUE_LOG_COLUMNS, ISSUE_STATUS, SRV_LOG_COLUMNS } from '@/features/export/exportColumns'
 import { rowsLoader } from '@/features/export/exportData'
 import { buildCalibrationForm, formIsoDate, loadOriginStations, orderForForm, type CalibrationFormRow } from '@/features/export/calibrationForm'
 import { useSupabaseClient } from '@/lib/supabase/client'
+import { cn } from '@/lib/utils'
 import { NullValue } from '@/components/data/NullValue'
 import { Button } from '@/components/ui/button'
 import { EMPTY_SMART_FILTERS, hasSmartFilters, type SrvSmartFilters } from '@/features/relief-valves/useSrvManagement'
@@ -26,7 +27,7 @@ import {
 } from '@/features/relief-valves/SrvAdminActions'
 import {
   WORKFLOW_DATES, sizeText, useConfirmedAction, useWorkflowCounts, useIsAdmin, useWorkflowAction, useWorkflowList,
-  type CalibrationRow, type ValveFields, type EmergencyRow, type FieldLogRow,
+  type CalibrationRow, type ValveFields, type EmergencyRow, type FieldLogRow, type IssueLogRow,
 } from '@/features/relief-valves/useSrvWorkflow'
 
 const day = (ts: string | null) => (ts ? <span className="tabular whitespace-nowrap">{ts.slice(0, 10)}</span> : <NullValue />)
@@ -105,12 +106,24 @@ const LOG_REASON: Record<FieldLogRow['reason'], string> = {
   replaced_on_issue: 'Replaced by an issued valve',
   reconcile_other_serial: 'Sent to this Station, but the Station records a different valve',
   reconcile_station_not_found: 'Sent to this Station, but no valves are recorded there',
+  issue_undone: 'Its issue was undone; it is still at the station',
 }
 
-type LogView = 'open' | 'all' | FieldLogRow['status']
+/**
+ * The SRV Log movements (owner request 2026-09-29):
+ *   Issue            valves issued from the warehouse and fitted at a station, with whether the valve each one
+ *                    replaced is back yet (finished issues drop off after six months — hidden, never deleted);
+ *   Awaiting return  valves out at stations, expected back (the replaced ones, and any sent out by reconciliation);
+ *   Return           valves received back at the warehouse.
+ */
+type LogView = 'issue' | 'open' | FieldLogRow['status']
 const LOG_STATUSES = ['at_station', 'location_unconfirmed', 'returned'] as const
+const ISSUE_STATUSES = ['awaiting_replaced', 'replaced_returned', 'no_replacement', 'replaced_entry_removed'] as const
 const LOG_DOT: Record<FieldLogRow['status'], string> = {
   at_station: 'bg-blue-600', location_unconfirmed: 'bg-orange-500', returned: 'bg-emerald-600',
+}
+const ISSUE_TONE: Record<IssueLogRow['status'], ToneName | null> = {
+  awaiting_replaced: 'sky', replaced_returned: 'teal', no_replacement: null, replaced_entry_removed: 'orange',
 }
 
 function CountsFailed() {
@@ -121,14 +134,15 @@ const countOf = (counts: Loadable<Record<string, number>>) => (k: string) => (co
 const sumOf = (...v: (number | null)[]) => (v.some((x) => x === null) ? null : v.reduce<number>((a, x) => a + (x ?? 0), 0))
 
 /** The SRV Log count strip; follows every filter above the table. */
-function LogCounts({ counts, filtered, view, onPick }: {
+function LogCounts({ counts, issues, filtered, view, onPick }: {
   counts: Loadable<Record<string, number>>
+  issues: Loadable<Record<string, number>>
   filtered: boolean
   view: LogView
   onPick: (v: LogView) => void
 }) {
-  if (counts.status === 'error') return <CountsFailed />
-  const n = countOf(counts)
+  if (counts.status === 'error' || issues.status === 'error') return <CountsFailed />
+  const n = countOf(counts), i = countOf(issues)
   const atStation = n('at_station'), unconfirmed = n('location_unconfirmed'), returned = n('returned')
   return (
     <CountStrip
@@ -137,13 +151,62 @@ function LogCounts({ counts, filtered, view, onPick }: {
       onPick={(k) => onPick(k as LogView)}
       note={filtered ? 'Counts follow the filters below.' : null}
       items={[
+        { key: 'issue', label: 'Issue', value: sumOf(...ISSUE_STATUSES.map(i)), hint: `${i('awaiting_replaced') ?? '—'} still waiting for the replaced valve` },
         { key: 'open', label: 'Awaiting return', value: sumOf(atStation, unconfirmed), hint: 'still out of the warehouse' },
         { key: 'at_station', label: 'At station', value: atStation, dot: LOG_DOT.at_station },
         { key: 'location_unconfirmed', label: 'Location unconfirmed', value: unconfirmed, dot: LOG_DOT.location_unconfirmed },
-        { key: 'returned', label: 'Returned', value: returned, dot: LOG_DOT.returned, hint: 'back in the warehouse' },
-        { key: 'all', label: 'All entries', value: sumOf(atStation, unconfirmed, returned) },
+        { key: 'returned', label: 'Return', value: returned, dot: LOG_DOT.returned, hint: 'back in the warehouse' },
       ]}
     />
+  )
+}
+
+/**
+ * Undo an issue: the replaced valve goes back to its position and the issued valve leaves the station — the admin
+ * says where it is (owner report 2026-09-29: undoing only the replaced half left two valves in one position).
+ */
+function UndoIssueDialog({ target, onClose, onDone }: {
+  target: { issueId: string; issued: string | null; replaced: string | null } | null
+  onClose: () => void
+  onDone: (message: string) => void
+}) {
+  const [action, setAction] = useState<'to_stock' | 'await_return'>('to_stock')
+  const [error, setError] = useState<string | null>(null)
+  const { run, busy } = useWorkflowAction()
+  async function confirm() {
+    if (!target) return
+    setError(null)
+    const err = await run('cng_srv_issue_undo', { p_issue_id: target.issueId, p_issued_action: action })
+    if (err) { setError(err); return }
+    onDone(action === 'to_stock'
+      ? 'Issue undone: the replaced valve is back in its position and the issued valve is back in warehouse stock.'
+      : 'Issue undone: the replaced valve is back in its position; the issued valve is in the SRV Log awaiting return.')
+    onClose()
+  }
+  const issued = target?.issued ? `serial ${target.issued}` : 'the issued valve'
+  return (
+    <RecordDetailsDialog open={target !== null} title="Undo this replacement"
+                         description={target?.replaced ? `Serial ${target.replaced} goes back to its position at the station.` : 'The issue is cancelled.'}
+                         onClose={onClose}>
+      <fieldset className="flex flex-col gap-2 text-sm">
+        <legend className="mb-1 font-medium">Where is {issued} now?</legend>
+        <label className={cn('flex items-start gap-2 rounded border p-2', action === 'to_stock' && 'border-brand-strong')}>
+          <input type="radio" name="undo-action" className="mt-1" checked={action === 'to_stock'} onChange={() => setAction('to_stock')} />
+          <span><span className="font-medium">Back in the warehouse (recommended)</span>
+            <span className="block text-xs text-muted-foreground">It was never fitted, or it is already back: stock again as it was, same code.</span></span>
+        </label>
+        <label className={cn('flex items-start gap-2 rounded border p-2', action === 'await_return' && 'border-brand-strong')}>
+          <input type="radio" name="undo-action" className="mt-1" checked={action === 'await_return'} onChange={() => setAction('await_return')} />
+          <span><span className="font-medium">Still at the station</span>
+            <span className="block text-xs text-muted-foreground">It goes to the SRV Log as awaiting return, and is received like any valve when it arrives.</span></span>
+        </label>
+      </fieldset>
+      <FormMessage error={error} done={null} />
+      <div className="mt-2 flex justify-end gap-2">
+        <Button size="sm" variant="outline" onClick={onClose}>Cancel</Button>
+        <Button size="sm" disabled={busy} onClick={() => void confirm()}>{busy ? 'Undoing…' : 'Undo replacement'}</Button>
+      </div>
+    </RecordDetailsDialog>
   )
 }
 
@@ -151,105 +214,167 @@ export function SrvLogSection() {
   const isAdmin = useIsAdmin()
   const [filters, setFilters] = useState<SrvSmartFilters>(EMPTY_SMART_FILTERS)
   const [view, setView] = useState<LogView>('open')
+  const showIssues = view === 'issue'
   const { state, reload, version } = useWorkflowList<FieldLogRow>('log', {
-    status: view === 'all' ? undefined : view === 'open' ? ['at_station', 'location_unconfirmed'] : [view], filters,
+    status: view === 'open' ? ['at_station', 'location_unconfirmed'] : [view], filters, skip: showIssues,
   })
-  const counts = useWorkflowCounts('log', LOG_STATUSES, filters, version)
+  const issueList = useWorkflowList<IssueLogRow>('issues', { filters, skip: !showIssues })
+  const counts = useWorkflowCounts('log', LOG_STATUSES, filters, version + issueList.version)
+  const issueCounts = useWorkflowCounts('issues', ISSUE_STATUSES, filters, version + issueList.version)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
   const [open, setOpen] = useState<FieldLogRow | null>(null)
+  const [openIssue, setOpenIssue] = useState<IssueLogRow | null>(null)
   const [moving, setMoving] = useState<string | null>(null)
+  const [undo, setUndo] = useState<{ issueId: string; issued: string | null; replaced: string | null } | null>(null)
   const { run, busy } = useWorkflowAction()
   const admin = useConfirmedAction(reload)
   const rows = state.status === 'ready' ? state.data.rows : []
+  const issues = issueList.state.status === 'ready' ? issueList.state.data.rows : []
+  const reloadAll = () => { reload(); issueList.reload() }
+  const pick = (v: LogView) => { setView(v); setSelected(new Set()) }
 
   async function receive() {
     setError(null); setDone(null)
     const err = await run('cng_srv_log_receive', { p_log_ids: [...selected] })
     if (err) { setError(err); return }
     setDone(`${selected.size} valve(s) received; they are back in the warehouse as available — under calibration.`)
-    setSelected(new Set()); reload()
+    setSelected(new Set()); reloadAll()
   }
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      <LogCounts counts={counts} filtered={hasSmartFilters(filters)} view={view}
-                 onPick={(v) => { setView(v); setSelected(new Set()) }} />
+      <LogCounts counts={counts} issues={issueCounts} filtered={hasSmartFilters(filters)} view={view} onPick={pick} />
       <WorkflowToolbar id="srv-log" label="Search and filter the SRV Log"
-                       info={{ label: 'About the SRV Log', text: 'Valves out at stations, expected back at the warehouse. Tick the ones that arrived and confirm: they return to stock as under calibration.' }} placeholder="Serial, code, part number, station…"
-                       filters={filters} onFilters={(f) => { setFilters(f); setSelected(new Set()) }} date={WORKFLOW_DATES.log}
+                       info={{ label: 'About the SRV Log', text: 'Issue: valves fitted at stations from the warehouse, and whether the valve each one replaced is back (finished ones drop off after six months). Awaiting return: valves out at stations, expected back — tick the ones that arrived and confirm. Return: valves received back.' }}
+                       placeholder="Serial, code, station…"
+                       filters={filters} onFilters={(f) => { setFilters(f); setSelected(new Set()) }}
+                       date={showIssues ? WORKFLOW_DATES.issues : WORKFLOW_DATES.log}
                        filtersBefore={
-                         // The movement, two choices only (owner request 2026-09-29): Issue — out, awaiting return —
-                         // or Return — back at the warehouse. Kept in step with the count strip above, which can also
-                         // pick a finer view; the box then shows neither choice until one is picked here.
+                         // Three movements (owner request 2026-09-29), in step with the counts above; a finer view
+                         // picked there (at station / location unconfirmed) shows as Awaiting return here.
                          <label className={filterLabel} htmlFor="srv-log-movement">
                            Movement
                            <select id="srv-log-movement" className={filterControl}
-                                   value={view === 'open' || view === 'returned' ? view : ''}
-                                   onChange={(e) => { setView(e.target.value as LogView); setSelected(new Set()) }}>
-                             <option value="" disabled hidden>—</option>
-                             <option value="open">Issue</option>
+                                   value={view === 'at_station' || view === 'location_unconfirmed' ? 'open' : view}
+                                   onChange={(e) => pick(e.target.value as LogView)}>
+                             <option value="issue">Issue</option>
+                             <option value="open">Awaiting return</option>
                              <option value="returned">Return</option>
                            </select>
                          </label>
                        }>
-        {isAdmin ? (
+        {isAdmin && !showIssues ? (
           <Button size="sm" className="h-7" disabled={selected.size === 0 || busy} onClick={() => void receive()}>
             {busy ? 'Saving…' : `Arrived at warehouse (${selected.size})`}
           </Button>
         ) : null}
-        <ExportButtons name="srv-log" load={rowsLoader('SRV Log', SRV_LOG_COLUMNS, rows, state.status === 'ready' && state.data.total > rows.length)} />
+        {showIssues
+          ? <ExportButtons name="srv-issues" load={rowsLoader('SRV Issues', ISSUE_LOG_COLUMNS, issues, issueList.state.status === 'ready' && issueList.state.data.total > issues.length)} />
+          : <ExportButtons name="srv-log" load={rowsLoader('SRV Log', SRV_LOG_COLUMNS, rows, state.status === 'ready' && state.data.total > rows.length)} />}
       </WorkflowToolbar>
       <FormMessage error={error ?? admin.error} done={done ?? admin.done} />
       <LogMoveDialog logId={moving} onClose={() => setMoving(null)} onDone={reload} />
-      <ListStates state={state} label="the SRV Log" reload={reload} empty={rows.length === 0}>
-        <SelectableTable
-          label="SRV Log"
-          rows={rows}
-          selected={selected}
-          onSelected={setSelected}
-          selectable={(r) => isAdmin && r.status !== 'returned'}
-          onOpen={setOpen}
-          defaultOrder={byValues<FieldLogRow>((r) => r.region_name, (r) => r.station_display, pressureBar)}
-          columns={[
-            { key: 'serial', header: 'Serial', sortValue: (r) => r.serial_number, render: (r) => <Code value={r.serial_number} /> },
-            { key: 'code', header: 'Code', sortValue: (r) => r.warehouse_code, render: (r) => <Code value={r.warehouse_code} /> },
-            { key: 'pressure', header: 'Set pressure', align: 'right', sortValue: pressureBar, render: (r) => <Pressure v={r} /> },
-            { key: 'manufacturer', header: 'Manufacturer', sortValue: (r) => r.manufacturer, render: (r) => <ManufacturerChip value={r.manufacturer} /> },
-            { key: 'size', header: 'Size', sortValue: sizeOf, render: (r) => <ValveSize v={r} /> },
-            { key: 'region', header: 'Region', sortValue: (r) => r.region_name, render: (r) => <RegionChip name={r.region_name} /> },
-            { key: 'station', header: 'Station', wrap: true, sortValue: (r) => r.station_display, render: (r) => (
-              // Unit on its own line: a mixed Arabic "Station / Unit" on one line reorders under bidi.
-              <span className="flex flex-col items-start">
-                <span dir="auto">{r.station_display ?? <NullValue />}</span>
-                {r.unit_name ? <span dir="auto" className="text-xs text-muted-foreground">{r.unit_name}</span> : null}
-              </span>) },
-            { key: 'status', header: 'Status', sortValue: (r) => LOG_STATUS[r.status], render: (r) => (
-              <span className="flex flex-col items-start gap-0.5">
-                <ToneChip tone={LOG_TONE[r.status]}>{LOG_STATUS[r.status]}</ToneChip>
-                {r.is_emergency ? <ToneChip tone={LOG_TONE[r.status]}>Emergency</ToneChip> : null}
-              </span>) },
-            { key: 'since', header: 'Since', sortValue: logSince, render: (r) => day(logSince(r)) },
-            ...(isAdmin ? [{ key: 'actions', header: 'Actions', render: (r: FieldLogRow) => (
-              <RowActions>
-                {r.installed_valve_id && r.status !== 'returned' ? (
-                  <RowAction label="Back to its station" icon={Undo2} disabled={admin.busy}
-                    onClick={() => void admin.act('Put this valve back as installed at its station and remove it from the SRV Log?',
-                      'cng_srv_log_restore_to_station', { p_log_id: r.id }, 'The valve is installed at its station again.')} />
-                ) : <span aria-hidden="true" className="w-7 shrink-0" />}
-                <RowAction label="Move" icon={ArrowRightLeft} disabled={admin.busy} onClick={() => setMoving(r.id)} />
-                <RowAction label="Delete" icon={Trash2} danger disabled={admin.busy}
-                  onClick={() => void admin.act('Remove this entry from the SRV Log? It is archived (kept in the audit history).',
-                    'cng_srv_log_archive', { p_log_id: r.id }, 'Entry removed from the SRV Log.')} />
-              </RowActions>) }] : []),
-          ]}
-        />
-        {state.status === 'ready' ? <Truncated shown={rows.length} total={state.data.total} /> : null}
-      </ListStates>
+      <UndoIssueDialog target={undo} onClose={() => setUndo(null)} onDone={(m) => { setError(null); setDone(m); reloadAll() }} />
+
+      {showIssues ? (
+        <ListStates state={issueList.state} label="issues" reload={issueList.reload} empty={issues.length === 0}>
+          <SelectableTable
+            label="SRV Issues"
+            rows={issues}
+            selected={new Set()}
+            onSelected={() => {}}
+            selectable={() => false}
+            selection={false}
+            onOpen={setOpenIssue}
+            defaultOrder={(a, b) => b.issued_at.localeCompare(a.issued_at)}
+            columns={[
+              { key: 'date', header: 'Issued', sortValue: (r) => r.issued_at, render: (r) => day(r.issued_at) },
+              { key: 'region', header: 'Region', sortValue: (r) => r.region_name, render: (r) => <RegionChip name={r.region_name} /> },
+              { key: 'station', header: 'Station', wrap: true, sortValue: (r) => r.station_name, render: (r) => (
+                <span className="flex flex-col items-start">
+                  <span dir="auto">{r.station_name}</span>
+                  <span dir="auto" className="text-xs text-muted-foreground">{r.unit_name}</span>
+                </span>) },
+              { key: 'issued', header: 'Issued valve', sortValue: (r) => r.issued_serial, render: (r) => (
+                <span className="flex flex-col items-start"><Code value={r.issued_serial} /><span className="text-xs"><Code value={r.issued_code} /></span></span>) },
+              { key: 'pressure', header: 'Set pressure', align: 'right', sortValue: pressureBar, render: (r) => <Pressure v={r} /> },
+              { key: 'manufacturer', header: 'Manufacturer', sortValue: (r) => r.manufacturer, render: (r) => <ManufacturerChip value={r.manufacturer} /> },
+              { key: 'size', header: 'Size', sortValue: sizeOf, render: (r) => <ValveSize v={r} /> },
+              { key: 'replaced', header: 'Replaced valve', sortValue: (r) => ISSUE_STATUS[r.status], render: (r) => (
+                <span className="flex flex-col items-start gap-0.5">
+                  {r.replaced_installed_valve_id ? <Code value={r.replaced_serial} /> : null}
+                  {ISSUE_TONE[r.status]
+                    ? <ToneChip tone={ISSUE_TONE[r.status]!}>{r.status === 'replaced_returned' && r.replaced_returned_at
+                        ? `Returned ${r.replaced_returned_at.slice(0, 10)}` : ISSUE_STATUS[r.status]}</ToneChip>
+                    : <span className="text-muted-foreground">{ISSUE_STATUS[r.status]}</span>}
+                  {r.is_emergency ? <ToneChip tone="orange">Emergency</ToneChip> : null}
+                </span>) },
+              ...(isAdmin ? [{ key: 'actions', header: 'Actions', render: (r: IssueLogRow) => (
+                <RowActions>
+                  {r.status !== 'replaced_returned' ? (
+                    <RowAction label="Undo replacement" icon={Undo2}
+                      onClick={() => setUndo({ issueId: r.id, issued: r.issued_serial, replaced: r.replaced_serial })} />
+                  ) : <span aria-hidden="true" className="w-7 shrink-0" />}
+                </RowActions>) }] : []),
+            ]}
+          />
+          {issueList.state.status === 'ready' ? <Truncated shown={issues.length} total={issueList.state.data.total} /> : null}
+        </ListStates>
+      ) : (
+        <ListStates state={state} label="the SRV Log" reload={reload} empty={rows.length === 0}>
+          <SelectableTable
+            label="SRV Log"
+            rows={rows}
+            selected={selected}
+            onSelected={setSelected}
+            selectable={(r) => isAdmin && r.status !== 'returned'}
+            onOpen={setOpen}
+            defaultOrder={byValues<FieldLogRow>((r) => r.region_name, (r) => r.station_display, pressureBar)}
+            columns={[
+              { key: 'serial', header: 'Serial', sortValue: (r) => r.serial_number, render: (r) => <Code value={r.serial_number} /> },
+              { key: 'code', header: 'Code', sortValue: (r) => r.warehouse_code, render: (r) => <Code value={r.warehouse_code} /> },
+              { key: 'pressure', header: 'Set pressure', align: 'right', sortValue: pressureBar, render: (r) => <Pressure v={r} /> },
+              { key: 'manufacturer', header: 'Manufacturer', sortValue: (r) => r.manufacturer, render: (r) => <ManufacturerChip value={r.manufacturer} /> },
+              { key: 'size', header: 'Size', sortValue: sizeOf, render: (r) => <ValveSize v={r} /> },
+              { key: 'region', header: 'Region', sortValue: (r) => r.region_name, render: (r) => <RegionChip name={r.region_name} /> },
+              { key: 'station', header: 'Station', wrap: true, sortValue: (r) => r.station_display, render: (r) => (
+                // Unit on its own line: a mixed Arabic "Station / Unit" on one line reorders under bidi.
+                <span className="flex flex-col items-start">
+                  <span dir="auto">{r.station_display ?? <NullValue />}</span>
+                  {r.unit_name ? <span dir="auto" className="text-xs text-muted-foreground">{r.unit_name}</span> : null}
+                </span>) },
+              { key: 'status', header: 'Status', sortValue: (r) => LOG_STATUS[r.status], render: (r) => (
+                <span className="flex flex-col items-start gap-0.5">
+                  <ToneChip tone={LOG_TONE[r.status]}>{LOG_STATUS[r.status]}</ToneChip>
+                  {r.is_emergency ? <ToneChip tone={LOG_TONE[r.status]}>Emergency</ToneChip> : null}
+                </span>) },
+              { key: 'since', header: 'Since', sortValue: logSince, render: (r) => day(logSince(r)) },
+              ...(isAdmin ? [{ key: 'actions', header: 'Actions', render: (r: FieldLogRow) => (
+                <RowActions>
+                  {/* A replaced valve goes back to its position only by undoing its issue, so the issued valve does
+                    * not stay installed beside it (owner report 2026-09-29). */}
+                  {r.reason === 'replaced_on_issue' && r.issue_id && !r.issue_cancelled && r.status !== 'returned' ? (
+                    <RowAction label="Back to its station (undo the replacement)" icon={Undo2}
+                      onClick={() => setUndo({ issueId: r.issue_id!, issued: null, replaced: r.serial_number })} />
+                  ) : <span aria-hidden="true" className="w-7 shrink-0" />}
+                  <RowAction label="Move" icon={ArrowRightLeft} disabled={admin.busy} onClick={() => setMoving(r.id)} />
+                  <RowAction label="Delete" icon={Trash2} danger disabled={admin.busy}
+                    onClick={() => void admin.act('Remove this entry from the SRV Log? It is archived (kept in the audit history).',
+                      'cng_srv_log_archive', { p_log_id: r.id }, 'Entry removed from the SRV Log.')} />
+                </RowActions>) }] : []),
+            ]}
+          />
+          {state.status === 'ready' ? <Truncated shown={rows.length} total={state.data.total} /> : null}
+        </ListStates>
+      )}
       <HistoryDialog valveId={open ? open.installed_valve_id ?? open.warehouse_valve_id : null}
                      title={`SRV ${open?.serial_number ?? ''}`} onClose={() => setOpen(null)}
                      note={open ? `Why it is in the SRV Log: ${LOG_REASON[open.reason]}` : undefined} />
+      <HistoryDialog valveId={openIssue?.warehouse_valve_id ?? null} title={`SRV ${openIssue?.issued_serial ?? ''}`}
+                     onClose={() => setOpenIssue(null)}
+                     note={openIssue ? `Issued to ${openIssue.station_name} / ${openIssue.unit_name} — ${ISSUE_STATUS[openIssue.status]}` : undefined} />
     </div>
   )
 }

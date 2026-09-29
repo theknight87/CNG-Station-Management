@@ -128,6 +128,7 @@ const LOG_REASON: Record<string, string> = {
   replaced_on_issue: 'Replaced by an issued valve',
   reconcile_other_serial: 'Sent to this Station, but the Station records a different valve',
   reconcile_station_not_found: 'Sent to this Station, but no valves are recorded there',
+  issue_undone: 'Its issue was undone; still at the station',
 }
 export const SRV_LOG_COLUMNS: ExportColumn[] = [
   ...valve, text('Region', 'region_name'), text('Station', 'station_display'), text('Unit', 'unit_name'),
@@ -153,4 +154,16 @@ export const EMERGENCY_COLUMNS: ExportColumn[] = [
   text('Manufacturer', 'manufacturer'), size, text('Replaced valve serial', 'replaced_serial'), text('Replaced valve code', 'replaced_code'),
   { header: 'Replaced valve status', value: (r) => (r.replaced_status ? LOG_STATUS[r.replaced_status] ?? r.replaced_status : null) },
   text('Notes', 'notes'),
+]
+
+export const ISSUE_STATUS: Record<string, string> = {
+  awaiting_replaced: 'Replaced valve awaiting return', replaced_returned: 'Replaced valve returned',
+  no_replacement: 'Added — no valve replaced', replaced_entry_removed: 'Replaced valve: log entry removed',
+}
+export const ISSUE_LOG_COLUMNS: ExportColumn[] = [
+  day('Issued', 'issued_at'), text('Region', 'region_name'), text('Station', 'station_name'), text('Unit', 'unit_name'),
+  text('Issued valve serial', 'issued_serial'), text('Issued valve code', 'issued_code'), ...pressure,
+  text('Manufacturer', 'manufacturer'), size, text('Replaced valve serial', 'replaced_serial'), text('Replaced valve code', 'replaced_code'),
+  { header: 'Status', value: (r) => ISSUE_STATUS[r.status] ?? r.status }, day('Replaced valve returned', 'replaced_returned_at'),
+  { header: 'Emergency', value: (r) => (r.is_emergency ? 'Yes' : null) },
 ]

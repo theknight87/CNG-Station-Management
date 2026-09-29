@@ -56,11 +56,12 @@ SELECT pg_temp.ck('SM-3 move a log entry to another station (unit must belong to
   (SELECT v FROM r WHERE k='move_bad') = '22023' AND (SELECT v FROM r WHERE k='move_ok') = 'OK'
   AND (SELECT station_id = '7f100000-0000-0000-0000-000000000002' FROM srv_field_log WHERE id = '7f600000-0000-0000-0000-000000000001'));
 INSERT INTO r VALUES ('restore', pg_temp.try_as('sm_admin', $q$SELECT cng_srv_log_restore_to_station('7f600000-0000-0000-0000-000000000001')$q$));
-SELECT pg_temp.ck('SM-4 restore to station: the replaced valve is installed again and the log entry leaves the list',
-  (SELECT v FROM r WHERE k='restore') = 'OK'
-  AND (SELECT archived_at IS NULL FROM installed_relief_valves WHERE id = '7f300000-0000-0000-0000-000000000001')
-  AND NOT EXISTS (SELECT 1 FROM v_srv_field_log WHERE id = '7f600000-0000-0000-0000-000000000001')
-  AND EXISTS (SELECT 1 FROM srv_field_log WHERE id = '7f600000-0000-0000-0000-000000000001'));
+-- Changed 2026-09-29 (20260929150000): reinstating only the replaced valve left the issued one installed in the same
+-- position, so an issue's entry is refused here and the issue is undone instead (suite srv_issue_undo).
+SELECT pg_temp.ck('SM-4 restore to station refuses an issue''s entry and changes nothing (undo the issue instead)',
+  (SELECT v FROM r WHERE k='restore') = 'PT409'
+  AND (SELECT archived_at IS NOT NULL FROM installed_relief_valves WHERE id = '7f300000-0000-0000-0000-000000000001')
+  AND EXISTS (SELECT 1 FROM v_srv_field_log WHERE id = '7f600000-0000-0000-0000-000000000001'));
 INSERT INTO r VALUES ('stock_before', (SELECT count(*) FROM v_srv_warehouse_stock WHERE id = '7f400000-0000-0000-0000-000000000001')::text);
 INSERT INTO r VALUES ('cal_edit', pg_temp.try_as('sm_admin', $q$SELECT cng_srv_calibration_edit('7f700000-0000-0000-0000-000000000001', NULL, 'C-1', NULL)$q$));
 INSERT INTO r VALUES ('cal_arch', pg_temp.try_as('sm_admin', $q$SELECT cng_srv_calibration_archive('7f700000-0000-0000-0000-000000000001')$q$));
@@ -80,7 +81,8 @@ SELECT pg_temp.ck('SM-7 remove an installed and a warehouse valve: archived with
   (SELECT v FROM r WHERE k='rm_i') = 'OK' AND (SELECT v FROM r WHERE k='rm_w') = 'OK'
   AND (SELECT archived_by = '7f000000-0000-0000-0000-00000000000a' FROM installed_relief_valves WHERE id = '7f300000-0000-0000-0000-000000000003')
   AND NOT EXISTS (SELECT 1 FROM v_installed_srv_management WHERE id = '7f300000-0000-0000-0000-000000000003')
-  AND (SELECT count(*) = 8 FROM audit_logs WHERE actor_id = '7f000000-0000-0000-0000-00000000000a'));
+  -- 7 since 2026-09-29: the refused restore (SM-4) writes no audit row.
+  AND (SELECT count(*) = 7 FROM audit_logs WHERE actor_id = '7f000000-0000-0000-0000-00000000000a'));
 INSERT INTO r VALUES ('rm_again', pg_temp.try_as('sm_admin', $q$SELECT cng_admin_archive_srv('installed_relief_valves','7f300000-0000-0000-0000-000000000003')$q$));
 SELECT pg_temp.ck('SM-8 removing twice is refused as stale (PT409)', (SELECT v FROM r WHERE k='rm_again') = 'PT409');
 ROLLBACK;

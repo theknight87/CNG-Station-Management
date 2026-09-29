@@ -138,9 +138,9 @@ describe('Issue from warehouse', () => {
 
 describe('Admin delete / edit (owner request 2026-09-28)', () => {
   const log = { ...valve, id: 'l9', reason: 'replaced_on_issue', status: 'at_station', is_emergency: false, station_display: 'الماظة',
-    installed_valve_id: 'i9', logged_at: '2026-09-23T00:00:00Z' }
+    installed_valve_id: 'i9', logged_at: '2026-09-23T00:00:00Z', issue_id: 'is9', issue_cancelled: false }
 
-  it('WF-6 SRV Log: delete and back-to-station each ask first, then send only the entry id (no actor)', async () => {
+  it('WF-6 SRV Log: delete asks first and sends only the entry id (no actor)', async () => {
     state.rows = [log]
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const user = userEvent.setup()
@@ -149,9 +149,42 @@ describe('Admin delete / edit (owner request 2026-09-28)', () => {
     await user.click(within(table).getByRole('button', { name: 'Delete' }))
     expect(confirm).toHaveBeenCalled()
     expect(calls.rpc.find(([fn]) => fn === 'cng_srv_log_archive')![1]).toEqual({ p_log_id: 'l9' })
-    await user.click(within(table).getByRole('button', { name: 'Back to its station' }))
-    expect(calls.rpc.find(([fn]) => fn === 'cng_srv_log_restore_to_station')![1]).toEqual({ p_log_id: 'l9' })
     confirm.mockRestore()
+  })
+
+  it('WF-6b back to its station UNDOES THE ISSUE and asks where the issued valve is (owner report 2026-09-29)', async () => {
+    state.rows = [log]
+    const user = userEvent.setup()
+    render(<SrvLogSection />)
+    const table = await screen.findByRole('table', { name: 'SRV Log' })
+    await user.click(within(table).getByRole('button', { name: /back to its station/i }))
+    const dialog = await screen.findByRole('dialog', { name: /undo this replacement/i })
+    // Nothing is sent until a choice is confirmed; "back in the warehouse" is the recommended default.
+    expect(calls.rpc.some(([fn]) => fn === 'cng_srv_issue_undo')).toBe(false)
+    expect((within(dialog).getByRole('radio', { name: /back in the warehouse/i }) as HTMLInputElement).checked).toBe(true)
+    await user.click(within(dialog).getByRole('radio', { name: /still at the station/i }))
+    await user.click(within(dialog).getByRole('button', { name: 'Undo replacement' }))
+    expect(calls.rpc.find(([fn]) => fn === 'cng_srv_issue_undo')![1]).toEqual({ p_issue_id: 'is9', p_issued_action: 'await_return' })
+    // The old restore — which left the issued valve installed too — is never called.
+    expect(calls.rpc.some(([fn]) => fn === 'cng_srv_log_restore_to_station')).toBe(false)
+  })
+
+  it('WF-6c the Issue movement lists issued valves with their replaced valve; undo from there defaults to back in stock', async () => {
+    state.rows = [{ ...valve, id: 'is1', status: 'awaiting_replaced', issued_at: '2026-09-29T18:18:25Z', is_emergency: false, notes: null,
+      region_id: 'r', region_name: 'Delta', station_name: 'ابو المطامير كتكوت', unit_name: 'ابو المطامير كتكوت', warehouse_valve_id: 'w1',
+      issued_serial: '255832', issued_code: 'sbc 87', replaced_installed_valve_id: 'iv1', replaced_serial: '260328', replaced_code: null,
+      replaced_returned_at: null }]
+    const user = userEvent.setup()
+    render(<SrvLogSection />)
+    await user.selectOptions(await screen.findByLabelText('Movement'), 'issue')
+    const table = await screen.findByRole('table', { name: 'SRV Issues' })
+    expect(within(table).getByText('255832')).toBeDefined()
+    expect(within(table).getByText('260328')).toBeDefined()
+    expect(within(table).getByText('Replaced valve awaiting return')).toBeDefined()
+    await user.click(within(table).getByRole('button', { name: 'Undo replacement' }))
+    const dialog = await screen.findByRole('dialog', { name: /undo this replacement/i })
+    await user.click(within(dialog).getByRole('button', { name: 'Undo replacement' }))
+    expect(calls.rpc.find(([fn]) => fn === 'cng_srv_issue_undo')![1]).toEqual({ p_issue_id: 'is1', p_issued_action: 'to_stock' })
   })
 
   it('WF-7 SRV Log: a cancelled confirmation sends nothing', async () => {

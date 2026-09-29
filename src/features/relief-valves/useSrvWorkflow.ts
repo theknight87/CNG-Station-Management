@@ -44,7 +44,7 @@ export interface ValveFields {
 
 export interface FieldLogRow extends ValveFields {
   id: string
-  reason: 'replaced_on_issue' | 'reconcile_other_serial' | 'reconcile_station_not_found'
+  reason: 'replaced_on_issue' | 'reconcile_other_serial' | 'reconcile_station_not_found' | 'issue_undone'
   status: 'at_station' | 'location_unconfirmed' | 'returned'
   is_emergency: boolean
   region_id: string | null
@@ -56,6 +56,29 @@ export interface FieldLogRow extends ValveFields {
   warehouse_issue_date: string | null
   logged_at: string
   returned_at: string | null
+  /** The issue this entry came from (a replaced valve, or an undone issue's valve). */
+  issue_id: string | null
+  issue_cancelled: boolean | null
+}
+
+/** One row of the SRV Log "Issue" movement (v_srv_issue_log). */
+export interface IssueLogRow extends Omit<ValveFields, 'warehouse_code'> {
+  id: string
+  status: 'awaiting_replaced' | 'replaced_returned' | 'no_replacement' | 'replaced_entry_removed'
+  issued_at: string
+  is_emergency: boolean
+  notes: string | null
+  region_id: string
+  region_name: string
+  station_name: string
+  unit_name: string
+  warehouse_valve_id: string
+  issued_serial: string | null
+  issued_code: string | null
+  replaced_installed_valve_id: string | null
+  replaced_serial: string | null
+  replaced_code: string | null
+  replaced_returned_at: string | null
 }
 
 export interface CalibrationRow extends ValveFields {
@@ -108,7 +131,7 @@ const SPECS = {
   log: {
     view: 'v_srv_field_log',
     columns: `id, reason, status, is_emergency, region_id, region_name, station_display, unit_name, installed_valve_id, ` +
-      `warehouse_valve_id, warehouse_issue_date, logged_at, returned_at, ${VALVE}`,
+      `warehouse_valve_id, warehouse_issue_date, logged_at, returned_at, issue_id, issue_cancelled, ${VALVE}`,
     order: 'logged_at', station: 'station_display', region: 'region_id',
     date: { column: 'logged_at', label: 'Since' },
     search: ['serial_number', 'warehouse_code', 'part_number', 'station_display', 'unit_name'],
@@ -130,13 +153,22 @@ const SPECS = {
     date: { column: 'issued_at', label: 'Issued' },
     search: ['issued_serial', 'issued_code', 'replaced_serial', 'replaced_code', 'station_name', 'unit_name'],
   },
+  issues: {
+    view: 'v_srv_issue_log',
+    columns: 'id, status, issued_at, is_emergency, notes, region_id, region_name, station_name, unit_name, warehouse_valve_id, ' +
+      'issued_serial, issued_code, replaced_installed_valve_id, replaced_serial, replaced_code, replaced_returned_at, ' +
+      'serial_number, manufacturer, part_number, size_type, inlet_size, outlet_size, set_pressure_raw, pressure_min, pressure_max, pressure_unit',
+    order: 'issued_at', station: 'station_name', region: 'region_id',
+    date: { column: 'issued_at', label: 'Issued' },
+    search: ['issued_serial', 'issued_code', 'replaced_serial', 'replaced_code', 'station_name', 'unit_name'],
+  },
 } as const satisfies Record<string, {
   view: string; columns: string; order: string; station: string | null; region: string | null; date: DateOption; search: readonly string[]
 }>
 
 /** The date each workflow tab is filtered by (one per tab). */
 export const WORKFLOW_DATES: Record<keyof typeof SPECS, DateOption> = {
-  log: SPECS.log.date, calibration: SPECS.calibration.date, emergency: SPECS.emergency.date,
+  log: SPECS.log.date, calibration: SPECS.calibration.date, emergency: SPECS.emergency.date, issues: SPECS.issues.date,
 }
 
 /** The tab's filters on a workflow query (everything except status), shared by the list and its counts. */
@@ -188,7 +220,7 @@ export function useWorkflowCounts(
 
 export function useWorkflowList<T>(
   kind: keyof typeof SPECS,
-  opts: { status?: string[]; filters?: SrvSmartFilters },
+  opts: { status?: string[]; filters?: SrvSmartFilters; skip?: boolean },
 ): { state: Loadable<WorkflowList<T>>; reload: () => void; version: number } {
   const supabase = useSupabaseClient()
   const [state, setState] = useState<Loadable<WorkflowList<T>>>({ status: 'loading' })
@@ -202,6 +234,8 @@ export function useWorkflowList<T>(
       if (!supabase) { if (!cancelled) setState({ status: 'unconfigured' }); return }
       if (!cancelled) setState({ status: 'loading' })
       const o: typeof opts = JSON.parse(key)
+      // A list the screen is not showing is not fetched (the SRV Log shows either its entries or its issues).
+      if (o.skip) { if (!cancelled) setState({ status: 'ready', data: { rows: [], total: 0 } }); return }
       const spec = SPECS[kind]
       let b = workflowFilters(supabase.from(spec.view).select(spec.columns, { count: 'exact' }), kind, o.filters)
       if (o.status?.length) b = b.in('status', o.status)
