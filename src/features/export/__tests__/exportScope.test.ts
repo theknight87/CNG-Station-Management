@@ -37,6 +37,9 @@ describe('scope workbook', () => {
     expect(calls).toContain('compressors.is:archived_at|null')
     expect(calls).toContain('dispensers.is:archived_at|null')
     expect(calls).toContain('v_gas_detector_management.not:detector_id|is|null')
+    // 2026-09-29: the detector view has no `id`; its row key is detector_id (the Region export failed on `id`).
+    expect(calls).toContain('v_gas_detector_management.order:detector_id')
+    expect(calls).not.toContain('v_gas_detector_management.order:id')
     expect(calls).toContain('v_vessel_management.eq:asset_type|recovery_tank')
     expect(calls).toContain('v_vessel_management.eq:asset_type|storage_vessel')
   })

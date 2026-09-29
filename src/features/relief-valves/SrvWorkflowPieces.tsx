@@ -236,7 +236,9 @@ export function SelectableTable<T extends { id: string }>({
   return (
     <div className="overflow-x-auto rounded border">
       <table className="w-full text-sm" aria-label={label}>
-        <thead className="bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground">
+        {/* Headers may break between words when the page is narrow (SET / PRESSURE), so a header is never what
+          * makes the table wider than its data (owner request 2026-09-29: fit the page). */}
+        <thead className="bg-muted/50 text-xs uppercase tracking-normal text-muted-foreground">
           <tr>
             {selection ? (
               <th className="w-8 px-2 py-1.5">
@@ -248,9 +250,9 @@ export function SelectableTable<T extends { id: string }>({
               const active = sort?.key === c.key
               return (
                 <th key={c.key} aria-sort={active ? (sort!.asc ? 'ascending' : 'descending') : undefined}
-                    className={cn('whitespace-nowrap px-1.5 py-1.5 text-left font-semibold', c.align === 'right' && 'text-right')}>
+                    className={cn('px-1.5 py-1.5 text-left align-bottom font-semibold leading-tight', c.align === 'right' && 'text-right')}>
                   {c.sortValue ? (
-                    <button type="button" className="inline-flex items-center gap-1 uppercase tracking-wide hover:text-foreground"
+                    <button type="button" className={cn('inline-flex items-end gap-1 uppercase hover:text-foreground', c.align === 'right' ? 'text-right' : 'text-left')}
                             onClick={() => setSort(active ? { key: c.key, asc: !sort!.asc } : { key: c.key, asc: true })}>
                       {c.header}<span aria-hidden="true">{active ? (sort!.asc ? '↑' : '↓') : '↕'}</span>
                     </button>
@@ -275,7 +277,7 @@ export function SelectableTable<T extends { id: string }>({
                 ) : null}
               </td> : null}
               {columns.map((c) => (
-                <td key={c.key} className={cn('px-1.5 py-1 align-middle', c.wrap ? 'min-w-36 break-words' : 'whitespace-nowrap', c.align === 'right' && 'text-right tabular')}>{c.render(r)}</td>
+                <td key={c.key} className={cn('px-1.5 py-1 align-middle', c.wrap ? 'min-w-28 break-words' : 'whitespace-nowrap', c.align === 'right' && 'text-right tabular')}>{c.render(r)}</td>
               ))}
             </tr>
           ))}

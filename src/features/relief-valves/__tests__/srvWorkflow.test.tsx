@@ -57,7 +57,7 @@ describe('SRV Log', () => {
     render(<SrvLogSection />)
     const table = await screen.findByRole('table', { name: 'SRV Log' })
     // Status and Emergency are two chips stacked in one cell, so the column stays narrow.
-    const statusCell = within(table).getByText('At station — awaiting return').closest('td')!
+    const statusCell = within(table).getByText('At station').closest('td')!
     expect(within(statusCell).getByText('Emergency')).toBeDefined()
     await user.click(within(table).getAllByRole('checkbox', { name: 'Select row' })[1])
     await user.click(screen.getByRole('button', { name: /arrived at warehouse \(1\)/i }))

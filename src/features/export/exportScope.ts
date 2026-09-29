@@ -7,6 +7,7 @@ import {
   UNIT_COLUMNS, VESSEL_COLUMNS,
 } from './exportColumns'
 import { fetchAllRows, type AnyRow, type ExportColumn, type ExportSheet } from './exportData'
+import { SCOPE_SOURCES } from './scopeSources'
 
 /**
  * Everything recorded under one Region, Station or Unit, as one workbook with a sheet per equipment family.
@@ -25,6 +26,8 @@ interface Family {
   key: FamilyKey
   sheet: string
   source: string
+  /** A column unique per row in `source`, for stable paging (see scopeSources.ts). */
+  orderBy: string
   columns: ExportColumn[]
   narrow?: (b: Builder) => Builder
   /** Raw tables carry ids, not names: Region / Station / Unit names are filled in from the hierarchy views. */
@@ -35,19 +38,23 @@ interface Family {
 type Builder = any
 
 /** Physical order (CLAUDE.md §4): Compressor, Recovery Tank, Gas Detectors, Dispensers, Storage Vessels, then Hoses and SRVs. */
+const SOURCE = Object.fromEntries(SCOPE_SOURCES.map((x) => [x.key, x])) as Record<FamilyKey, (typeof SCOPE_SOURCES)[number]>
+const sourceOf = (key: FamilyKey) => ({ source: SOURCE[key].source, orderBy: SOURCE[key].orderBy })
+
 export const FAMILIES: Family[] = [
-  { key: 'compressors', sheet: 'Compressors', source: 'compressors', columns: COMPRESSOR_COLUMNS, rawTable: true,
+  { key: 'compressors', sheet: 'Compressors', ...sourceOf('compressors'), columns: COMPRESSOR_COLUMNS, rawTable: true,
     narrow: (b) => b.is('archived_at', null) },
-  { key: 'recovery_tanks', sheet: 'Recovery tanks', source: 'v_vessel_management', columns: VESSEL_COLUMNS,
+  { key: 'recovery_tanks', sheet: 'Recovery tanks', ...sourceOf('recovery_tanks'), columns: VESSEL_COLUMNS,
     narrow: (b) => b.eq('asset_type', 'recovery_tank') },
-  { key: 'gas_detectors', sheet: 'Gas detectors', source: 'v_gas_detector_management', columns: GAS_DETECTOR_COLUMNS,
+  // Recorded ABSENCE rows carry no detector: left out. The view's row key is detector_id (it has no `id`).
+  { key: 'gas_detectors', sheet: 'Gas detectors', ...sourceOf('gas_detectors'), columns: GAS_DETECTOR_COLUMNS,
     narrow: (b) => b.not('detector_id', 'is', null) },
-  { key: 'dispensers', sheet: 'Dispensers', source: 'dispensers', columns: DISPENSER_COLUMNS, rawTable: true,
+  { key: 'dispensers', sheet: 'Dispensers', ...sourceOf('dispensers'), columns: DISPENSER_COLUMNS, rawTable: true,
     narrow: (b) => b.is('archived_at', null) },
-  { key: 'storage_vessels', sheet: 'Storage vessels', source: 'v_vessel_management', columns: VESSEL_COLUMNS,
+  { key: 'storage_vessels', sheet: 'Storage vessels', ...sourceOf('storage_vessels'), columns: VESSEL_COLUMNS,
     narrow: (b) => b.eq('asset_type', 'storage_vessel') },
-  { key: 'hoses', sheet: 'Hoses', source: 'v_hose_registry', columns: HOSE_COLUMNS },
-  { key: 'installed_srvs', sheet: 'Installed SRVs', source: 'v_installed_srv_management', columns: INSTALLED_SRV_COLUMNS },
+  { key: 'hoses', sheet: 'Hoses', ...sourceOf('hoses'), columns: HOSE_COLUMNS },
+  { key: 'installed_srvs', sheet: 'Installed SRVs', ...sourceOf('installed_srvs'), columns: INSTALLED_SRV_COLUMNS },
 ]
 
 const SCOPE_COLUMN: Record<ScopeKind, string> = { region: 'region_id', station: 'station_id', unit: 'unit_id' }
@@ -74,7 +81,7 @@ export async function loadFamily(supabase: SupabaseClient, family: Family, scope
   const { rows, truncated } = await fetchAllRows((from, to) => {
     let b: Builder = supabase.from(family.source).select('*').eq(column, scope.id)
     if (family.narrow) b = family.narrow(b)
-    return b.order('id').range(from, to)
+    return b.order(family.orderBy).range(from, to)
   })
   let named = rows
   if (family.rawTable) {

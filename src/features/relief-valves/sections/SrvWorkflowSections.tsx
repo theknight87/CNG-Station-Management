@@ -97,10 +97,11 @@ const LOG_TONE: Record<FieldLogRow['status'], ToneName> = {
 const sizeOf = (r: Pick<ValveFields, 'size_type' | 'inlet_size' | 'outlet_size'>) => sizeText(r.size_type, r.inlet_size, r.outlet_size) || null
 const logSince = (r: FieldLogRow) => (r.reason === 'replaced_on_issue' ? r.logged_at : r.warehouse_issue_date ?? r.logged_at)
 
+// Short: the movement (Awaiting return / Return) already says the rest, and the column stays narrow.
 const LOG_STATUS: Record<FieldLogRow['status'], string> = {
-  at_station: 'At station — awaiting return',
+  at_station: 'At station',
   location_unconfirmed: 'Location unconfirmed',
-  returned: 'Returned to warehouse',
+  returned: 'Returned',
 }
 const LOG_REASON: Record<FieldLogRow['reason'], string> = {
   replaced_on_issue: 'Replaced by an issued valve',
@@ -124,6 +125,26 @@ const LOG_DOT: Record<FieldLogRow['status'], string> = {
 }
 const ISSUE_TONE: Record<IssueLogRow['status'], ToneName | null> = {
   awaiting_replaced: 'sky', replaced_returned: 'teal', no_replacement: null, replaced_entry_removed: 'orange',
+}
+
+/** Serial over its warehouse code: one narrow column instead of two. */
+function ValveId({ serial, code }: { serial: string | null; code: string | null }) {
+  return (
+    <span className="flex flex-col items-start leading-tight">
+      <Code value={serial} />
+      {code ? <span className="text-xs text-muted-foreground"><Code value={code} /></span> : null}
+    </span>
+  )
+}
+
+/** Station over its Unit: a mixed Arabic "Station / Unit" on one line reorders under bidi. */
+function StationUnit({ station, unit }: { station: string | null; unit: string | null }) {
+  return (
+    <span className="flex flex-col items-start leading-tight">
+      <span dir="auto">{station ?? <NullValue />}</span>
+      {unit && unit !== station ? <span dir="auto" className="text-xs text-muted-foreground">{unit}</span> : null}
+    </span>
+  )
 }
 
 function CountsFailed() {
@@ -291,17 +312,13 @@ export function SrvLogSection() {
             defaultOrder={(a, b) => b.issued_at.localeCompare(a.issued_at)}
             columns={[
               { key: 'date', header: 'Issued', sortValue: (r) => r.issued_at, render: (r) => day(r.issued_at) },
-              { key: 'region', header: 'Region', sortValue: (r) => r.region_name, render: (r) => <RegionChip name={r.region_name} /> },
-              { key: 'station', header: 'Station', wrap: true, sortValue: (r) => r.station_name, render: (r) => (
-                <span className="flex flex-col items-start">
-                  <span dir="auto">{r.station_name}</span>
-                  <span dir="auto" className="text-xs text-muted-foreground">{r.unit_name}</span>
-                </span>) },
-              { key: 'issued', header: 'Issued valve', sortValue: (r) => r.issued_serial, render: (r) => (
-                <span className="flex flex-col items-start"><Code value={r.issued_serial} /><span className="text-xs"><Code value={r.issued_code} /></span></span>) },
+              { key: 'issued', header: 'Valve', sortValue: (r) => r.issued_serial, render: (r) => <ValveId serial={r.issued_serial} code={r.issued_code} /> },
               { key: 'pressure', header: 'Set pressure', align: 'right', sortValue: pressureBar, render: (r) => <Pressure v={r} /> },
               { key: 'manufacturer', header: 'Manufacturer', sortValue: (r) => r.manufacturer, render: (r) => <ManufacturerChip value={r.manufacturer} /> },
               { key: 'size', header: 'Size', sortValue: sizeOf, render: (r) => <ValveSize v={r} /> },
+              { key: 'region', header: 'Region', sortValue: (r) => r.region_name, render: (r) => <RegionChip name={r.region_name} /> },
+              { key: 'station', header: 'Station', wrap: true, sortValue: (r) => r.station_name, render: (r) => (
+                <StationUnit station={r.station_name} unit={r.unit_name} />) },
               { key: 'replaced', header: 'Replaced valve', sortValue: (r) => ISSUE_STATUS[r.status], render: (r) => (
                 <span className="flex flex-col items-start gap-0.5">
                   {r.replaced_installed_valve_id ? <Code value={r.replaced_serial} /> : null}
@@ -309,7 +326,7 @@ export function SrvLogSection() {
                     ? <ToneChip tone={ISSUE_TONE[r.status]!}>{r.status === 'replaced_returned' && r.replaced_returned_at
                         ? `Returned ${r.replaced_returned_at.slice(0, 10)}` : ISSUE_STATUS[r.status]}</ToneChip>
                     : <span className="text-muted-foreground">{ISSUE_STATUS[r.status]}</span>}
-                  {r.is_emergency ? <ToneChip tone="orange">Emergency</ToneChip> : null}
+                  {r.is_emergency ? <ToneChip tone="slate">Emergency</ToneChip> : null}
                 </span>) },
               ...(isAdmin ? [{ key: 'actions', header: 'Actions', render: (r: IssueLogRow) => (
                 <RowActions>
@@ -332,25 +349,22 @@ export function SrvLogSection() {
             selectable={(r) => isAdmin && r.status !== 'returned'}
             onOpen={setOpen}
             defaultOrder={byValues<FieldLogRow>((r) => r.region_name, (r) => r.station_display, pressureBar)}
+            // Same columns, same order as the Issue movement (owner request 2026-09-29): date, valve, set pressure,
+            // manufacturer, size, Region, Station, status, actions — narrow enough to fit the page.
             columns={[
-              { key: 'serial', header: 'Serial', sortValue: (r) => r.serial_number, render: (r) => <Code value={r.serial_number} /> },
-              { key: 'code', header: 'Code', sortValue: (r) => r.warehouse_code, render: (r) => <Code value={r.warehouse_code} /> },
+              { key: 'since', header: 'Since', sortValue: logSince, render: (r) => day(logSince(r)) },
+              { key: 'valve', header: 'Valve', sortValue: (r) => r.serial_number, render: (r) => <ValveId serial={r.serial_number} code={r.warehouse_code} /> },
               { key: 'pressure', header: 'Set pressure', align: 'right', sortValue: pressureBar, render: (r) => <Pressure v={r} /> },
               { key: 'manufacturer', header: 'Manufacturer', sortValue: (r) => r.manufacturer, render: (r) => <ManufacturerChip value={r.manufacturer} /> },
               { key: 'size', header: 'Size', sortValue: sizeOf, render: (r) => <ValveSize v={r} /> },
               { key: 'region', header: 'Region', sortValue: (r) => r.region_name, render: (r) => <RegionChip name={r.region_name} /> },
               { key: 'station', header: 'Station', wrap: true, sortValue: (r) => r.station_display, render: (r) => (
-                // Unit on its own line: a mixed Arabic "Station / Unit" on one line reorders under bidi.
-                <span className="flex flex-col items-start">
-                  <span dir="auto">{r.station_display ?? <NullValue />}</span>
-                  {r.unit_name ? <span dir="auto" className="text-xs text-muted-foreground">{r.unit_name}</span> : null}
-                </span>) },
+                <StationUnit station={r.station_display} unit={r.unit_name} />) },
               { key: 'status', header: 'Status', sortValue: (r) => LOG_STATUS[r.status], render: (r) => (
                 <span className="flex flex-col items-start gap-0.5">
                   <ToneChip tone={LOG_TONE[r.status]}>{LOG_STATUS[r.status]}</ToneChip>
                   {r.is_emergency ? <ToneChip tone={LOG_TONE[r.status]}>Emergency</ToneChip> : null}
                 </span>) },
-              { key: 'since', header: 'Since', sortValue: logSince, render: (r) => day(logSince(r)) },
               ...(isAdmin ? [{ key: 'actions', header: 'Actions', render: (r: FieldLogRow) => (
                 <RowActions>
                   {/* A replaced valve goes back to its position only by undoing its issue, so the issued valve does

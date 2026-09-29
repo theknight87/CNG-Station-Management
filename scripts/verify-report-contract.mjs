@@ -20,6 +20,7 @@
  */
 import { execFileSync } from 'node:child_process'
 import { REPORT_SPECS, selectColumnsFor } from '../src/features/reports/reportSpecs.ts'
+import { SCOPE_FILTER_COLUMNS, SCOPE_OVERVIEWS, SCOPE_SOURCES } from '../src/features/export/scopeSources.ts'
 
 const db = process.argv[2]
 if (!db) {
@@ -27,7 +28,7 @@ if (!db) {
   process.exit(2)
 }
 
-const viewNames = [...new Set(REPORT_SPECS.map((s) => s.view))]
+const viewNames = [...new Set([...REPORT_SPECS.map((s) => s.view), ...SCOPE_SOURCES.map((s) => s.source), ...SCOPE_OVERVIEWS.map((s) => s.source)])]
 const sql = `
 SELECT table_name, column_name
 FROM information_schema.columns
@@ -90,8 +91,27 @@ for (const spec of REPORT_SPECS) {
   }
 }
 
+// Region / Station / Unit workbooks (2026-09-29: the Region export ordered v_gas_detector_management by `id`,
+// which that view does not have, and failed in production). Each source must carry the scope columns, its order
+// column and every column its narrowing filter uses.
+const scopeChecks = [
+  ...SCOPE_SOURCES.map((s) => ({ name: `export ${s.key}`, source: s.source,
+    columns: [[s.orderBy, 'order'], ...s.filters.map((c) => [c, 'filter']), ...SCOPE_FILTER_COLUMNS.map((c) => [c, 'scope'])] })),
+  ...SCOPE_OVERVIEWS.map((s) => ({ name: `export overview ${s.source}`, source: s.source, columns: s.columns.map((c) => [c, 'scope/order']) })),
+]
+for (const check of scopeChecks) {
+  const have = actual.get(check.source)
+  if (!have) { console.error(`FAILED: ${check.name} reads ${check.source}, which does not exist`); failures++; continue }
+  for (const [column, use] of check.columns) {
+    if (!have.has(column)) {
+      console.error(`FAILED: ${check.name} uses ${check.source}.${column} for ${use} — that column does not exist`)
+      failures++
+    }
+  }
+}
+
 if (failures > 0) {
   console.error(`\nreport contract: ${failures} mismatch(es)`)
   process.exit(1)
 }
-console.log(`report contract: ${REPORT_SPECS.length} reports, ${viewNames.length} views, 0 mismatches`)
+console.log(`report contract: ${REPORT_SPECS.length} reports, ${scopeChecks.length} export sources, ${viewNames.length} views, 0 mismatches`)
