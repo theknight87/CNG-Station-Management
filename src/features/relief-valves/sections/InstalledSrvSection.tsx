@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { ReplaceValvePanel } from '@/features/relief-valves/ReplaceValvePanel'
 import { ExportButtons } from '@/features/export/ExportButtons'
 import { queryLoader } from '@/features/export/exportData'
 import { INSTALLED_SRV_COLUMNS } from '@/features/export/exportColumns'
@@ -277,6 +278,7 @@ export function InstalledSrvSection() {
         record={(r) => ({ table: 'installed_relief_valves', id: r.id })}
         extra={(r, done) => (
           <>
+            <ReplaceValvePanel valve={r} onDone={done} />
             <ValveHistory valveId={r.id} />
             <RemoveValveButton table="installed_relief_valves" id={r.id} onDone={done} />
           </>

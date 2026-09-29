@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { ReplaceValvePanel } from '@/features/relief-valves/ReplaceValvePanel'
 import { ScopeExport, UnitTabExport } from '@/features/export/ScopeExport'
 
 import { MakerChip } from '@/components/data/AssetChips'
@@ -260,6 +261,9 @@ export function UnitPopup({ unit, onClose }: { unit: UnitSummary | null; onClose
         {item ? (
           <div className="flex flex-col gap-3">
             <Detail row={item.row as Record<string, unknown>} />
+            {item.spec.kind === 'srv' ? (
+              <ReplaceValvePanel valve={item.row as UnitSrvRow} onDone={() => { setItem(null); setNonce((n) => n + 1) }} />
+            ) : null}
             {record ? <RecordAdminTools record={record} /> : null}
           </div>
         ) : null}

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { ReplaceValvePanel } from '@/features/relief-valves/ReplaceValvePanel'
 import { useParams } from 'react-router-dom'
 
 import { Fact } from '@/features/hierarchy/HierarchyPieces'
@@ -221,6 +222,7 @@ export function SrvSection() {
             <Fact label="Status"><DueBadge status={r.due_status} /></Fact>
             <Fact label="Source status"><Text value={r.source_status_raw} /></Fact>
             <Fact label="Notes"><Text value={r.notes} /></Fact>
+            <div className="col-span-full"><ReplaceValvePanel valve={r} onDone={reload} /></div>
           </>
         )}
         footnote="Only valves whose Unit is confirmed are listed. Valves awaiting Station or Unit confirmation, and warehouse stock, are never shown on a Unit."
