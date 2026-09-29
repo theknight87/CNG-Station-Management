@@ -1,4 +1,8 @@
 import { useCallback, useState } from 'react'
+import { ExportButtons } from '@/features/export/ExportButtons'
+import { queryLoader } from '@/features/export/exportData'
+import { VESSEL_COLUMNS } from '@/features/export/exportColumns'
+import { useSupabaseClient } from '@/lib/supabase/client'
 import { MakerChip, RegionChip } from '@/components/data/AssetChips'
 import { AssetFilterBar } from '@/components/data/AssetFilterBar'
 import { hasAssetFilters } from '@/components/data/assetFilters'
@@ -21,6 +25,7 @@ import { RelatedSrvs } from '@/features/vessels/RelatedSrvs'
 import {
   DEFAULT_VESSEL_QUERY, useVessels, useVesselSummary,
   type VesselAssetType, type VesselQuery, type VesselRegistryRow, type VesselSort,
+  vesselRequest,
 } from '@/features/vessels/useVesselManagement'
 
 /**
@@ -90,6 +95,7 @@ function columns(assetType: VesselAssetType): RegistryColumn<VesselRegistryRow>[
 
 export function VesselRegistrySection({ assetType }: { assetType: VesselAssetType }) {
   const [query, setQuery] = useState<VesselQuery>(DEFAULT_VESSEL_QUERY)
+  const supabase = useSupabaseClient()
   const { state, reload } = useVessels(assetType, query)
   const makers = useMakers('v_vessel_management', 'manufacturer', ['asset_type', assetType])
   const { state: summary } = useVesselSummary(assetType, query)
@@ -247,6 +253,10 @@ export function VesselRegistrySection({ assetType }: { assetType: VesselAssetTyp
             Clear
           </Button>
         ) : null}
+        <span className="ml-auto">
+          <ExportButtons name={assetType === 'storage_vessel' ? 'storage-vessels' : 'recovery-tanks'}
+                         load={queryLoader(supabase, label.plural, VESSEL_COLUMNS, (c) => vesselRequest(c, assetType, query))} />
+        </span>
       </DataToolbar>
       <AssetFilterBar id={`vessel-${assetType}`} value={query.filters} onChange={(filters) => update({ filters })} makers={makers} />
 

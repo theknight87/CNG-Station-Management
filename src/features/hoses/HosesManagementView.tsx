@@ -1,4 +1,8 @@
 import { useCallback, useMemo, useState } from 'react'
+import { ExportButtons } from '@/features/export/ExportButtons'
+import { queryLoader } from '@/features/export/exportData'
+import { HOSE_COLUMNS } from '@/features/export/exportColumns'
+import { useSupabaseClient } from '@/lib/supabase/client'
 import { RegionChip } from '@/components/data/AssetChips'
 import { AssetFilterBar } from '@/components/data/AssetFilterBar'
 import { hasAssetFilters } from '@/components/data/assetFilters'
@@ -19,6 +23,7 @@ import {
 import {
   DEFAULT_HOSE_QUERY, useHoseSummary, useHoses,
   type HoseQuery, type HoseRegistryRow, type HoseSort,
+  hoseRequest,
 } from '@/features/hoses/useHoseManagement'
 
 /**
@@ -93,6 +98,7 @@ function columns(): RegistryColumn<HoseRegistryRow>[] {
 
 export function HosesManagementView() {
   const [query, setQuery] = useState<HoseQuery>(DEFAULT_HOSE_QUERY)
+  const supabase = useSupabaseClient()
   const { state, reload } = useHoses(query)
   const regions = useRegions()
 
@@ -283,6 +289,9 @@ export function HosesManagementView() {
               Clear
             </Button>
           ) : null}
+          <span className="ml-auto">
+            <ExportButtons name="hoses" load={queryLoader(supabase, 'Hoses', HOSE_COLUMNS, (c) => hoseRequest(c, query))} />
+          </span>
         </DataToolbar>
         <AssetFilterBar id="hoses" value={query.filters} onChange={(filters) => update({ filters })} pressureLabel="Working pressure" />
 

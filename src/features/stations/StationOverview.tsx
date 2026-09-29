@@ -1,4 +1,5 @@
 import { useParams } from 'react-router-dom'
+import { ScopeExport } from '@/features/export/ScopeExport'
 import { RecordAdminTools } from '@/features/record-tools/RecordAdminTools'
 
 import {
@@ -74,7 +75,10 @@ export function StationOverview() {
         title={station.station_name}
         isEntity
         description={`${station.region_name} Region`}
-        actions={<AttentionBadge overdue={station.overdue} unresolved={station.unresolved_mapping} />}
+        actions={<>
+          <AttentionBadge overdue={station.overdue} unresolved={station.unresolved_mapping} />
+          <ScopeExport scope={{ kind: 'station', id: station.station_id, name: station.station_name }} />
+        </>}
       />
 
       <section aria-labelledby="station-facts" className="rounded border bg-card p-3">

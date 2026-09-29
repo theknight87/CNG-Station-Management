@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { useCallback, useEffect, useState } from 'react'
 
 import { applyAssetFilters, EMPTY_ASSET_FILTERS, hasAssetFilters, type AssetFilters } from '@/components/data/assetFilters'
@@ -178,6 +179,17 @@ export function applyVesselQuery<B extends { eq: any; in: any; or: any; ilike: a
 /** Overdue PLUS every due bucket out to 60 days. Stated, never left ambiguous. */
 const ATTENTION_BUCKETS = ['overdue', 'due_today', 'due_7', 'due_15', 'due_30', 'due_60']
 
+/** The registry query for one vessel type: filters and sort, no paging (shared by the table and its export). */
+export function vesselRequest(supabase: SupabaseClient, assetType: VesselAssetType, q: VesselQuery) {
+  // `asset_type` is pinned on EVERY query so the two registries can never bleed into one another.
+  let b = supabase.from('v_vessel_management').select(COLUMNS, { count: 'exact' }).eq('asset_type', assetType)
+  b = applyVesselQuery(b, q)
+  for (const column of SORT_COLUMNS[q.sort]) {
+    b = b.order(column, { ascending: q.direction === 'asc', nullsFirst: false })
+  }
+  return b
+}
+
 export function useVessels(
   assetType: VesselAssetType,
   query: VesselQuery,
@@ -201,16 +213,8 @@ export function useVessels(
 
       // `asset_type` is pinned on EVERY query, including the unfiltered count,
       // so the two registries can never bleed into one another.
-      let b = supabase
-        .from('v_vessel_management')
-        .select(COLUMNS, { count: 'exact' })
-        .eq('asset_type', assetType)
-      b = applyVesselQuery(b, q)
-      for (const column of SORT_COLUMNS[q.sort]) {
-        b = b.order(column, { ascending: q.direction === 'asc', nullsFirst: false })
-      }
       const from = q.page * q.pageSize
-      const { data, error, count } = await b.range(from, from + q.pageSize - 1)
+      const { data, error, count } = await vesselRequest(supabase, assetType, q).range(from, from + q.pageSize - 1)
       if (cancelled) return
       if (error) {
         setState({ status: 'error', message: error.message })

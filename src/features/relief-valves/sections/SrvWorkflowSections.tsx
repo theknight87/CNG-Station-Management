@@ -2,6 +2,9 @@ import { useState } from 'react'
 import { ArrowRightLeft, Pencil, Trash2, Undo2 } from 'lucide-react'
 
 import { RecordDetailsDialog } from '@/components/data/RecordDetailsDialog'
+import { ExportButtons } from '@/features/export/ExportButtons'
+import { CALIBRATION_COLUMNS, EMERGENCY_COLUMNS, SRV_LOG_COLUMNS } from '@/features/export/exportColumns'
+import { rowsLoader } from '@/features/export/exportData'
 import { NullValue } from '@/components/data/NullValue'
 import { Button } from '@/components/ui/button'
 import { EMPTY_SMART_FILTERS, type SrvSmartFilters } from '@/features/relief-valves/useSrvManagement'
@@ -97,6 +100,9 @@ export function SrvLogSection() {
             {busy ? 'Saving…' : `Arrived at warehouse (${selected.size})`}
           </Button>
         ) : null}
+        <span className="ml-auto">
+          <ExportButtons name="srv-log" load={rowsLoader('SRV Log', SRV_LOG_COLUMNS, rows, state.status === 'ready' && state.data.total > rows.length)} />
+        </span>
       </div>
       <FormMessage error={error ?? admin.error} done={done ?? admin.done} />
       <LogMoveDialog logId={moving} onClose={() => setMoving(null)} onDone={reload} />
@@ -207,6 +213,9 @@ export function SrvCalibrationSection() {
           </select>
         </label>
         <SmartFilterBar id="srv-cal" value={filters} onChange={setFilters} showRegion={false} showStation={false} />
+        <span className="ml-auto">
+          <ExportButtons name="srv-calibration" load={rowsLoader('Calibration (3rd party)', CALIBRATION_COLUMNS, rows, state.status === 'ready' && state.data.total > rows.length)} />
+        </span>
       </div>
       {isAdmin && picked.length > 0 ? (
         <section aria-label="Calibration actions" className="flex flex-wrap items-end gap-2 rounded border bg-card px-3 py-2">
@@ -290,7 +299,12 @@ export function SrvEmergencySection() {
       <p className="text-sm text-muted-foreground">
         Every issue marked Emergency. The valve it replaced is also in the SRV Log until it returns to the warehouse.
       </p>
-      <SmartFilterBar id="srv-emergency" value={filters} onChange={setFilters} />
+      <div className="flex flex-wrap items-end gap-3">
+        <SmartFilterBar id="srv-emergency" value={filters} onChange={setFilters} />
+        <span className="ml-auto">
+          <ExportButtons name="srv-emergency" load={rowsLoader('SRV Emergency', EMERGENCY_COLUMNS, rows, state.status === 'ready' && state.data.total > rows.length)} />
+        </span>
+      </div>
       <FormMessage error={admin.error} done={admin.done} />
       <ListStates state={state} label="emergency issues" reload={reload} empty={rows.length === 0}>
         <SelectableTable

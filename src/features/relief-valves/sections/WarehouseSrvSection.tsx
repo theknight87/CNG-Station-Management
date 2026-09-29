@@ -1,4 +1,7 @@
 import { AddWarehouseSrvsButton } from '@/features/relief-valves/AddWarehouseSrvs'
+import { ExportButtons } from '@/features/export/ExportButtons'
+import { queryLoader } from '@/features/export/exportData'
+import { WAREHOUSE_SRV_COLUMNS } from '@/features/export/exportColumns'
 import { AvailabilityChip, ManufacturerChip, RegionChip } from '@/features/relief-valves/SrvPieces'
 import { useCallback, useState } from 'react'
 import { Plus, Search, Trash2, Wrench, X } from 'lucide-react'
@@ -14,7 +17,7 @@ import { SmartFilterBar } from '@/features/relief-valves/SrvPieces'
 import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
 import {
   hasSmartFilters,
-  DEFAULT_WAREHOUSE_QUERY, useWarehouseSrvs,
+  AVAILABILITY_LABEL, DEFAULT_WAREHOUSE_QUERY, useWarehouseSrvs, warehouseRequest,
   type WarehouseQuery, type WarehouseSrvRow, type WarehouseSort,
 } from '@/features/relief-valves/useSrvManagement'
 import { RemoveValveButton } from '@/features/relief-valves/SrvAdminActions'
@@ -38,13 +41,6 @@ import { useSupabaseClient } from '@/lib/supabase/client'
  * Repair Kits are out of scope and are not inferred from warehouse stock.
  */
 
-const AVAILABILITY_LABEL: Record<string, string> = {
-  available_new: 'Available — new',
-  available_calibrated: 'Available — calibrated',
-  available_in_store_uc: 'Available — in store (UC)',
-  sent_to_station_received: 'Sent to station — received',
-  sent_to_station_not_received: 'Sent to station — not received',
-}
 
 /** The store holds only these three (owner ruling); issued stock lives in the installed register and the SRV Log. */
 const STOCK_STATUSES = ['available_new', 'available_calibrated', 'available_in_store_uc']
@@ -210,6 +206,7 @@ function ValveSize({ type, inlet, outlet }: { type: string | null; inlet: string
 export function WarehouseSrvSection() {
   const [query, setQuery] = useState<WarehouseQuery>(DEFAULT_WAREHOUSE_QUERY)
   const { state, reload } = useWarehouseSrvs(query)
+  const supabase = useSupabaseClient()
   const isAdmin = useIsAdmin()
   // Ticks belong to the rows on screen: any change of filter, sort or page clears them, so a bulk
   // action can never reach a valve the user can no longer see.
@@ -308,7 +305,10 @@ export function WarehouseSrvSection() {
             Clear
           </Button>
         ) : null}
-        <span className="ml-auto"><AddWarehouseSrvsButton onAdded={reload} /></span>
+        <span className="ml-auto flex flex-wrap items-center gap-2">
+          <ExportButtons name="warehouse-srvs" load={queryLoader(supabase, 'Warehouse SRVs', WAREHOUSE_SRV_COLUMNS, (c) => warehouseRequest(c, query))} />
+          <AddWarehouseSrvsButton onAdded={reload} />
+        </span>
       </DataToolbar>
       <SmartFilterBar id="warehouse-srv" stationLabel="Destination Station" regionLabel="Destination Region" value={query.filters} onChange={(filters) => update({ filters })} />
       {isAdmin && picked.length > 0 ? (

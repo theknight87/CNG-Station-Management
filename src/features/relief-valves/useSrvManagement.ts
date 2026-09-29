@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { useSupabaseClient } from '@/lib/supabase/client'
 import type { RegistryPage } from '@/components/data/RegistryTable'
@@ -126,6 +127,15 @@ const INSTALLED_COLUMNS =
   'last_calibration_precision, last_calibration_display, next_calibration_date, ' +
   'next_calibration_precision, next_calibration_display, days_left, due_status, source_status_raw, ' +
   'needs_review, notes, source_file, source_sheet, source_row, warehouse_code, warehouse_code_source'
+
+/** Warehouse availability, as the store names it. Shared by the table and the export. */
+export const AVAILABILITY_LABEL: Record<string, string> = {
+  available_new: 'Available — new',
+  available_calibrated: 'Available — calibrated',
+  available_in_store_uc: 'Available — in store (UC)',
+  sent_to_station_received: 'Sent to station — received',
+  sent_to_station_not_received: 'Sent to station — not received',
+}
 
 const WAREHOUSE_COLUMNS =
   'id, availability_status, warehouse_code, serial_number, serial_number_raw, serial_status, part_number, ' +
@@ -256,6 +266,44 @@ const ATTENTION_BUCKETS = ['overdue', 'due_today', 'due_7', 'due_15', 'due_30', 
 /** The shared registry page shape. Re-exported so callers here keep one import. */
 export type SrvPage<T> = RegistryPage<T>
 
+/**
+ * The Installed SRV registry query: every filter and the sort, no paging. The table pages it and the export
+ * reads it whole, so an export can never widen (or narrow) what the screen shows.
+ */
+export function installedRequest(supabase: SupabaseClient, q: InstalledQuery) {
+  const term = q.search.trim()
+  let b = supabase.from('v_installed_srv_management').select(INSTALLED_COLUMNS, { count: 'exact' })
+  if (q.regionId) b = b.eq('region_id', q.regionId)
+  if (q.mapping !== 'all') b = b.eq('mapping_status', q.mapping)
+  if (q.parentKind !== 'all') b = b.eq('parent_kind', q.parentKind)
+  if (q.due === 'overdue') b = b.eq('due_status', 'overdue')
+  if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
+  if (q.due === 'attention') b = b.in('due_status', ATTENTION_BUCKETS)
+  b = applySmartFilters(b, q.filters, 'station_display')
+  if (term) {
+    // Retrieval, never resolution: matching a station name here does not
+    // map anything. The folded form is offered too so an Arabic query
+    // typed with one spelling finds the other.
+    const raw = term.replace(/[,()]/g, ' ')
+    const folded = foldName(raw)
+    b = b.or(
+      [
+        `serial_number.ilike.*${raw}*`,
+        `part_number.ilike.*${raw}*`,
+        `manufacturer.ilike.*${raw}*`,
+        `tag_number.ilike.*${raw}*`,
+        `station_name.ilike.*${raw}*`,
+        `unit_name.ilike.*${raw}*`,
+        `source_station_name_raw.ilike.*${folded}*`,
+      ].join(','),
+    )
+  }
+  for (const column of INSTALLED_SORT[q.sort]) {
+    b = b.order(column, { ascending: q.direction === 'asc', nullsFirst: false })
+  }
+  return b
+}
+
 export function useInstalledSrvs(query: InstalledQuery): {
   state: Loadable<SrvPage<InstalledSrvRow>>
   reload: () => void
@@ -278,44 +326,8 @@ export function useInstalledSrvs(query: InstalledQuery): {
       const q: InstalledQuery = JSON.parse(key)
       const term = q.search.trim()
 
-      function base(head = false) {
-        let b = supabase!
-          .from('v_installed_srv_management')
-          .select(head ? 'id' : INSTALLED_COLUMNS, { count: 'exact', head })
-        if (q.regionId) b = b.eq('region_id', q.regionId)
-        if (q.mapping !== 'all') b = b.eq('mapping_status', q.mapping)
-        if (q.parentKind !== 'all') b = b.eq('parent_kind', q.parentKind)
-        if (q.due === 'overdue') b = b.eq('due_status', 'overdue')
-        if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
-        if (q.due === 'attention') b = b.in('due_status', ATTENTION_BUCKETS)
-        b = applySmartFilters(b, q.filters, 'station_display')
-        if (term) {
-          // Retrieval, never resolution: matching a station name here does not
-          // map anything. The folded form is offered too so an Arabic query
-          // typed with one spelling finds the other.
-          const raw = term.replace(/[,()]/g, ' ')
-          const folded = foldName(raw)
-          b = b.or(
-            [
-              `serial_number.ilike.*${raw}*`,
-              `part_number.ilike.*${raw}*`,
-              `manufacturer.ilike.*${raw}*`,
-              `tag_number.ilike.*${raw}*`,
-              `station_name.ilike.*${raw}*`,
-              `unit_name.ilike.*${raw}*`,
-              `source_station_name_raw.ilike.*${folded}*`,
-            ].join(','),
-          )
-        }
-        return b
-      }
-
-      let request = base()
-      for (const column of INSTALLED_SORT[q.sort]) {
-        request = request.order(column, { ascending: q.direction === 'asc', nullsFirst: false })
-      }
       const from = q.page * q.pageSize
-      const { data, error, count } = await request.range(from, from + q.pageSize - 1)
+      const { data, error, count } = await installedRequest(supabase, q).range(from, from + q.pageSize - 1)
       if (cancelled) return
       if (error) {
         setState({ status: 'error', message: error.message })
@@ -384,6 +396,32 @@ const WAREHOUSE_SORT: Record<WarehouseSort, string[]> = {
  * `target_region`/`target_station` — where stock is being sent — and that is a
  * destination, not a physical position (CLAUDE.md §4).
  */
+/** The warehouse registry query: every filter and the sort, no paging (shared by the table and its export). */
+export function warehouseRequest(supabase: SupabaseClient, q: WarehouseQuery) {
+  const term = q.search.trim()
+  let b = supabase.from('v_srv_warehouse_stock').select(WAREHOUSE_COLUMNS, { count: 'exact' })
+  if (q.availability) b = b.eq('availability_status', q.availability)
+  if (q.due === 'overdue') b = b.eq('due_status', 'overdue')
+  if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
+  if (q.due === 'attention') b = b.in('due_status', ATTENTION_BUCKETS)
+  b = applySmartFilters(b, q.filters, 'target_station_name', 'target_region_id')
+  if (term) {
+    const raw = term.replace(/[,()]/g, ' ')
+    b = b.or(
+      [
+        `serial_number.ilike.*${raw}*`,
+        `part_number.ilike.*${raw}*`,
+        `manufacturer.ilike.*${raw}*`,
+        `warehouse_code.ilike.*${raw}*`,
+      ].join(','),
+    )
+  }
+  for (const column of WAREHOUSE_SORT[q.sort]) {
+    b = b.order(column, { ascending: q.direction === 'asc', nullsFirst: false })
+  }
+  return b
+}
+
 export function useWarehouseSrvs(query: WarehouseQuery): {
   state: Loadable<SrvPage<WarehouseSrvRow>>
   reload: () => void
@@ -406,28 +444,8 @@ export function useWarehouseSrvs(query: WarehouseQuery): {
       const q: WarehouseQuery = JSON.parse(key)
       const term = q.search.trim()
 
-      let b = supabase.from('v_srv_warehouse_stock').select(WAREHOUSE_COLUMNS, { count: 'exact' })
-      if (q.availability) b = b.eq('availability_status', q.availability)
-      if (q.due === 'overdue') b = b.eq('due_status', 'overdue')
-      if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
-      if (q.due === 'attention') b = b.in('due_status', ATTENTION_BUCKETS)
-      b = applySmartFilters(b, q.filters, 'target_station_name', 'target_region_id')
-      if (term) {
-        const raw = term.replace(/[,()]/g, ' ')
-        b = b.or(
-          [
-            `serial_number.ilike.*${raw}*`,
-            `part_number.ilike.*${raw}*`,
-            `manufacturer.ilike.*${raw}*`,
-            `warehouse_code.ilike.*${raw}*`,
-          ].join(','),
-        )
-      }
-      for (const column of WAREHOUSE_SORT[q.sort]) {
-        b = b.order(column, { ascending: q.direction === 'asc', nullsFirst: false })
-      }
       const from = q.page * q.pageSize
-      const { data, error, count } = await b.range(from, from + q.pageSize - 1)
+      const { data, error, count } = await warehouseRequest(supabase, q).range(from, from + q.pageSize - 1)
       if (cancelled) return
       if (error) {
         setState({ status: 'error', message: error.message })

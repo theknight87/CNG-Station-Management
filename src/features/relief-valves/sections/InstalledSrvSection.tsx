@@ -1,4 +1,8 @@
 import { useCallback, useState } from 'react'
+import { ExportButtons } from '@/features/export/ExportButtons'
+import { queryLoader } from '@/features/export/exportData'
+import { INSTALLED_SRV_COLUMNS } from '@/features/export/exportColumns'
+import { useSupabaseClient } from '@/lib/supabase/client'
 import { Search, X } from 'lucide-react'
 
 import { Identifier } from '@/components/data/TechnicalText'
@@ -16,6 +20,7 @@ import {
   hasSmartFilters,
   DEFAULT_INSTALLED_QUERY, useInstalledSrvs, useInstalledSummary,
   type InstalledQuery, type InstalledSrvRow, type InstalledSort,
+  installedRequest,
 } from '@/features/relief-valves/useSrvManagement'
 
 /**
@@ -110,6 +115,7 @@ function ValveSize({ type, inlet, outlet }: { type: string | null; inlet: string
 
 export function InstalledSrvSection() {
   const [query, setQuery] = useState<InstalledQuery>(DEFAULT_INSTALLED_QUERY)
+  const supabase = useSupabaseClient()
   const { state, reload } = useInstalledSrvs(query)
   const { state: summary } = useInstalledSummary(query)
   const regions = useRegions()
@@ -260,6 +266,9 @@ export function InstalledSrvSection() {
             Clear
           </Button>
         ) : null}
+        <span className="ml-auto">
+          <ExportButtons name="installed-srvs" load={queryLoader(supabase, 'Installed SRVs', INSTALLED_SRV_COLUMNS, (c) => installedRequest(c, query))} />
+        </span>
       </DataToolbar>
       <SmartFilterBar id="installed-srv" stationLabel="Station" showRegion={false} value={query.filters} onChange={(filters) => update({ filters })} />
 

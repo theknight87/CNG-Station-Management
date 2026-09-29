@@ -1,4 +1,8 @@
 import { useCallback, useMemo, useState } from 'react'
+import { ExportButtons } from '@/features/export/ExportButtons'
+import { queryLoader } from '@/features/export/exportData'
+import { GAS_DETECTOR_COLUMNS } from '@/features/export/exportColumns'
+import { useSupabaseClient } from '@/lib/supabase/client'
 import { MakerChip, RegionChip } from '@/components/data/AssetChips'
 import { AssetFilterBar } from '@/components/data/AssetFilterBar'
 import { hasAssetFilters } from '@/components/data/assetFilters'
@@ -20,6 +24,7 @@ import {
 import {
   DEFAULT_DETECTOR_QUERY, detectorRowKey, useGasDetectorSummary, useGasDetectors,
   type DetectorQuery, type DetectorRegistryRow, type DetectorSort,
+  detectorRequest,
 } from '@/features/gas-detectors/useGasDetectorManagement'
 
 /**
@@ -98,6 +103,7 @@ function columns(): RegistryColumn<DetectorRegistryRow>[] {
 
 export function GasDetectorsView() {
   const [query, setQuery] = useState<DetectorQuery>(DEFAULT_DETECTOR_QUERY)
+  const supabase = useSupabaseClient()
   const { state, reload } = useGasDetectors(query)
   const makers = useMakers('v_gas_detector_management')
   const { state: summary } = useGasDetectorSummary(query)
@@ -315,6 +321,9 @@ export function GasDetectorsView() {
               Clear
             </Button>
           ) : null}
+          <span className="ml-auto">
+            <ExportButtons name="gas-detectors" load={queryLoader(supabase, 'Gas detectors', GAS_DETECTOR_COLUMNS, (c) => detectorRequest(c, query))} />
+          </span>
         </DataToolbar>
         <AssetFilterBar id="gas-detectors" value={query.filters} onChange={(filters) => update({ filters })}
                         makers={makers.length ? makers : undefined} />

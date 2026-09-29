@@ -1,4 +1,5 @@
 import { useParams } from 'react-router-dom'
+import { ScopeExport } from '@/features/export/ScopeExport'
 
 import { usePublishBreadcrumbs } from '@/components/layout/breadcrumbContext'
 import { PageContainer, PageHeader, SectionHeader } from '@/components/layout/PageContainer'
@@ -44,7 +45,8 @@ export function RegionDetailView() {
 
   return (
     <PageContainer>
-      <PageHeader title={region.region_name} description="Region totals and the Stations within it." />
+      <PageHeader title={region.region_name} description="Region totals and the Stations within it."
+                  actions={<ScopeExport scope={{ kind: 'region', id: region.region_id, name: region.region_name }} />} />
 
       <section aria-labelledby="region-totals" className="rounded border bg-card p-3">
         <SectionHeader id="region-totals" title="Region totals" />

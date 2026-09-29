@@ -1,4 +1,7 @@
-import { Outlet, useParams } from 'react-router-dom'
+import { Outlet, useLocation, useParams } from 'react-router-dom'
+import { ScopeExport, UnitTabExport } from '@/features/export/ScopeExport'
+import { TAB_FAMILY } from '@/features/export/exportScope'
+import type { EquipmentTab } from '@/features/units/useUnitWorkspace'
 
 import { EntityName, Identifier } from '@/components/data/TechnicalText'
 import { NullValue } from '@/components/data/NullValue'
@@ -26,6 +29,7 @@ export function UnitWorkspace() {
   const { unitId } = useParams<{ unitId: string }>()
   const { state, reload } = useUnit(unitId)
   const unitRow = state.status === 'ready' ? state.data : null
+  const section = useLocation().pathname.split('/').filter(Boolean)[2] as EquipmentTab | undefined
 
   // Real entity labels, published only once the Unit has actually loaded.
   // A UUID from the URL is never shown as a name, and nothing is guessed while
@@ -82,7 +86,11 @@ export function UnitWorkspace() {
             </span>
           </p>
         </div>
-        <AttentionBadge overdue={unit.overdue} unresolved={0} />
+        <div className="flex flex-wrap items-center gap-2">
+          <AttentionBadge overdue={unit.overdue} unresolved={0} />
+          {section && section in TAB_FAMILY ? <UnitTabExport tab={section} unitId={unit.unit_id} unitName={unit.unit_name} /> : null}
+          <ScopeExport scope={{ kind: 'unit', id: unit.unit_id, name: unit.unit_name }} />
+        </div>
       </div>
 
       <UnitTabs unitId={unit.unit_id} summary={state} />

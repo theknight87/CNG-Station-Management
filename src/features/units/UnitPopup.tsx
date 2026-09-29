@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { ScopeExport, UnitTabExport } from '@/features/export/ScopeExport'
 
 import { MakerChip } from '@/components/data/AssetChips'
 import { DetailGrid, DetailItem, RecordDetailsDialog } from '@/components/data/RecordDetailsDialog'
@@ -244,7 +245,9 @@ export function UnitPopup({ unit, onClose }: { unit: UnitSummary | null; onClose
               ))}
             </div>
             <div role="tabpanel" aria-label={spec.label} className="flex flex-col gap-2">
-              <div className="flex justify-end">
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <UnitTabExport tab={spec.tab} unitId={unit.unit_id} unitName={unit.unit_name} />
+                <ScopeExport scope={{ kind: 'unit', id: unit.unit_id, name: unit.unit_name }} />
                 <AddUnitAssetButton kind={spec.kind} unitId={unit.unit_id} unitName={unit.unit_name} onAdded={() => setNonce((n) => n + 1)} />
               </div>
               <TabList key={`${spec.tab}-${nonce}`} spec={spec} unitId={unit.unit_id} onOpen={(row) => setItem({ spec, row })} />

@@ -3,6 +3,7 @@ import { NullValue, ValueOrNull } from '@/components/data/NullValue'
 import { StatusBadge } from '@/components/data/StatusBadge'
 import type { StatusKind } from '@/components/data/statusSemantics'
 import type { DatePrecision, DueStatus, PressureUnit } from '@/features/units/useUnitWorkspace'
+import { DUE_LABEL } from '@/features/units/dueLabels'
 
 /**
  * How one technical value is drawn. Shared by every equipment section so a
@@ -30,16 +31,6 @@ const DUE_KIND: Record<DueStatus, StatusKind> = {
   unknown: 'info',
 }
 
-const DUE_LABEL: Record<DueStatus, string> = {
-  overdue: 'Overdue',
-  due_today: 'Due today',
-  due_7: 'Due ≤7d',
-  due_15: 'Due ≤15d',
-  due_30: 'Due ≤30d',
-  due_60: 'Due ≤60d',
-  valid: 'Within date',
-  unknown: 'No exact date',
-}
 
 export function DueBadge({ status }: { status: DueStatus | null | undefined }) {
   if (!status) return <NullValue />

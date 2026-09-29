@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ScopeExport } from '@/features/export/ScopeExport'
 
 import { Button } from '@/components/ui/button'
 import { useIsAdmin, useWorkflowAction } from '@/features/relief-valves/useSrvWorkflow'
@@ -18,11 +19,12 @@ export function StationUnits({ stationId, stationName, onOpen, onRemoved }: {
   if (state.status !== 'ready' || !state.data) return null
   const units = state.data.units
   const remove = onRemoved && stationName ? <DeleteStationButton stationId={stationId} name={stationName} onDone={onRemoved} /> : null
+  const exporter = stationName ? <ScopeExport scope={{ kind: 'station', id: stationId, name: stationName }} /> : null
   if (units.length === 0) {
     return (
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">No Unit is recorded for this Station. Its equipment is held at Station level.</p>
-        {remove}
+        <span className="flex flex-wrap items-center gap-2">{exporter}{remove}</span>
       </div>
     )
   }
@@ -43,7 +45,7 @@ export function StationUnits({ stationId, stationName, onOpen, onRemoved }: {
         </li>
       ))}
     </ul>
-    {remove ? <div className="flex justify-end">{remove}</div> : null}
+    {remove || exporter ? <div className="flex flex-wrap items-center justify-end gap-2">{exporter}{remove}</div> : null}
     </div>
   )
 }

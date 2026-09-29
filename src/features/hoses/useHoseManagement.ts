@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { useCallback, useEffect, useState } from 'react'
 
 import { applyAssetFilters, EMPTY_ASSET_FILTERS, hasAssetFilters, type AssetFilters } from '@/components/data/assetFilters'
@@ -189,6 +190,16 @@ export function applyHoseQuery<B extends { eq: any; in: any; or: any; ilike: any
 /** Overdue PLUS every due bucket out to 60 days. Stated, never left ambiguous. */
 const ATTENTION_BUCKETS = ['overdue', 'due_today', 'due_7', 'due_15', 'due_30', 'due_60']
 
+/** The registry query: filters and sort, no paging (shared by the table and its export). */
+export function hoseRequest(supabase: SupabaseClient, q: HoseQuery) {
+  let b = supabase.from('v_hose_registry').select(COLUMNS, { count: 'exact' })
+  b = applyHoseQuery(b, q)
+  for (const column of [...SORT_COLUMNS[q.sort], 'id']) {
+    b = b.order(column, { ascending: q.direction === 'asc', nullsFirst: false })
+  }
+  return b
+}
+
 export function useHoses(query: HoseQuery): {
   state: Loadable<RegistryPage<HoseRegistryRow>>
   reload: () => void
@@ -213,13 +224,8 @@ export function useHoses(query: HoseQuery): {
       // Every filter is applied SERVER-SIDE, including the ones that narrow the
       // count. Fetching company-wide rows and hiding them in React would make
       // the browser the authorization boundary.
-      let b = supabase.from('v_hose_registry').select(COLUMNS, { count: 'exact' })
-      b = applyHoseQuery(b, q)
-      for (const column of [...SORT_COLUMNS[q.sort], 'id']) {
-        b = b.order(column, { ascending: q.direction === 'asc', nullsFirst: false })
-      }
       const from = q.page * q.pageSize
-      const { data, error, count } = await b.range(from, from + q.pageSize - 1)
+      const { data, error, count } = await hoseRequest(supabase, q).range(from, from + q.pageSize - 1)
       if (cancelled) return
       if (error) {
         // A failure is a failure. It is never rendered as an empty registry.
