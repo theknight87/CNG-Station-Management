@@ -53,6 +53,25 @@ their CLI is installed. Delegation does not relax
 anything in CLAUDE.md: the orchestrator still owns the review, the Verification Integrity Gate (§7a)
 and the commit, and a delegated diff is held to every rule a hand-written one is.
 
+## `delegate-antigravity` (owner-authored)
+
+Installed from the owner-supplied `delegate-antigravity.zip` (sha256
+`ad7d29696a5d618d4ba186ba0c06aad2b3e4bfe0fb7b50105f758037a05caaf1`). Files are byte-identical to the
+archive **except** that the UTF-8 byte-order mark was removed from the start of `SKILL.md`, because it
+sat before the `---` frontmatter delimiter; the `.ps1` keeps its BOM, which Windows PowerShell 5 needs
+to read the file as UTF-8.
+
+It hands implementation to Google Antigravity (`agy`) through a **Windows PowerShell** wrapper that
+`SKILL.md` expects at `$HOME\.shared-agent-skills\delegate-antigravity\` on the owner's machine (the
+copy here is the reference). It needs `powershell.exe` and `agy`, neither of which exists in the
+Linux cloud environment, so it only works locally. Its rules are stricter than `agy-delegate`: at
+most three Antigravity attempts, and the orchestrator **never** takes over implementation without
+explicit owner approval. The wrapper runs `agy` with `--dangerously-skip-permissions`, so every brief
+must carry explicit scope limits. Its `ANTIGRAVITY_EXECUTOR_RESULT.md` report is git-ignored.
+
+**Overlap:** both this skill and `agy-delegate` trigger on "delegate to Antigravity/agy". Name the one
+you want; on the owner's Windows machine `delegate-antigravity` is the intended one.
+
 ## These skills do not override the project's rules
 
 CLAUDE.md §11.2 governs. A design skill critiques and improves **presentation**. It has no

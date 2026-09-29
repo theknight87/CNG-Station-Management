@@ -55,3 +55,6 @@ playwright-report/
 # Python bytecode from vendored skill scripts
 __pycache__/
 *.pyc
+
+# delegate-antigravity executor report (written to the project root by the wrapper; not proof of success)
+ANTIGRAVITY_EXECUTOR_RESULT.md
