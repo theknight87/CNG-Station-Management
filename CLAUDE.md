@@ -81,6 +81,13 @@ Region
         └── Storage Vessel(s)
 ```
 
+**Storage belongs to the Station (owner ruling 6y, 2026-10-01).** A storage vessel bank often feeds
+several Units, so storage vessels and their relief valves are recorded at Station level
+(`unit_id` NULL), count as `resolved`, and are shown under every Unit of their Station
+(`v_unit_storage_vessels`, `v_unit_srvs` — filtered by `view_unit_id`; one record, repeated only by the
+view). A storage SRV links to a specific vessel when known, otherwise to the Station's storage bank.
+Migrations `20261001090000..090400`; suite `station_level_storage_6y`.
+
 **Safety Relief Valves (SRVs) are children of their parent equipment**, never independent
 station assets. An SRV may belong to a **Compressor**, a **Storage Vessel**, or a
 **Dispenser**.
