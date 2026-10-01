@@ -36,7 +36,7 @@ const FIELDS: Record<AssetKind, { title: string; fields: Field[]; note?: string 
       { key: 'warehouse_code', label: 'Warehouse code' }, ...ANNUAL_DATES, { key: 'notes', label: 'Notes' },
     ],
   },
-  storage_vessel: { title: 'storage vessel', fields: [
+  storage_vessel: { title: 'storage vessel', note: 'Storage belongs to the Station: the vessel is recorded at Station level and shown under every Unit of this Station.', fields: [
     { key: 'serial_number', label: 'Serial' }, { key: 'manufacturer', label: 'Manufacturer' }, { key: 'model', label: 'Model' },
     ...COMMON_DATES('inspection'), { key: 'notes', label: 'Notes' }] },
   recovery_tank: { title: 'recovery tank', fields: [

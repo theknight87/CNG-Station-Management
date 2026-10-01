@@ -75,11 +75,24 @@ async function loadNames(supabase: SupabaseClient, scope: ExportScope) {
   return { stations: stations.rows, units: units.rows }
 }
 
+/** Families whose Station-level rows (ruling 6y) belong in a Unit's export, with any extra condition. */
+const STATION_LEVEL: Partial<Record<FamilyKey, string>> = { storage_vessels: '', installed_srvs: ',mapping_status.eq.resolved' }
+
 /** One family's rows for the scope, with names attached, in hierarchy order. */
 export async function loadFamily(supabase: SupabaseClient, family: Family, scope: ExportScope, names?: { stations: AnyRow[]; units: AnyRow[] }): Promise<ExportSheet> {
   const column = SCOPE_COLUMN[scope.kind]
+  // Ruling 6y: storage belongs to the Station, so a Unit's export also carries its Station's Station-level storage
+  // vessels and storage relief valves (unit_id NULL), exactly as the Unit tabs show them.
+  let stationLevel: string | null = null
+  if (scope.kind === 'unit' && family.key in STATION_LEVEL) {
+    names ??= await loadNames(supabase, scope)
+    const stationId = names.units[0]?.station_id as string | undefined
+    if (stationId) stationLevel = `unit_id.eq.${scope.id},and(unit_id.is.null,station_id.eq.${stationId}${STATION_LEVEL[family.key]})`
+  }
   const { rows, truncated } = await fetchAllRows((from, to) => {
-    let b: Builder = supabase.from(family.source).select('*').eq(column, scope.id)
+    let b: Builder = stationLevel
+      ? supabase.from(family.source).select('*').or(stationLevel)
+      : supabase.from(family.source).select('*').eq(column, scope.id)
     if (family.narrow) b = family.narrow(b)
     return b.order(family.orderBy).range(from, to)
   })

@@ -26,14 +26,17 @@ import type { Loadable } from '@/features/hierarchy/useHierarchy'
  *      Compressors       compressors        (no dates on this table)
  *      Recovery tanks    v_vessel_management, asset_type = 'recovery_tank'
  *      Dispensers        dispensers         (no dates on this table)
- *      Storage vessels   v_vessel_management, asset_type = 'storage_vessel'
+ *      Storage vessels   v_unit_storage_vessels (ruling 6y: the Station's storage, under every Unit)
  *      Gas detectors     v_gas_detector_management
  *      Hoses             v_hose_management
  *      SRVs              v_unit_srvs
  *
  *    `v_unit_srvs` already encodes the Prompt-10 visibility rule in SQL:
  *    `unit_id IS NOT NULL AND mapping_status IN ('resolved',
- *    'needs_equipment_mapping')`. The rule is therefore enforced in PostgreSQL,
+ *    'needs_equipment_mapping')`, plus (ruling 6y) the Station's storage relief
+ *    valves, which belong to the Station and are repeated under each of its Units.
+ *    Those two views are narrowed by `view_unit_id` — the Unit being viewed —
+ *    because a Station-level record's own `unit_id` is NULL. The rule is therefore enforced in PostgreSQL,
  *    not re-implemented here where it could drift. Warehouse relief valves live
  *    in a different table entirely and have no `unit_id`, so they cannot appear.
  */
@@ -106,6 +109,8 @@ export interface VesselRow {
   source_status_raw: string | null
   needs_review: boolean
   notes: string | null
+  /** Storage tab only (ruling 6y): the vessel belongs to the Station and is shown under each of its Units. */
+  station_level?: boolean
 }
 
 export interface DetectorRow {
@@ -202,6 +207,8 @@ export interface UnitSrvRow {
   source_status_raw: string | null
   needs_review: boolean
   notes: string | null
+  /** Ruling 6y: a storage relief valve of the Station, shown under each of its Units. */
+  station_level: boolean
 }
 
 const COMPRESSOR_COLUMNS =
@@ -218,6 +225,8 @@ const VESSEL_COLUMNS =
   'serial_number_raw, serial_status, compressor_type_raw, last_inspection_date, last_inspection_precision, ' +
   'last_inspection_display, next_inspection_date, next_inspection_precision, next_inspection_display, ' +
   'days_left, due_status, source_status_raw, needs_review, notes'
+
+const STORAGE_COLUMNS = VESSEL_COLUMNS + ', station_level'
 
 const DETECTOR_COLUMNS =
   'detector_id, detector_presence, unit_id, station_id, area_type, area_type_raw, mapping_status, ' +
@@ -239,17 +248,17 @@ const SRV_COLUMNS =
   'serial_status, part_number, manufacturer, size_type, inlet_size, outlet_size, set_pressure_raw, ' +
   'pressure_min, pressure_max, pressure_unit, last_calibration_date, last_calibration_precision, ' +
   'last_calibration_display, next_calibration_date, next_calibration_precision, next_calibration_display, ' +
-  'days_left, due_status, source_status_raw, needs_review, notes'
+  'days_left, due_status, source_status_raw, needs_review, notes, station_level'
 
-/** Which source each tab reads, and how it is narrowed to this Unit. */
+/** Which source each tab reads, and the column that narrows it to this Unit. */
 const SOURCES = {
-  compressor: { table: 'compressors', columns: COMPRESSOR_COLUMNS, order: 'serial_number', discriminator: null },
-  'recovery-tank': { table: 'v_vessel_management', columns: VESSEL_COLUMNS, order: 'serial_number', discriminator: 'recovery_tank' },
-  dispensers: { table: 'dispensers', columns: DISPENSER_COLUMNS, order: 'dispenser_name', discriminator: null },
-  storage: { table: 'v_vessel_management', columns: VESSEL_COLUMNS, order: 'serial_number', discriminator: 'storage_vessel' },
-  'gas-detectors': { table: 'v_gas_detector_management', columns: DETECTOR_COLUMNS, order: 'serial_number', discriminator: null },
-  hoses: { table: 'v_hose_management', columns: HOSE_COLUMNS, order: 'serial_number', discriminator: null },
-  srvs: { table: 'v_unit_srvs', columns: SRV_COLUMNS, order: 'serial_number', discriminator: null },
+  compressor: { table: 'compressors', columns: COMPRESSOR_COLUMNS, order: 'serial_number', discriminator: null, unitColumn: 'unit_id' },
+  'recovery-tank': { table: 'v_vessel_management', columns: VESSEL_COLUMNS, order: 'serial_number', discriminator: 'recovery_tank', unitColumn: 'unit_id' },
+  dispensers: { table: 'dispensers', columns: DISPENSER_COLUMNS, order: 'dispenser_name', discriminator: null, unitColumn: 'unit_id' },
+  storage: { table: 'v_unit_storage_vessels', columns: STORAGE_COLUMNS, order: 'serial_number', discriminator: null, unitColumn: 'view_unit_id' },
+  'gas-detectors': { table: 'v_gas_detector_management', columns: DETECTOR_COLUMNS, order: 'serial_number', discriminator: null, unitColumn: 'unit_id' },
+  hoses: { table: 'v_hose_management', columns: HOSE_COLUMNS, order: 'serial_number', discriminator: null, unitColumn: 'unit_id' },
+  srvs: { table: 'v_unit_srvs', columns: SRV_COLUMNS, order: 'serial_number', discriminator: null, unitColumn: 'view_unit_id' },
 } as const
 
 export type EquipmentTab = keyof typeof SOURCES
@@ -284,10 +293,10 @@ export function useUnitEquipment<T>(
       if (!cancelled) setState({ status: 'loading' })
 
       const source = SOURCES[tab]
-      // `.eq('unit_id', unitId)` is the ownership proof. Combined with RLS on
+      // `.eq(unitColumn, unitId)` is the ownership proof. Combined with RLS on
       // the underlying tables it is impossible to receive a row belonging to
-      // another Unit, or to a Region the caller cannot read.
-      let request = supabase.from(source.table).select(source.columns).eq('unit_id', unitId)
+      // another Unit's Station, or to a Region the caller cannot read.
+      let request = supabase.from(source.table).select(source.columns).eq(source.unitColumn, unitId)
       if (source.discriminator) request = request.eq('asset_type', source.discriminator)
 
       const { data, error } = await request.order(source.order, { nullsFirst: false })

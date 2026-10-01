@@ -19,6 +19,11 @@ import { DataToolbar } from '@/components/layout/PageContainer'
  *     unit_id IS NOT NULL
  *     AND mapping_status IN ('resolved', 'needs_equipment_mapping')
  *
+ * plus (owner ruling 6y) the Station's STORAGE relief valves: storage belongs to
+ * the Station, because one vessel bank may feed several Units, so those valves
+ * carry no Unit and are shown under every Unit of their Station, labelled
+ * "Station level". The record is still ONE row; only the view repeats it.
+ *
  * so this component cannot show a valve it should not, even if it tried. In the
  * lifecycle's terms:
  *
@@ -45,6 +50,11 @@ const PARENT_KIND_LABEL: Record<string, string> = {
   dispenser: 'Dispenser',
 }
 
+/** Ruling 6y: a Station-level storage record, shown under every Unit of its Station. */
+export function StationLevelTag() {
+  return <span className="ml-1.5 text-xs text-muted-foreground">Station level · all units</span>
+}
+
 /** The equipment parent, or an explicit statement that it is unresolved. */
 function ParentCell({ row }: { row: UnitSrvRow }) {
   if (row.mapping_status === 'resolved' && row.parent_kind) {
@@ -52,6 +62,16 @@ function ParentCell({ row }: { row: UnitSrvRow }) {
       <span className="whitespace-nowrap">
         <span className="text-muted-foreground">{PARENT_KIND_LABEL[row.parent_kind]}</span>{' '}
         {row.parent_label ? <Identifier value={row.parent_label} /> : <NullValue />}
+        {row.station_level ? <StationLevelTag /> : null}
+      </span>
+    )
+  }
+  if (row.mapping_status === 'resolved' && row.station_level) {
+    // Storage at the Station; which vessel of the bank is not recorded — stated, never guessed.
+    return (
+      <span className="whitespace-nowrap">
+        <span className="text-muted-foreground">Storage</span>
+        <StationLevelTag />
       </span>
     )
   }

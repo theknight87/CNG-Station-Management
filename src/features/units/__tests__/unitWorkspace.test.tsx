@@ -53,16 +53,18 @@ vi.mock('@/lib/supabase/client', () => {
           const key =
             table === 'compressors' ? 'compressors'
             : table === 'dispensers' ? 'dispensers'
-            : table === 'v_vessel_management' ? 'vessels'
+            : table === 'v_vessel_management' || table === 'v_unit_storage_vessels' ? 'vessels'
             : table === 'v_gas_detector_management' ? 'detectors'
             : table === 'v_hose_management' ? 'hoses'
             : 'srvs'
           const reply = replies[key as keyof typeof replies]
           // The vessel view is shared by two tabs and discriminated by
           // asset_type, exactly as the real view is.
-          if (table === 'v_vessel_management' && filters.asset_type && Array.isArray(reply.data)) {
+          // v_unit_storage_vessels (ruling 6y) carries storage vessels only.
+          const assetType = table === 'v_unit_storage_vessels' ? 'storage_vessel' : filters.asset_type
+          if ((table === 'v_vessel_management' || table === 'v_unit_storage_vessels') && assetType && Array.isArray(reply.data)) {
             return Promise.resolve({
-              data: (reply.data as { asset_type: string }[]).filter((r) => r.asset_type === filters.asset_type),
+              data: (reply.data as { asset_type: string }[]).filter((r) => r.asset_type === assetType),
               error: reply.error,
             }).then(resolve)
           }
@@ -228,20 +230,22 @@ describe('Tab navigation and counts', () => {
 })
 
 describe('Equipment ownership', () => {
-  // Each tab must narrow by unit_id in the QUERY. A tab that fetched by asset
-  // id and trusted the URL would show another Unit's equipment.
+  // Each tab must narrow by the Unit in the QUERY. A tab that fetched by asset
+  // id and trusted the URL would show another Unit's equipment. Storage and SRVs
+  // (ruling 6y) narrow by view_unit_id, the Unit being viewed, because the
+  // Station's storage records carry no Unit of their own.
   it.each([
-    ['/units/u-1/compressor', 'compressors'],
-    ['/units/u-1/dispensers', 'dispensers'],
-    ['/units/u-1/storage', 'v_vessel_management'],
-    ['/units/u-1/recovery-tank', 'v_vessel_management'],
-    ['/units/u-1/gas-detectors', 'v_gas_detector_management'],
-    ['/units/u-1/hoses', 'v_hose_management'],
-    ['/units/u-1/srvs', 'v_unit_srvs'],
-  ])('%s filters %s by unit_id', async (path, table) => {
+    ['/units/u-1/compressor', 'compressors', 'unit_id'],
+    ['/units/u-1/dispensers', 'dispensers', 'unit_id'],
+    ['/units/u-1/storage', 'v_unit_storage_vessels', 'view_unit_id'],
+    ['/units/u-1/recovery-tank', 'v_vessel_management', 'unit_id'],
+    ['/units/u-1/gas-detectors', 'v_gas_detector_management', 'unit_id'],
+    ['/units/u-1/hoses', 'v_hose_management', 'unit_id'],
+    ['/units/u-1/srvs', 'v_unit_srvs', 'view_unit_id'],
+  ])('%s filters %s by %s', async (path, table, column) => {
     renderUnit(path)
     await waitFor(() => {
-      expect(calls.list).toContain(`${table}.eq:unit_id=u-1`)
+      expect(calls.list).toContain(`${table}.eq:${column}=u-1`)
     })
   })
 
@@ -287,9 +291,28 @@ describe('Unit SRV visibility rules', () => {
     expect(screen.getByText(/awaiting Station or Unit confirmation/i)).toBeDefined()
   })
 
+  it('ruling 6y: a Station-level storage valve is labelled as such, with the vessel unknown stated as Storage', async () => {
+    replies.srvs = {
+      data: [srv({ id: 'v-9', serial_number: 'ST-1', unit_id: null, station_level: true, parent_kind: null, parent_id: null, parent_label: null })],
+      error: null,
+    }
+    renderUnit('/units/u-1/srvs')
+    const row = (await screen.findByText('ST-1')).closest('tr')!
+    expect(within(row).getByText(/station level · all units/i)).toBeDefined()
+    expect(within(row).getByText('Storage')).toBeDefined()
+    expect(within(row).queryByText(/needs equipment mapping/i)).toBeNull()
+  })
+
+  it('ruling 6y: a Station-level storage vessel shows its placement', async () => {
+    replies.vessels = { data: [vessel({ unit_id: null, station_level: true })], error: null }
+    renderUnit('/units/u-1/storage')
+    const row = (await screen.findByText('SV-00001')).closest('tr')!
+    expect(within(row).getByText(/station level · all units/i)).toBeDefined()
+  })
+
   it('reads v_unit_srvs, never installed_relief_valves directly', async () => {
     renderUnit('/units/u-1/srvs')
-    await waitFor(() => expect(calls.list).toContain('v_unit_srvs.eq:unit_id=u-1'))
+    await waitFor(() => expect(calls.list).toContain('v_unit_srvs.eq:view_unit_id=u-1'))
     // Querying the base table would bypass the visibility predicate entirely.
     expect(calls.list.some((c) => c.startsWith('installed_relief_valves.'))).toBe(false)
     expect(calls.list.some((c) => c.startsWith('warehouse_relief_valves.'))).toBe(false)

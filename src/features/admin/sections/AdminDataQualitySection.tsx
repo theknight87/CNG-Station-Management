@@ -491,7 +491,8 @@ function SrvMappingForm({
 
   const stations = useStations()
   const units = useUnits(stationId || null)
-  const equipment = useEquipment(parentKind === '' ? null : parentKind, unitId || null)
+  const storage = parentKind === 'storage_vessel'
+  const equipment = useEquipment(parentKind === '' ? null : parentKind, unitId || null, stationId || null)
 
   return (
     <form
@@ -500,8 +501,9 @@ function SrvMappingForm({
         e.preventDefault()
         void onSubmit({
           stationId,
-          unitId: unitId === '' ? null : unitId,
-          parentKind: parentId === '' ? null : (parentKind as SrvParentKind),
+          unitId: storage || unitId === '' ? null : unitId,
+          // Storage is confirmed at Station level even when the vessel of the bank is not known (ruling 6y).
+          parentKind: storage ? 'storage_vessel' : parentId === '' ? null : (parentKind as SrvParentKind),
           parentId: parentId === '' ? null : parentId,
           reason,
         })
@@ -509,7 +511,8 @@ function SrvMappingForm({
     >
       <p className="text-xs text-muted-foreground">
         Confirm only what the evidence proves. Confirming the Station alone leaves the record
-        awaiting its Unit; confirming the Unit leaves it awaiting its equipment. The database
+        awaiting its Unit; confirming the Unit leaves it awaiting its equipment. Storage belongs to the
+        Station: choosing Storage Vessel needs no Unit, and the vessel is optional. The database
         records the resulting state, and refuses a Unit or a parent that does not belong.
       </p>
       <div className="flex flex-wrap items-end gap-3">
@@ -526,7 +529,7 @@ function SrvMappingForm({
         <Field label="Unit" htmlFor={`un-${row.id}`}>
           <select
             id={`un-${row.id}`} className="h-7 rounded border bg-background px-1 text-xs"
-            value={unitId} disabled={stationId === ''}
+            value={storage ? '' : unitId} disabled={stationId === '' || storage}
             onChange={(e) => { setUnitId(e.target.value); setParentId('') }}
           >
             <option value="">Not confirmed</option>
@@ -536,7 +539,7 @@ function SrvMappingForm({
         <Field label="Parent kind" htmlFor={`pk-${row.id}`}>
           <select
             id={`pk-${row.id}`} className="h-7 rounded border bg-background px-1 text-xs"
-            value={parentKind} disabled={unitId === ''}
+            value={parentKind} disabled={stationId === ''}
             onChange={(e) => { setParentKind(e.target.value as SrvParentKind | ''); setParentId('') }}
           >
             <option value="">Not confirmed</option>
@@ -546,7 +549,7 @@ function SrvMappingForm({
         <Field label="Parent equipment" htmlFor={`pe-${row.id}`}>
           <select
             id={`pe-${row.id}`} className="h-7 rounded border bg-background px-1 text-xs"
-            value={parentId} disabled={parentKind === ''}
+            value={parentId} disabled={parentKind === '' || (!storage && unitId === '')}
             onChange={(e) => setParentId(e.target.value)}
           >
             <option value="">Not confirmed</option>

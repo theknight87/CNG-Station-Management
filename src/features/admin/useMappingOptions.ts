@@ -59,15 +59,22 @@ const PARENT_TABLE: Record<SrvParentKind, string> = {
   dispenser: 'dispensers',
 }
 
-export function useEquipment(kind: SrvParentKind | null, unitId: string | null): Option[] {
+/**
+ * Candidate parents. Compressors and dispensers belong to a Unit; storage vessels belong to the Station (owner
+ * ruling 6y — one bank may feed several Units), so they are listed by Station and need no Unit.
+ */
+export function useEquipment(kind: SrvParentKind | null, unitId: string | null, stationId: string | null = null): Option[] {
   const supabase = useSupabaseClient()
   const [options, setOptions] = useState<Option[]>([])
   useEffect(() => {
     let cancelled = false
     void (async () => {
-      if (!supabase || !kind || !unitId) { setOptions([]); return }
+      const byStation = kind === 'storage_vessel'
+      const scopeId = byStation ? stationId : unitId
+      if (!supabase || !kind || !scopeId) { setOptions([]); return }
       const { data } = await supabase
-        .from(PARENT_TABLE[kind]).select('id, serial_number').eq('unit_id', unitId)
+        .from(PARENT_TABLE[kind]).select('id, serial_number').eq(byStation ? 'station_id' : 'unit_id', scopeId)
+        .is('archived_at', null)
       if (cancelled) return
       setOptions(
         (data ?? []).map((r, i) => ({
@@ -80,7 +87,7 @@ export function useEquipment(kind: SrvParentKind | null, unitId: string | null):
       )
     })()
     return () => { cancelled = true }
-  }, [supabase, kind, unitId])
+  }, [supabase, kind, unitId, stationId])
   return options
 }
 

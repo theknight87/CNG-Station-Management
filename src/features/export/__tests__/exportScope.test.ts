@@ -19,7 +19,7 @@ const DATA: Record<string, unknown[]> = {
 }
 function builder(table: string) {
   const q: Record<string, unknown> = {}
-  for (const m of ['select', 'eq', 'is', 'not', 'order']) q[m] = (...a: unknown[]) => { calls.push(`${table}.${m}:${a.map(String).join('|')}`); return q }
+  for (const m of ['select', 'eq', 'or', 'is', 'not', 'order']) q[m] = (...a: unknown[]) => { calls.push(`${table}.${m}:${a.map(String).join('|')}`); return q }
   q.range = async (from: number) => ({ data: from === 0 ? DATA[table] ?? [] : [], error: null })
   return q
 }
@@ -59,5 +59,14 @@ describe('scope workbook', () => {
     expect(unit[0].name).toBe('Unit')
     expect(calls).toContain('v_hose_registry.eq:unit_id|u1')
     expect(calls.some((c) => c.startsWith('v_station_summary'))).toBe(false)
+  })
+
+  it('SCOPE-4 ruling 6y: a Unit workbook also carries its Station\'s Station-level storage vessels and storage valves', async () => {
+    await loadScopeWorkbook(supabase, { kind: 'unit', id: 'u1', name: 'شبرا 1' })
+    expect(calls).toContain('v_vessel_management.or:unit_id.eq.u1,and(unit_id.is.null,station_id.eq.s1)')
+    expect(calls).toContain('v_installed_srv_management.or:unit_id.eq.u1,and(unit_id.is.null,station_id.eq.s1,mapping_status.eq.resolved)')
+    // Families with no Station-level records stay narrowed by the Unit alone.
+    expect(calls).toContain('compressors.eq:unit_id|u1')
+    expect(calls).not.toContain('v_installed_srv_management.eq:unit_id|u1')
   })
 })

@@ -62,6 +62,10 @@ export function VesselStationCell({ row }: { row: VesselRegistryRow }) {
 /** The Unit, or an explicit statement that it is unresolved — never a guess. */
 export function VesselUnitCell({ row }: { row: VesselRegistryRow }) {
   if (row.unit_name) return <span className="whitespace-nowrap">{row.unit_name}</span>
+  // Ruling 6y: a resolved vessel without a Unit is Station-level storage, shown under every Unit of its Station.
+  if (row.mapping_status === 'resolved') {
+    return <span className="whitespace-nowrap text-muted-foreground">Station level · all units</span>
+  }
   return <span className="whitespace-nowrap text-muted-foreground">Not confirmed</span>
 }
 

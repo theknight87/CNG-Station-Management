@@ -177,14 +177,18 @@ function TabList<T>({ spec, unitId, onOpen }: { spec: TabSpec<T>; unitId: string
 }
 
 /** Overdue and due-within-60-days per equipment family, from the same view the reports read (suggestion 4). */
-function useUnitDue(unitId: string | undefined, nonce: number) {
+function useUnitDue(unitId: string | undefined, stationId: string | undefined, nonce: number) {
   const supabase = useSupabaseClient()
   const [counts, setCounts] = useState<Record<string, { overdue: number; due: number }> | null>(null)
   useEffect(() => {
     let cancelled = false
     void (async () => {
       if (!supabase || !unitId) return
-      const { data, error } = await supabase.from('v_report_due_compliance').select('asset_type, due_status').eq('unit_id', unitId)
+      // Ruling 6y: the Station's storage (no Unit, resolved) is counted under each of its Units.
+      const base = supabase.from('v_report_due_compliance').select('asset_type, due_status')
+      const { data, error } = await (stationId
+        ? base.or(`unit_id.eq.${unitId},and(unit_id.is.null,station_id.eq.${stationId},mapping_status.eq.resolved)`)
+        : base.eq('unit_id', unitId))
       if (cancelled || error || !data) return
       const out: Record<string, { overdue: number; due: number }> = {}
       for (const r of data as { asset_type: string; due_status: string }[]) {
@@ -195,7 +199,7 @@ function useUnitDue(unitId: string | undefined, nonce: number) {
       setCounts(out)
     })()
     return () => { cancelled = true }
-  }, [supabase, unitId, nonce])
+  }, [supabase, unitId, stationId, nonce])
   return counts
 }
 const DUE_SOON = ['due_today', 'due_7', 'due_15', 'due_30', 'due_60']
@@ -226,7 +230,7 @@ export function UnitPopup({ unit, onClose }: { unit: UnitSummary | null; onClose
   const [tab, setTab] = useState<EquipmentTab>('srvs')
   const [item, setItem] = useState<{ spec: TabSpec<unknown>; row: unknown } | null>(null)
   const [nonce, setNonce] = useState(0)
-  const counts = useUnitDue(unit?.unit_id, nonce)
+  const counts = useUnitDue(unit?.unit_id, unit?.station_id, nonce)
   const spec = TABS.find((t) => t.tab === tab) ?? TABS[0]
   const record = item ? item.spec.record(item.row) : null
   return (

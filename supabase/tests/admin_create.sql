@@ -98,7 +98,9 @@ SELECT pg_temp.ck('AC-9 equipment added to a Unit takes its Station and Region, 
   AND (SELECT v FROM r WHERE k='ua_srv') = 'OK' AND (SELECT v FROM r WHERE k='ua_bad') = '22023' AND (SELECT v FROM r WHERE k='ua_eng') = '42501'
   AND EXISTS (SELECT 1 FROM compressors WHERE unit_id = '7e200000-0000-0000-0000-00000000000a' AND station_id = '7e100000-0000-0000-0000-00000000000a'
               AND mapping_status = 'resolved' AND resolved_by = '7e000000-0000-0000-0000-00000000000a' AND serial_status = 'assigned')
-  AND EXISTS (SELECT 1 FROM storage_vessels WHERE unit_id = '7e200000-0000-0000-0000-00000000000a' AND next_inspection_date IS NULL
+  -- Ruling 6y: a storage vessel added from a Unit is recorded at Station level (no Unit), resolved.
+  AND EXISTS (SELECT 1 FROM storage_vessels WHERE unit_id IS NULL AND station_id = '7e100000-0000-0000-0000-00000000000a'
+              AND mapping_status = 'resolved' AND next_inspection_date IS NULL
               AND last_inspection_precision = 'exact_date' AND serial_number IS NULL)
   AND EXISTS (SELECT 1 FROM installed_relief_valves WHERE serial_number = 'TUA-S' AND mapping_status = 'needs_equipment_mapping'
               AND next_calibration_date = '2027-03-01' AND station_id = '7e100000-0000-0000-0000-00000000000a')

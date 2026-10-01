@@ -50,7 +50,13 @@ const columns = (kind: 'storage_vessel' | 'recovery_tank'): Column<VesselRow>[] 
   },
   { header: 'Status', render: (r) => <DueBadge status={r.due_status} /> },
   ...(kind === 'storage_vessel'
-    ? []
+    ? ([{
+        // Ruling 6y: storage belongs to the Station (one bank may feed several Units).
+        header: 'Placement',
+        render: (r) => (r.station_level
+          ? <span className="whitespace-nowrap text-muted-foreground">Station level · all units</span>
+          : <span className="whitespace-nowrap">This Unit</span>),
+      }] as Column<VesselRow>[])
     : ([] as Column<VesselRow>[])),
 ]
 
@@ -68,8 +74,10 @@ export function VesselSection({ kind }: { kind: 'storage_vessel' | 'recovery_tan
       reload={reload}
       rowKey={(r) => r.id}
       columns={columns(kind)}
-      emptyTitle={`No ${label} are recorded for this Unit`}
-      emptyDescription={`No ${label.toLowerCase()} record is mapped to this Unit. Absence of a record is not missing data — nothing in the schema says this Unit must have one.`}
+      emptyTitle={kind === 'storage_vessel' ? `No ${label} are recorded for this Unit's Station` : `No ${label} are recorded for this Unit`}
+      emptyDescription={kind === 'storage_vessel'
+        ? 'Storage belongs to the Station and is shown under each of its Units; no storage vessel is recorded for this Station.'
+        : `No ${label.toLowerCase()} record is mapped to this Unit. Absence of a record is not missing data — nothing in the schema says this Unit must have one.`}
       errorTitle={`Could not load ${label}`}
       detail={(r) => (
         <>
@@ -87,6 +95,9 @@ export function VesselSection({ kind }: { kind: 'storage_vessel' | 'recovery_tan
           <Fact label="Days left">{r.days_left === null ? <NullValue /> : r.days_left.toLocaleString()}</Fact>
           <Fact label="Status"><DueBadge status={r.due_status} /></Fact>
           <Fact label="Source status"><Text value={r.source_status_raw} /></Fact>
+          {kind === 'storage_vessel' ? (
+            <Fact label="Placement">{r.station_level ? 'Station level · all units' : 'This Unit'}</Fact>
+          ) : null}
           <Fact label="Mapping">
             {r.needs_mapping ? <StatusBadge kind="unmapped" label={r.mapping_status} /> : <span>Resolved</span>}
           </Fact>
