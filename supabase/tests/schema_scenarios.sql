@@ -2578,8 +2578,8 @@ SELECT pg_temp.assert(
     = (SELECT count(*) FROM v_installed_srv_management WHERE due_status = 'overdue')
   AND (SELECT attention FROM v_installed_srv_summary)
     = (SELECT count(*) FROM v_installed_srv_management
-        WHERE due_status IN ('overdue','due_today','due_7','due_15','due_30','due_60')),
-  'SRVSUM-8: overdue and attention equal the separate queries they replaced');
+        WHERE due_status IN ('overdue','due_today','due_7','due_15','due_30')),
+  'SRVSUM-8: overdue and attention (overdue + due within 30 days) equal the separate queries they replaced');
 
 SELECT pg_temp.assert(
   (SELECT attention FROM v_installed_srv_summary) >= (SELECT overdue FROM v_installed_srv_summary),
@@ -2591,7 +2591,7 @@ SELECT pg_temp.assert(
 SELECT pg_temp.assert(
   (SELECT count(*) FROM v_installed_srv_management
     WHERE next_calibration_precision <> 'exact_date'
-      AND due_status IN ('overdue','due_today','due_7','due_15','due_30','due_60')) = 0,
+      AND due_status IN ('overdue','due_today','due_7','due_15','due_30')) = 0,
   'SRVSUM-10: a non-exact date enters no due bucket, so it cannot reach the summary');
 
 SELECT pg_temp.assert(
@@ -2599,6 +2599,14 @@ SELECT pg_temp.assert(
   AND (SELECT count(*) FROM information_schema.columns
         WHERE table_name = 'v_installed_srv_summary') = 7,
   'SRVSUM-11: the summary exposes exactly the seven counts the strip renders');
+
+-- Owner request 2026-10-01: the attention bucket is overdue + due within 30 days. due_60 is in neither the
+-- unfiltered view nor the filtered function, so the strip and the "Due ≤30d" filter cannot drift apart.
+SELECT pg_temp.assert(
+  pg_get_viewdef('v_installed_srv_summary'::regclass) NOT LIKE '%due_60%'
+  AND (SELECT prosrc FROM pg_proc WHERE proname = 'cng_installed_srv_summary_filtered') NOT LIKE '%due_60%'
+  AND pg_get_viewdef('v_installed_srv_summary'::regclass) LIKE '%due_30%',
+  'SRVSUM-12: attention stops at 30 days in the view and the filtered function');
 
 
 -- ===========================================================================

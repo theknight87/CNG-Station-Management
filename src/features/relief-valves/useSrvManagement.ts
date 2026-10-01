@@ -270,8 +270,8 @@ const INSTALLED_SORT: Record<InstalledSort, string[]> = {
   mapping: ['mapping_status', 'id'],
 }
 
-/** Buckets that mean "needs attention within 60 days OR already overdue". */
-const ATTENTION_BUCKETS = ['overdue', 'due_today', 'due_7', 'due_15', 'due_30', 'due_60']
+/** Buckets that mean "needs attention within 30 days OR already overdue" (owner request 2026-10-01: was 60). */
+const ATTENTION_BUCKETS = ['overdue', 'due_today', 'due_7', 'due_15', 'due_30']
 
 /** The shared registry page shape. Re-exported so callers here keep one import. */
 export type SrvPage<T> = RegistryPage<T>
@@ -494,7 +494,7 @@ export function useWarehouseSrvs(query: WarehouseQuery): {
 export interface InstalledSummary {
   total: number
   overdue: number
-  /** Overdue PLUS every due bucket out to 60 days. Deliberately explicit. */
+  /** Overdue PLUS every due bucket out to 30 days. Deliberately explicit. */
   attention: number
   needs_station_mapping: number
   needs_unit_mapping: number

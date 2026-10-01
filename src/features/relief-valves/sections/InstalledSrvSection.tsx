@@ -158,26 +158,16 @@ export function InstalledSrvSection() {
           <h2 id="srv-attention" className="sr-only">
             Attention and mapping summary
           </h2>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4 lg:grid-cols-7">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
             <Metric label="Installed" value={summary.data.total.toLocaleString()} hint={hasFilters ? 'matching the filters' : 'visible to you'} />
             <Metric label="Overdue" value={summary.data.overdue.toLocaleString()} tone="overdue" />
-            {/* Stated explicitly: this bucket INCLUDES overdue. */}
+            {/* Stated explicitly: this bucket INCLUDES overdue. Owner request 2026-10-01: 30 days, not 60;
+              * the three "Needs" mapping tiles are removed (every installed valve is mapped). */}
             <Metric
-              label="Due ≤60d"
+              label="Due ≤30d"
               value={summary.data.attention.toLocaleString()}
               tone="due"
               hint="includes overdue"
-            />
-            <Metric
-              label="Needs station"
-              value={summary.data.needs_station_mapping.toLocaleString()}
-              tone="unmapped"
-            />
-            <Metric label="Needs unit" value={summary.data.needs_unit_mapping.toLocaleString()} tone="unmapped" />
-            <Metric
-              label="Needs equipment"
-              value={summary.data.needs_equipment_mapping.toLocaleString()}
-              tone="unmapped"
             />
             {/* Conflict is its own metric: evidence that disagrees is a
               * different problem from evidence that is missing. */}
@@ -243,7 +233,7 @@ export function InstalledSrvSection() {
           >
             <option value="all">All</option>
             <option value="overdue">Overdue</option>
-            <option value="attention">Due ≤60d (incl. overdue)</option>
+            <option value="attention">Due ≤30d (incl. overdue)</option>
             <option value="unknown">No exact date</option>
           </select>
         </label>

@@ -200,6 +200,17 @@ describe('Installed SRVs — server-side query', () => {
     await waitFor(() => expect(calls.list).toContain('v_installed_srv_management.eq:parent_kind=storage_vessel'))
   })
 
+  it('owner request 2026-10-01: the Due filter means overdue or due within 30 days, never 60', async () => {
+    replies.installed = { data: [installed()], error: null, count: 1 }
+    renderSrv()
+    await screen.findByText('RV-880124')
+    await userEvent.selectOptions(screen.getByLabelText(/^due$/i), 'attention')
+    await waitFor(() => expect(calls.list).toContain(
+      'v_installed_srv_management.in:due_status=[overdue|due_today|due_7|due_15|due_30]'))
+    expect(screen.getByRole('option', { name: /due ≤30d/i })).toBeDefined()
+    expect(calls.list.some((c) => c.includes('due_60'))).toBe(false)
+  })
+
   it('pages with a server range, never by slicing in the browser', async () => {
     replies.installed = { data: [installed()], error: null, count: 250 }
     renderSrv()
@@ -504,12 +515,14 @@ describe('Installed SRV attention summary (25J-B)', () => {
     replies.summary = { data: mixed, error: null }
     renderSrv()
     const strip = await screen.findByRole('region', { name: /attention and mapping summary/i })
-    // The two coexisting mapping states are the whole point of the regression.
-    expect(within(strip).getByText('1,608')).toBeDefined()
-    expect(within(strip).getByText('1,054')).toBeDefined()
     expect(within(strip).getByText('2,662')).toBeDefined()
     expect(within(strip).getByText('302')).toBeDefined()
     expect(within(strip).getByText('598')).toBeDefined()
+    // Owner request 2026-10-01: the strip counts due within 30 days, and the three "Needs" tiles are gone.
+    expect(within(strip).getByText(/due ≤30d/i)).toBeDefined()
+    expect(within(strip).queryByText(/due ≤60d/i)).toBeNull()
+    expect(within(strip).queryByText(/needs station|needs unit|needs equipment/i)).toBeNull()
+    expect(within(strip).queryByText('1,608')).toBeNull()
   })
 
   it('a summary row that never arrives is stated, never rendered as zeros', async () => {

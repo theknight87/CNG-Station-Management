@@ -329,7 +329,7 @@ export function WarehouseSrvSection() {
           >
             <option value="all">All</option>
             <option value="overdue">Overdue</option>
-            <option value="attention">Due ≤60d (incl. overdue)</option>
+            <option value="attention">Due ≤30d (incl. overdue)</option>
             <option value="unknown">No exact date</option>
           </select>
         </label>
