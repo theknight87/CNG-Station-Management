@@ -176,7 +176,7 @@ function TabList<T>({ spec, unitId, onOpen }: { spec: TabSpec<T>; unitId: string
   )
 }
 
-/** Overdue and due-within-60-days per equipment family, from the same view the reports read (suggestion 4). */
+/** Overdue and due-within-30-days per equipment family, from the same view the reports read (suggestion 4). */
 function useUnitDue(unitId: string | undefined, stationId: string | undefined, nonce: number) {
   const supabase = useSupabaseClient()
   const [counts, setCounts] = useState<Record<string, { overdue: number; due: number }> | null>(null)
@@ -202,7 +202,7 @@ function useUnitDue(unitId: string | undefined, stationId: string | undefined, n
   }, [supabase, unitId, stationId, nonce])
   return counts
 }
-const DUE_SOON = ['due_today', 'due_7', 'due_15', 'due_30', 'due_60']
+const DUE_SOON = ['due_today', 'due_7', 'due_15', 'due_30']
 
 function DueStrip({ counts }: { counts: Record<string, { overdue: number; due: number }> | null }) {
   if (!counts) return null
@@ -217,7 +217,7 @@ function DueStrip({ counts }: { counts: Record<string, { overdue: number; due: n
           <li key={t.tab} className={cn('rounded border-l-4 border px-2 py-1 text-xs', tone)}>
             <span className="font-semibold">{t.label}</span>{' '}
             {c.overdue || c.due
-              ? <span className="tabular">{c.overdue} overdue · {c.due} due ≤60d</span>
+              ? <span className="tabular">{c.overdue} overdue · {c.due} due ≤30d</span>
               : <span>nothing due</span>}
           </li>
         )

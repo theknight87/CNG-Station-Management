@@ -179,8 +179,8 @@ export function applyVesselQuery<B extends { eq: any; in: any; or: any; ilike: a
 
 export const VESSEL_DATE: DateOption = { column: 'next_inspection_date', label: 'Next inspection', precision: 'next_inspection_precision' }
 
-/** Overdue PLUS every due bucket out to 60 days. Stated, never left ambiguous. */
-const ATTENTION_BUCKETS = ['overdue', 'due_today', 'due_7', 'due_15', 'due_30', 'due_60']
+/** Overdue PLUS every due bucket out to 30 days (owner request 2026-10-01, not 60). Stated, never left ambiguous. */
+const ATTENTION_BUCKETS = ['overdue', 'due_today', 'due_7', 'due_15', 'due_30']
 
 /** The registry query for one vessel type: filters and sort, no paging (shared by the table and its export). */
 export function vesselRequest(supabase: SupabaseClient, assetType: VesselAssetType, q: VesselQuery) {

@@ -213,8 +213,8 @@ export function applyDetectorQuery<B extends { eq: any; in: any; or: any; ilike:
   return b
 }
 
-/** Overdue PLUS every due bucket out to 60 days. Stated, never left ambiguous. */
-const ATTENTION_BUCKETS = ['overdue', 'due_today', 'due_7', 'due_15', 'due_30', 'due_60']
+/** Overdue PLUS every due bucket out to 30 days (owner request 2026-10-01, not 60). Stated, never left ambiguous. */
+const ATTENTION_BUCKETS = ['overdue', 'due_today', 'due_7', 'due_15', 'due_30']
 
 /** The registry query: filters and sort, no paging (shared by the table and its export). */
 export function detectorRequest(supabase: SupabaseClient, q: DetectorQuery) {

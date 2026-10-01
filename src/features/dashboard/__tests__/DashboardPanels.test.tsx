@@ -66,7 +66,7 @@ describe('due matrix', () => {
     at(<DueMatrix due={due} />)
     const row = screen.getByRole('row', { name: /Installed SRVs/ })
     // The asset-type cell is a rowheader, not a cell, so index 0 is Overdue.
-    // Index 1 is the phone-only "Due ≤60d" column (CSS-hidden from 640px up);
+    // Index 1 is the phone-only "Due ≤30d" column (CSS-hidden from 640px up);
     // then DUE_BUCKETS order: today, 1-7, 8-15, 16-30, 31-60, current,
     // no-exact-date, then the row total.
     const cells = within(row).getAllByRole('cell')
@@ -76,18 +76,21 @@ describe('due matrix', () => {
     expect(cells[9].textContent).toBe('181') // Total
   })
 
-  it('MATRIX-5 the phone "Due ≤60d" column is the exact sum of the five dated windows', () => {
-    at(<DueMatrix due={due} />)
+  it('MATRIX-5 the phone "Due ≤30d" column is the exact sum of the four dated windows out to 30 days', () => {
+    at(<DueMatrix due={[...due, { asset_kind: 'installed_relief_valve', due_status: 'due_60', total: 5 }]} />)
     const row = screen.getByRole('row', { name: /Installed SRVs/ })
     const cells = within(row).getAllByRole('cell')
-    const windows = cells.slice(2, 7).reduce((sum, c) => sum + Number(c.textContent), 0)
+    const windows = cells.slice(2, 6).reduce((sum, c) => sum + Number(c.textContent), 0)
     expect(Number(cells[1].textContent)).toBe(windows)
-    // Phone row: Overdue + Due ≤60d + Current + No exact date = Total.
-    expect(Number(cells[0].textContent) + windows + Number(cells[7].textContent)
+    expect(cells[1].textContent).toBe('3') // the 5 due in 31–60 days are NOT folded into ≤30d
+    expect(cells[6].textContent).toBe('5')
+    // Phone row: Overdue + Due ≤30d + 31–60 days + Current + No exact date = Total.
+    expect(Number(cells[0].textContent) + windows + Number(cells[6].textContent) + Number(cells[7].textContent)
       + Number(cells[8].textContent)).toBe(Number(cells[9].textContent))
-    // It is shown only below 640px, and the windows only from 640px up.
+    // It is shown only below 640px, the ≤30-day windows only from 640px up; 31–60 days is never folded in.
     expect(cells[1].className).toContain('sm:hidden')
     expect(cells[2].className).toContain('hidden sm:table-cell')
+    expect(cells[6].className).not.toContain('hidden')
   })
 
   it('MATRIX-4 says so plainly when nothing is visible, rather than showing an empty grid', () => {

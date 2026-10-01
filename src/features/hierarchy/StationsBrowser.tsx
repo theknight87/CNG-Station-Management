@@ -236,7 +236,7 @@ export function StationsBrowser({
                     sort={sortFor('approaching_due')}
                     onSort={() => toggleSort('approaching_due')}
                   >
-                    Due ≤60d
+                    Due ≤30d
                   </SortableHeader>
                   <SortableHeader
                     align="right"

@@ -145,11 +145,11 @@ export function SummaryStrip({
           hint="Installed assets past their due date, across every asset type"
         />
         <Metric
-          label="Needs attention ≤60d"
+          label="Needs attention ≤30d"
           value={attentionTotal}
           emphasis="attention"
           to="/alerts"
-          hint="Overdue plus everything due within 60 days"
+          hint="Overdue plus everything due within 30 days"
         />
         <Metric
           label="Unresolved mapping"
@@ -187,7 +187,7 @@ export function SummaryStrip({
  * that asset kind's total.
  */
 /** The dated windows that fold into one column on a phone. */
-const WINDOW_STATUSES = new Set<string>(['due_today', 'due_7', 'due_15', 'due_30', 'due_60'])
+const WINDOW_STATUSES = new Set<string>(['due_today', 'due_7', 'due_15', 'due_30'])
 
 export function DueMatrix({ due }: { due: DueRow[] }) {
   const kinds = DUE_ASSET_KINDS.filter((k) => due.some((d) => d.asset_kind === k))
@@ -206,8 +206,8 @@ export function DueMatrix({ due }: { due: DueRow[] }) {
         </p>
       ) : (
         <TableScroll label="Inspection and calibration by asset type">
-          {/* One table, two densities. Below 640px the five dated windows fold
-              into a single "Due ≤60 days" column (their exact sum), so the row
+          {/* One table, two densities. Below 640px the four dated windows fold
+              into a single "Due ≤30 days" column (their exact sum), so the row
               still adds up to its total without a ten-column micro-grid. The
               full breakdown is one tap away on each asset type's page. */}
           <DataTable className="table-auto" caption="Asset types by due bucket. Buckets are mutually exclusive.">
@@ -224,7 +224,7 @@ export function DueMatrix({ due }: { due: DueRow[] }) {
                     </TableHeader>
                     {b.status === 'overdue' && (
                       <TableHeader align="right" className="whitespace-nowrap sm:hidden">
-                        <span title="due today or within 60 days">Due ≤60d</span>
+                        <span title="due today or within 30 days">Due ≤30d</span>
                       </TableHeader>
                     )}
                   </Fragment>
@@ -327,7 +327,7 @@ export function RegionOverview({ regions }: { regions: RegionRow[] }) {
                 <TableHeader align="right">Units</TableHeader>
                 <TableHeader align="right">Assets</TableHeader>
                 <TableHeader align="right">Overdue</TableHeader>
-                <TableHeader align="right">Due ≤60d</TableHeader>
+                <TableHeader align="right">Due ≤30d</TableHeader>
                 <TableHeader align="right">Unresolved</TableHeader>
               </TableRow>
             </TableHead>
@@ -445,7 +445,7 @@ export function WarehousePanel({ warehouse }: { warehouse: WarehouseRow }) {
       <div className="flex flex-wrap gap-1.5">
         <Metric label="Warehouse SRVs in stock" value={warehouse.total} to="/manage/srvs" />
         <Metric label="Stock overdue calibration" value={warehouse.overdue} emphasis="critical" />
-        <Metric label="Stock due ≤60d" value={warehouse.approaching_due} emphasis="attention" />
+        <Metric label="Stock due ≤30d" value={warehouse.approaching_due} emphasis="attention" />
       </div>
     </section>
   )

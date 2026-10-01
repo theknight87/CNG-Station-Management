@@ -101,7 +101,7 @@ export function StationOverview() {
             <Fact label="Units"><Count value={station.units} /></Fact>
             <Fact label="Assets"><Count value={station.assets} /></Fact>
             <Fact label="Overdue"><Count value={station.overdue} tone="overdue" /></Fact>
-            <Fact label="Due ≤60d"><Count value={station.approaching_due} tone="due" /></Fact>
+            <Fact label="Due ≤30d"><Count value={station.approaching_due} tone="due" /></Fact>
             <Fact label="Unresolved mapping">
               <Count value={station.unresolved_mapping} tone="unmapped" />
             </Fact>

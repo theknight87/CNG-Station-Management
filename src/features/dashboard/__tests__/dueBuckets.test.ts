@@ -33,8 +33,9 @@ describe('due buckets', () => {
     expect(ATTENTION_STATUSES).not.toContain('unknown')
   })
 
-  it('DUE-4 attention = overdue plus everything due within 60 days, and nothing else', () => {
-    expect([...ATTENTION_STATUSES]).toEqual(['overdue', 'due_today', 'due_7', 'due_15', 'due_30', 'due_60'])
+  it('DUE-4 attention = overdue plus everything due within 30 days, and nothing else (owner request 2026-10-01)', () => {
+    expect([...ATTENTION_STATUSES]).toEqual(['overdue', 'due_today', 'due_7', 'due_15', 'due_30'])
+    expect(ATTENTION_STATUSES).not.toContain('due_60')
     expect(ATTENTION_STATUSES).not.toContain('valid')
   })
 

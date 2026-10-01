@@ -2,7 +2,7 @@ import { AddWarehouseSrvsButton } from '@/features/relief-valves/AddWarehouseSrv
 import { ExportButtons } from '@/features/export/ExportButtons'
 import { queryLoader } from '@/features/export/exportData'
 import { WAREHOUSE_SRV_COLUMNS } from '@/features/export/exportColumns'
-import { AvailabilityChip, ManufacturerChip, RegionChip } from '@/features/relief-valves/SrvPieces'
+import { AvailabilityChip, ManufacturerChip, RegionChip, SourceContext } from '@/features/relief-valves/SrvPieces'
 import { useCallback, useState } from 'react'
 import { Plus, Search, Trash2, Truck, Wrench, X } from 'lucide-react'
 
@@ -223,7 +223,7 @@ function columns(reload: () => void): RegistryColumn<WarehouseSrvRow>[] { return
         <span className="whitespace-nowrap text-muted-foreground">Unassigned stock</span>
       ) : (
         <span className="whitespace-nowrap">
-          {r.target_station_name ?? <NullValue />}
+          {r.target_station_name ?? <SourceContext value={r.target_station_raw} note="as in sheet — not linked" />}
           {r.target_region_name ? (
             <span className="ml-1.5 text-xs"><RegionChip name={r.target_region_name} /></span>
           ) : null}
@@ -397,8 +397,10 @@ export function WarehouseSrvSection() {
             <Fact label="Destination Station">
               {r.is_unassigned_stock ? (
                 <span className="text-muted-foreground">Unassigned stock</span>
-              ) : (
+              ) : r.target_station_name ? (
                 <Text value={r.target_station_name} />
+              ) : (
+                <SourceContext value={r.target_station_raw} note="as in sheet — not linked to a Station" />
               )}
             </Fact>
             <Fact label="Destination Region"><RegionChip name={r.target_region_name} /></Fact>

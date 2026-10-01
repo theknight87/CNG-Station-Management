@@ -157,7 +157,7 @@ export function HosesManagementView() {
               <Metric label="Hoses" value={summary.data.total.toLocaleString()} hint={hasFilters ? 'matching the filters' : 'visible to you'} />
               <Metric label="Overdue" value={summary.data.overdue.toLocaleString()} tone="overdue" />
               <Metric
-                label="Due ≤60d"
+                label="Due ≤30d"
                 value={summary.data.attention.toLocaleString()}
                 tone="due"
                 hint="includes overdue"
@@ -279,7 +279,7 @@ export function HosesManagementView() {
             >
               <option value="all">All</option>
               <option value="overdue">Overdue</option>
-              <option value="attention">Due ≤60d (incl. overdue)</option>
+              <option value="attention">Due ≤30d (incl. overdue)</option>
               <option value="unknown">No exact date</option>
             </select>
           </label>

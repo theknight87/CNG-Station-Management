@@ -88,6 +88,13 @@ several Units, so storage vessels and their relief valves are recorded at Statio
 view). A storage SRV links to a specific vessel when known, otherwise to the Station's storage bank.
 Migrations `20261001090000..090400`; suite `station_level_storage_6y`.
 
+**Warehouse = sheet "رصيد المخزن" (owner 2026-10-01).** `warehouse_relief_valves` holds exactly the 2,332 rows of
+`Warehouse_Relief_Data.xlsx` (source_file `Warehouse_Relief_Data.xlsx (2026-10-01)`); the old warehouse, calibration
+jobs, SRV log and warehouse history were deleted at the owner's request (audited). A destination the sheet names but
+no canonical Station matches is shown from `target_station_raw` ("as in sheet — not linked"), never linked by
+similarity. The due / needs-attention window is **30 days everywhere** (due_60 is still a status, never "attention").
+Migrations `20261001120000`, `20261001130000`; suite `warehouse_raw_station_30d`.
+
 **Safety Relief Valves (SRVs) are children of their parent equipment**, never independent
 station assets. An SRV may belong to a **Compressor**, a **Storage Vessel**, or a
 **Dispenser**.

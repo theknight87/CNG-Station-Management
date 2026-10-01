@@ -102,6 +102,8 @@ export interface WarehouseSrvRow {
   target_region_name: string | null
   target_station_id: string | null
   target_station_name: string | null
+  /** The destination exactly as the warehouse sheet names it — shown when no Station is linked. Never a link. */
+  target_station_raw: string | null
   is_unassigned_stock: boolean
   updated_at: string
   warehouse_issue_date: string | null
@@ -145,7 +147,7 @@ const WAREHOUSE_COLUMNS =
   'is_unassigned_stock, updated_at, warehouse_issue_date, last_calibration_date, last_calibration_precision, ' +
   'last_calibration_display, next_calibration_date, next_calibration_precision, ' +
   'next_calibration_display, days_left, due_status, calibration_location, source_status_raw, ' +
-  'needs_review, notes'
+  'needs_review, notes, target_station_raw'
 
 /**
  * Dedicated filters (owner request): each narrows ONE column, independently of the
@@ -393,7 +395,7 @@ const WAREHOUSE_SORT: Record<WarehouseSort, string[]> = {
   size: ['inlet_sort_in', 'outlet_sort_in', 'size_type', 'inlet_size', 'outlet_size', 'id'],
   warehouse_code: ['warehouse_code', 'id'],
   last_calibration: ['last_calibration_date', 'id'],
-  target: ['target_station_name', 'id'],
+  target: ['target_station_name', 'target_station_raw', 'id'],
   next_due: ['next_calibration_date', 'id'],
   serial: ['serial_number', 'id'],
   part_number: ['part_number', 'id'],
@@ -428,6 +430,7 @@ export function warehouseRequest(supabase: SupabaseClient, q: WarehouseQuery) {
         `warehouse_code.ilike.*${raw}*`,
         // The destination Station, so the one search box also replaces a separate Station filter.
         `target_station_name.ilike.*${raw}*`,
+        `target_station_raw.ilike.*${raw}*`,
       ].join(','),
     )
   }

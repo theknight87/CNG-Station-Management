@@ -58,7 +58,10 @@ export const WAREHOUSE_SRV_COLUMNS: ExportColumn[] = [
   text('Serial', 'serial_number'), text('Part number', 'part_number'), text('Manufacturer', 'manufacturer'), size, ...pressure,
   { header: 'Availability', value: (r) => (r.availability_status ? AVAILABILITY_LABEL[r.availability_status] ?? r.availability_status : null) },
   text('Warehouse code', 'warehouse_code'),
-  { header: 'Destination station', value: (r) => (r.is_unassigned_stock ? 'Unassigned stock' : r.target_station_name) },
+  {
+    header: 'Destination station',
+    value: (r) => (r.is_unassigned_stock ? 'Unassigned stock' : r.target_station_name ?? r.target_station_raw),
+  },
   text('Destination region', 'target_region_name'), date('Issued from warehouse', 'warehouse_issue_date'),
   text('Calibration location', 'calibration_location'),
   date('Last calibration', 'last_calibration_display'), date('Next calibration', 'next_calibration_display'), daysLeft, due,
@@ -105,7 +108,7 @@ export const DISPENSER_COLUMNS: ExportColumn[] = [
 
 export const STATION_COLUMNS: ExportColumn[] = [
   text('Region', 'region_name'), text('Station', 'station_name'), num('Units', 'units'), num('Assets', 'assets'),
-  num('Overdue', 'overdue'), num('Due within 60 days', 'approaching_due'), num('Unresolved mapping', 'unresolved_mapping'),
+  num('Overdue', 'overdue'), num('Due within 30 days', 'approaching_due'), num('Unresolved mapping', 'unresolved_mapping'),
   text('Bay status', 'bay_status'), text('Notes', 'notes'),
 ]
 

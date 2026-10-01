@@ -454,6 +454,29 @@ describe('Warehouse isolation', () => {
     expect(headers).toContain('Destination')
   })
 
+  it('owner request 2026-10-01: shows the sheet destination when no Station is linked, marked as not linked', async () => {
+    replies.warehouse = {
+      data: [warehouse({ is_unassigned_stock: false, target_station_raw: 'بني سويف 3', target_region_name: 'Upper' })],
+      error: null, count: 1,
+    }
+    renderSrv('/manage/srvs/warehouse')
+    expect(await screen.findByText('بني سويف 3')).toBeDefined()
+    expect(screen.getByText(/as in sheet — not linked/)).toBeDefined()
+    expect(screen.queryByText(/unassigned stock/i)).toBeNull()
+  })
+
+  it('searches the sheet destination text as well as the linked Station', async () => {
+    replies.warehouse = { data: [warehouse()], error: null, count: 1 }
+    renderSrv('/manage/srvs/warehouse')
+    await screen.findByText('WRV-500001')
+    await userEvent.type(screen.getByRole('searchbox', { name: /search warehouse/i }), 'بني')
+    await waitFor(() => {
+      const or = calls.list.find((c) => c.startsWith('v_srv_warehouse_stock.or:'))
+      expect(or).toContain('target_station_name.ilike')
+      expect(or).toContain('target_station_raw.ilike')
+    })
+  })
+
   it('states unassigned stock explicitly rather than leaving it blank', async () => {
     replies.warehouse = { data: [warehouse()], error: null, count: 1 }
     renderSrv('/manage/srvs/warehouse')

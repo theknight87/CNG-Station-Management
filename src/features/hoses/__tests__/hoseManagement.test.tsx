@@ -452,7 +452,9 @@ describe('Server-side search, filters and their intersection', () => {
     const bucket = calls.list.find((c) => c.includes('.in:due_status='))
     expect(bucket).toBeDefined()
     expect(bucket).toContain('overdue')
-    expect(bucket).toContain('due_60')
+    // Owner request 2026-10-01: the window is 30 days, never 60.
+    expect(bucket).toContain('due_30')
+    expect(bucket).not.toContain('due_60')
   })
 
   it('clears the Station when the Region changes', async () => {

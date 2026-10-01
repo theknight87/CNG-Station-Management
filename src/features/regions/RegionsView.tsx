@@ -59,7 +59,7 @@ export function RegionsView() {
                 <TableHeader align="right">Units</TableHeader>
                 <TableHeader align="right">Assets</TableHeader>
                 <TableHeader align="right">Overdue</TableHeader>
-                <TableHeader align="right">Due ≤60d</TableHeader>
+                <TableHeader align="right">Due ≤30d</TableHeader>
                 <TableHeader align="right">Unresolved</TableHeader>
                 <TableHeader>Attention</TableHeader>
               </TableRow>

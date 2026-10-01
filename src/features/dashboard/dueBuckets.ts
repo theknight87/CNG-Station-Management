@@ -35,7 +35,7 @@ export interface DueBucket {
   /** Longer wording for assistive technology and tooltips. */
   description: string
   statusKind: StatusKind
-  /** Counts toward "needs attention": overdue plus everything due within 60 days. */
+  /** Counts toward "needs attention": overdue plus everything due within 30 days (owner request 2026-10-01). */
   attention: boolean
 }
 
@@ -80,7 +80,7 @@ export const DUE_BUCKETS: readonly DueBucket[] = [
     label: '31–60 days',
     description: 'due in 31 to 60 days',
     statusKind: 'due_soon',
-    attention: true,
+    attention: false,
   },
   {
     status: 'valid',

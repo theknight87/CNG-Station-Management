@@ -59,7 +59,7 @@ export function RegionDetailView() {
             <Fact label="Units"><Count value={region.units} /></Fact>
             <Fact label="Assets"><Count value={region.assets} /></Fact>
             <Fact label="Overdue"><Count value={region.overdue} tone="overdue" /></Fact>
-            <Fact label="Due ≤60d"><Count value={region.approaching_due} tone="due" /></Fact>
+            <Fact label="Due ≤30d"><Count value={region.approaching_due} tone="due" /></Fact>
             <Fact label="Unresolved mapping">
               <Count value={region.unresolved_mapping} tone="unmapped" />
             </Fact>
