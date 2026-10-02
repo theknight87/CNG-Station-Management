@@ -119,7 +119,9 @@ export function InstalledSrvSection() {
   const [query, setQuery] = useState<InstalledQuery>(DEFAULT_INSTALLED_QUERY)
   const supabase = useSupabaseClient()
   const { state, reload } = useInstalledSrvs(query)
-  const { state: summary } = useInstalledSummary(query)
+  // The tiles ARE the due / conflict buckets, so their counts ignore the bucket a tile selects (otherwise
+  // pressing "Overdue" would turn every other tile into the overdue count). Every other filter still applies.
+  const { state: summary } = useInstalledSummary({ ...query, due: 'all', mapping: 'all' })
   const regions = useRegions()
 
   // Any change to the result set returns to page 1; staying on page 5 of a
@@ -138,6 +140,14 @@ export function InstalledSrvSection() {
   }, [])
 
   const clearFilters = useCallback(() => setQuery(DEFAULT_INSTALLED_QUERY), [])
+  // Owner request 2026-10-02: the tiles are quick filters. One bucket at a time; pressing the active one clears it.
+  const pick = useCallback((due: InstalledQuery['due'], mapping: InstalledQuery['mapping']) => {
+    setQuery((prev) => {
+      const same = prev.due === due && prev.mapping === mapping
+      return { ...prev, due: same ? 'all' : due, mapping: same ? 'all' : mapping, page: 0 }
+    })
+  }, [])
+  const isPicked = (due: InstalledQuery['due'], mapping: InstalledQuery['mapping']) => query.due === due && query.mapping === mapping
   const hasFilters =
     Boolean(query.search.trim()) || query.regionId !== null || query.mapping !== 'all' ||
     query.due !== 'all' || query.parentKind !== 'all' || hasSmartFilters(query.filters)
@@ -159,8 +169,10 @@ export function InstalledSrvSection() {
             Attention and mapping summary
           </h2>
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
-            <Metric label="Installed" value={summary.data.total.toLocaleString()} hint={hasFilters ? 'matching the filters' : 'visible to you'} />
-            <Metric label="Overdue" value={summary.data.overdue.toLocaleString()} tone="overdue" />
+            <Metric label="Installed" value={summary.data.total.toLocaleString()} hint={hasFilters ? 'matching the filters' : 'visible to you'}
+              onSelect={() => pick('all', 'all')} active={isPicked('all', 'all')} />
+            <Metric label="Overdue" value={summary.data.overdue.toLocaleString()} tone="overdue"
+              onSelect={() => pick('overdue', 'all')} active={isPicked('overdue', 'all')} />
             {/* Stated explicitly: this bucket INCLUDES overdue. Owner request 2026-10-01: 30 days, not 60;
               * the three "Needs" mapping tiles are removed (every installed valve is mapped). */}
             <Metric
@@ -168,10 +180,12 @@ export function InstalledSrvSection() {
               value={summary.data.attention.toLocaleString()}
               tone="due"
               hint="includes overdue"
+              onSelect={() => pick('attention', 'all')} active={isPicked('attention', 'all')}
             />
             {/* Conflict is its own metric: evidence that disagrees is a
               * different problem from evidence that is missing. */}
-            <Metric label="Conflict" value={summary.data.conflict.toLocaleString()} />
+            <Metric label="Conflict" value={summary.data.conflict.toLocaleString()}
+              onSelect={() => pick('all', 'conflict')} active={isPicked('all', 'conflict')} />
           </div>
         </section>
       ) : null}
@@ -208,22 +222,7 @@ export function InstalledSrvSection() {
           </select>
         </label>
 
-        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span>Mapping</span>
-          <select
-            id="installed-srv-mapping" name="installed-srv-mapping" value={query.mapping}
-            onChange={(e) => update({ mapping: e.target.value as InstalledQuery['mapping'] })}
-            className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
-          >
-            <option value="all">All states</option>
-            <option value="resolved">Resolved</option>
-            <option value="needs_equipment_mapping">Needs equipment mapping</option>
-            <option value="needs_unit_mapping">Needs unit mapping</option>
-            <option value="needs_station_mapping">Needs station mapping</option>
-            <option value="conflict">Conflict</option>
-          </select>
-        </label>
-
+        {/* Owner request 2026-10-02: no Mapping filter (every valve is mapped); the Conflict tile still filters. */}
         <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span>Due</span>
           <select

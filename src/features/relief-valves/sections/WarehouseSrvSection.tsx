@@ -19,7 +19,7 @@ import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTa
 import {
   WAREHOUSE_DATE,
   hasSmartFilters,
-  AVAILABILITY_LABEL, DEFAULT_WAREHOUSE_QUERY, useWarehouseSrvs, warehouseRequest,
+  AVAILABILITY_LABEL, DEFAULT_WAREHOUSE_QUERY, useWarehouseSrvs, useWarehouseSummary, warehouseRequest,
   type WarehouseQuery, type WarehouseSrvRow, type WarehouseSort,
 } from '@/features/relief-valves/useSrvManagement'
 import { RemoveValveButton } from '@/features/relief-valves/SrvAdminActions'
@@ -267,24 +267,39 @@ export function WarehouseSrvSection() {
   const hasFilters = Boolean(query.search.trim()) || query.availability !== null || query.due !== 'all' || hasSmartFilters(query.filters)
 
   const rows = state.status === 'ready' ? state.data.rows : []
-  const total = state.status === 'ready' ? state.data.total : null
-  const missingSerial = rows.filter((r) => !r.serial_number).length
-  const overdue = rows.filter((r) => r.due_status === 'overdue').length
+  const summary = useWarehouseSummary(query, state)
+  // Owner request 2026-10-02: the tiles are quick filters. One bucket at a time; pressing the active one clears it.
+  const pick = (availability: string | null, due: WarehouseQuery['due']) => {
+    const same = query.availability === availability && query.due === due
+    update(same ? { availability: null, due: 'all' } : { availability, due })
+  }
+  const isPicked = (availability: string | null, due: WarehouseQuery['due']) => query.availability === availability && query.due === due
   const picked = rows.filter((r) => selected.has(r.id))
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      {state.status === 'ready' ? (
+      {summary.status === 'error' ? (
+        <p className="rounded border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
+          The stock summary could not be loaded, so no counts are shown. The table below is unaffected.
+        </p>
+      ) : null}
+      {summary.status === 'ready' ? (
         <section aria-labelledby="wh-summary" className="rounded border bg-card px-3 py-2">
           <h2 id="wh-summary" className="sr-only">
-            Warehouse inventory summary
+            Warehouse stock summary
           </h2>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
-            <Metric label="Matching" value={(total ?? 0).toLocaleString()} hint="visible to you" />
-            <Metric label="Overdue calibration" value={overdue} tone="overdue" hint="this page" />
-            {/* A real data-quality fact, not an invented stock concept. The
-              * schema models no quantity, so no stock level is reported. */}
-            <Metric label="No serial recorded" value={missingSerial} hint="this page" />
+          {/* Whole-stock counts (not this page). Each tile filters the table to exactly what it counts. */}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-5">
+            <Metric label="In store" value={summary.data.total.toLocaleString()} hint="visible to you"
+              onSelect={() => pick(null, 'all')} active={isPicked(null, 'all')} />
+            <Metric label={AVAILABILITY_LABEL.available_calibrated} value={summary.data.calibrated.toLocaleString()}
+              onSelect={() => pick('available_calibrated', 'all')} active={isPicked('available_calibrated', 'all')} />
+            <Metric label={AVAILABILITY_LABEL.available_in_store_uc} value={summary.data.under_calibration.toLocaleString()}
+              onSelect={() => pick('available_in_store_uc', 'all')} active={isPicked('available_in_store_uc', 'all')} />
+            <Metric label={AVAILABILITY_LABEL.available_new} value={summary.data.new.toLocaleString()}
+              onSelect={() => pick('available_new', 'all')} active={isPicked('available_new', 'all')} />
+            <Metric label="Overdue calibration" value={summary.data.overdue.toLocaleString()} tone="overdue"
+              onSelect={() => pick(null, 'overdue')} active={isPicked(null, 'overdue')} />
           </div>
         </section>
       ) : null}

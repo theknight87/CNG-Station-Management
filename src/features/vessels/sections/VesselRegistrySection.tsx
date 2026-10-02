@@ -99,7 +99,8 @@ export function VesselRegistrySection({ assetType }: { assetType: VesselAssetTyp
   const supabase = useSupabaseClient()
   const { state, reload } = useVessels(assetType, query)
   const makers = useMakers('v_vessel_management', 'manufacturer', ['asset_type', assetType])
-  const { state: summary } = useVesselSummary(assetType, query)
+  // The tiles ARE these buckets, so their counts ignore the bucket a tile selects; every other filter applies.
+  const { state: summary } = useVesselSummary(assetType, { ...query, due: 'all', mapping: 'all', duplicateSerial: false })
   const regions = useRegions()
   const label = LABEL[assetType]
 
@@ -117,6 +118,15 @@ export function VesselRegistrySection({ assetType }: { assetType: VesselAssetTyp
   }, [])
 
   const clearFilters = useCallback(() => setQuery(DEFAULT_VESSEL_QUERY), [])
+  // Owner request 2026-10-02: the tiles are quick filters. One bucket at a time; pressing the active one clears it.
+  type Bucket = Pick<VesselQuery, 'due' | 'mapping' | 'duplicateSerial'>
+  const NONE: Bucket = { due: 'all', mapping: 'all', duplicateSerial: false }
+  const isPicked = (b: Partial<Bucket>) => {
+    const t = { ...NONE, ...b }
+    return query.due === t.due && query.mapping === t.mapping && query.duplicateSerial === t.duplicateSerial
+  }
+  const pick = (b: Partial<Bucket>) => update(isPicked(b) ? NONE : { ...NONE, ...b })
+  const tile = (b: Partial<Bucket>) => ({ onSelect: () => pick(b), active: isPicked(b) })
   const hasFilters =
     Boolean(query.search.trim()) ||
     query.regionId !== null ||
@@ -141,34 +151,37 @@ export function VesselRegistrySection({ assetType }: { assetType: VesselAssetTyp
             {label.plural} attention summary
           </h2>
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3 lg:grid-cols-7">
-            <Metric label={label.plural} value={summary.data.total.toLocaleString()} hint={hasFilters ? 'matching the filters' : 'visible to you'} />
-            <Metric label="Overdue" value={summary.data.overdue.toLocaleString()} tone="overdue" />
+            <Metric label={label.plural} value={summary.data.total.toLocaleString()} hint={hasFilters ? 'matching the filters' : 'visible to you'} {...tile({})} />
+            <Metric label="Overdue" value={summary.data.overdue.toLocaleString()} tone="overdue" {...tile({ due: 'overdue' })} />
             <Metric
               label="Due ≤30d"
               value={summary.data.attention.toLocaleString()}
               tone="due"
               hint="includes overdue"
+              {...tile({ due: 'attention' })}
             />
             <Metric
               label="Needs unit"
               value={summary.data.needs_unit_mapping.toLocaleString()}
               tone="unmapped"
               hint="mapping"
+              {...tile({ mapping: 'needs_unit_mapping' })}
             />
-            <Metric label="Conflict" value={summary.data.conflict.toLocaleString()} />
+            <Metric label="Conflict" value={summary.data.conflict.toLocaleString()} {...tile({ mapping: 'conflict' })} />
             {/* A real data-quality signal: no exact date means no countdown is
               * possible, which is different from being within date. */}
-            <Metric label="No exact date" value={summary.data.unknown_date.toLocaleString()} />
+            <Metric label="No exact date" value={summary.data.unknown_date.toLocaleString()} {...tile({ due: 'unknown' })} />
             {/* Candidates for review, not confirmed duplicates. Nothing is
               * merged or removed on the strength of a repeated string. */}
             <Metric
               label="Duplicate serial"
               value={summary.data.serial_duplicate.toLocaleString()}
               hint="candidates"
+              {...tile({ duplicateSerial: true })}
             />
           </div>
           {hasFilters ? (
-            <p className="mt-1.5 text-xs text-muted-foreground">Counts match the current filters.</p>
+            <p className="mt-1.5 text-xs text-muted-foreground">Counts match the current filters. Press a tile to show only those rows.</p>
           ) : null}
         </section>
       ) : null}
@@ -205,22 +218,7 @@ export function VesselRegistrySection({ assetType }: { assetType: VesselAssetTyp
           </select>
         </label>
 
-        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span>Mapping</span>
-          <select
-            value={query.mapping}
-            onChange={(e) => update({ mapping: e.target.value as VesselQuery['mapping'] })}
-            className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
-          >
-            {/* Only the states these assets can actually hold. There is no
-              * "needs equipment mapping" — a vessel IS equipment. */}
-            <option value="all">All states</option>
-            <option value="resolved">Resolved</option>
-            <option value="needs_unit_mapping">Needs unit mapping</option>
-            <option value="conflict">Conflict</option>
-          </select>
-        </label>
-
+        {/* Owner request 2026-10-02: no Mapping filter; the Needs unit / Conflict tiles still filter. */}
         <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span>Due</span>
           <select

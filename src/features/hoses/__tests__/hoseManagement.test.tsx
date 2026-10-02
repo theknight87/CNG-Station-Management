@@ -240,8 +240,7 @@ describe('Serial identity', () => {
     const serialFilter = screen.getByRole('combobox', { name: /serial/i })
     const options = within(serialFilter).getAllByRole('option').map((o) => (o as HTMLOptionElement).value)
     expect(options).toEqual(['all', 'recorded', 'missing', 'duplicate'])
-    // And they are separate controls from Mapping and Due.
-    expect(screen.getByRole('combobox', { name: /mapping/i })).not.toBe(serialFilter)
+    // And a separate control from Due (there is no Mapping filter any more — owner request 2026-10-02).
     expect(screen.getByRole('combobox', { name: /due/i })).not.toBe(serialFilter)
   })
 })
@@ -301,16 +300,11 @@ describe('Hierarchy and mapping', () => {
     expect(within(table).getAllByText('شبرا 1').length).toBeGreaterThan(0)
   })
 
-  it('offers only mapping states a hose can actually hold', async () => {
+  it('owner request 2026-10-02: offers no Mapping filter', async () => {
     replies.hoses = { data: [hose()], error: null, count: 1 }
     renderHoses()
     await screen.findByText('HS-2024001')
-    const mapping = screen.getByRole('combobox', { name: /mapping/i })
-    const options = within(mapping).getAllByRole('option').map((o) => (o as HTMLOptionElement).value)
-    // station_id is NOT NULL, so this state is unreachable and is not offered.
-    expect(options).not.toContain('needs_station_mapping')
-    expect(options).not.toContain('needs_equipment_mapping')
-    expect(options).toEqual(['all', 'resolved', 'needs_unit_mapping', 'conflict'])
+    expect(screen.queryByRole('combobox', { name: /mapping/i })).toBeNull()
   })
 
   it('exposes no mapping mutation or delete control', async () => {

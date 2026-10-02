@@ -126,20 +126,30 @@ export function SourceContext({ value, note }: { value: string | null; note: str
   )
 }
 
-/** A compact metric in the attention strip. Deliberately not a KPI card. */
+/**
+ * A compact metric in the attention strip. Deliberately not a KPI card.
+ *
+ * With `onSelect` it is a quick filter (owner request 2026-10-02): a toggle button that narrows the table
+ * below to exactly the rows it counts; pressing it again clears that filter. The active state is a
+ * brand-strong underline plus `aria-pressed`, never colour alone.
+ */
 export function Metric({
   label,
   value,
   tone = 'plain',
   hint,
+  onSelect,
+  active = false,
 }: {
   label: string
   value: ReactNode
   tone?: 'plain' | 'overdue' | 'due' | 'unmapped'
   hint?: string
+  onSelect?: () => void
+  active?: boolean
 }) {
-  return (
-    <div className="min-w-0">
+  const body = (
+    <>
       <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
       <div
         className={cn(
@@ -152,7 +162,23 @@ export function Metric({
         {value}
       </div>
       {hint ? <div className="text-xs text-muted-foreground">{hint}</div> : null}
-    </div>
+    </>
+  )
+  if (!onSelect) return <div className="min-w-0">{body}</div>
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={active}
+      title={active ? `Showing ${label} only — press again to show all` : `Show ${label} only`}
+      className={cn(
+        '-mx-1.5 -my-1 min-w-0 rounded border-b-2 px-1.5 py-1 text-left transition-colors',
+        'hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-strong',
+        active ? 'border-b-brand-strong bg-brand-strong/10' : 'border-b-transparent',
+      )}
+    >
+      {body}
+    </button>
   )
 }
 

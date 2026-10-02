@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
@@ -270,17 +270,23 @@ describe('Hierarchy and mapping', () => {
     expect(screen.getAllByText('الماظة').length).toBeGreaterThan(0)
   })
 
-  it('offers only mapping states a detector can actually hold', async () => {
+  it('owner request 2026-10-02: the Not installed tile shows recorded absence, and pressing it again returns to detectors', async () => {
     replies.detectors = { data: [detector()], error: null, count: 1 }
     renderDetectors()
     await screen.findByText('GD-00001')
-    const mapping = screen.getByRole('combobox', { name: /mapping/i })
-    const options = within(mapping).getAllByRole('option').map((o) => (o as HTMLOptionElement).value)
-    // A detector hangs off a Unit; it has no equipment parent to resolve.
-    expect(options).not.toContain('needs_equipment_mapping')
-    // station_id is NOT NULL, so this state is unreachable and is not offered.
-    expect(options).not.toContain('needs_station_mapping')
-    expect(options).toEqual(['all', 'resolved', 'needs_unit_mapping', 'conflict'])
+    calls.list = []
+    await userEvent.click(await screen.findByRole('button', { name: /^not installed/i }))
+    await waitFor(() => expect(calls.list).toContain('v_gas_detector_management.eq:detector_presence=not_installed'))
+    expect(screen.getByRole('button', { name: /^not installed/i }).getAttribute('aria-pressed')).toBe('true')
+    await userEvent.click(screen.getByRole('button', { name: /^not installed/i }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /^detectors/i }).getAttribute('aria-pressed')).toBe('true'))
+  })
+
+  it('owner request 2026-10-02: offers no Mapping filter', async () => {
+    replies.detectors = { data: [detector()], error: null, count: 1 }
+    renderDetectors()
+    await screen.findByText('GD-00001')
+    expect(screen.queryByRole('combobox', { name: /mapping/i })).toBeNull()
   })
 
   it('exposes no mapping mutation control', async () => {

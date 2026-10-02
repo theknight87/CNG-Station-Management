@@ -26,8 +26,7 @@ const SECTIONS = [
   { to: '/reports/vessels', label: 'Vessels' },
   { to: '/reports/gas-detectors', label: 'Gas Detectors' },
   { to: '/reports/hoses', label: 'Hoses' },
-  { to: '/reports/data-quality', label: 'Data Quality' },
-  { to: '/reports/activity', label: 'Notification Activity' },
+  // Owner request 2026-10-02: Data Quality and Notification Activity are no longer offered here.
 ]
 
 export function ReportsView() {

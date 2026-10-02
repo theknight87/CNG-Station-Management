@@ -407,8 +407,17 @@ const WAREHOUSE_SORT: Record<WarehouseSort, string[]> = {
  */
 /** The warehouse registry query: every filter and the sort, no paging (shared by the table and its export). */
 export function warehouseRequest(supabase: SupabaseClient, q: WarehouseQuery) {
+  let b = applyWarehouseFilters(supabase.from('v_srv_warehouse_stock').select(WAREHOUSE_COLUMNS, { count: 'exact' }), q)
+  for (const column of WAREHOUSE_SORT[q.sort]) {
+    b = b.order(column, { ascending: q.direction === 'asc', nullsFirst: false })
+  }
+  return b
+}
+
+/** Every warehouse filter, no sort: one predicate for the table, its export and the summary tiles. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function applyWarehouseFilters<B extends { eq: any; in: any; or: any; ilike: any; lte: any; gte: any; lt: any }>(b: B, q: WarehouseQuery): B {
   const term = q.search.trim()
-  let b = supabase.from('v_srv_warehouse_stock').select(WAREHOUSE_COLUMNS, { count: 'exact' })
   if (q.availability) b = b.eq('availability_status', q.availability)
   if (q.due === 'overdue') b = b.eq('due_status', 'overdue')
   if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
@@ -428,10 +437,62 @@ export function warehouseRequest(supabase: SupabaseClient, q: WarehouseQuery) {
       ].join(','),
     )
   }
-  for (const column of WAREHOUSE_SORT[q.sort]) {
-    b = b.order(column, { ascending: q.direction === 'asc', nullsFirst: false })
-  }
   return b
+}
+
+export interface WarehouseSummary {
+  total: number
+  calibrated: number
+  under_calibration: number
+  new: number
+  overdue: number
+}
+
+/**
+ * The warehouse tiles (owner request 2026-10-02): real counts over the whole filtered stock — not the page on
+ * screen — so pressing a tile shows exactly the rows it counted. The tiles ARE the availability / overdue
+ * buckets, so those two filters are left out of the counts; search and every other filter still apply.
+ * Each count is a head-only exact count, so no row limit can truncate it.
+ */
+export function useWarehouseSummary(query: WarehouseQuery, refresh?: unknown): Loadable<WarehouseSummary> {
+  const supabase = useSupabaseClient()
+  const [state, setState] = useState<Loadable<WarehouseSummary>>({ status: 'loading' })
+  const key = JSON.stringify({ search: query.search, filters: query.filters })
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      if (!supabase) {
+        if (!cancelled) setState({ status: 'unconfigured' })
+        return
+      }
+      const base: WarehouseQuery = { ...DEFAULT_WAREHOUSE_QUERY, ...(JSON.parse(key) as Pick<WarehouseQuery, 'search' | 'filters'>) }
+      const count = (patch: Partial<WarehouseQuery>) =>
+        applyWarehouseFilters(supabase.from('v_srv_warehouse_stock').select('id', { count: 'exact', head: true }), { ...base, ...patch })
+      const results = await Promise.all([
+        count({}),
+        count({ availability: 'available_calibrated' }),
+        count({ availability: 'available_in_store_uc' }),
+        count({ availability: 'available_new' }),
+        count({ due: 'overdue' }),
+      ])
+      if (cancelled) return
+      const failed = results.find((r) => r.error)
+      if (failed?.error) {
+        setState({ status: 'error', message: failed.error.message })
+        return
+      }
+      const [total, calibrated, under, fresh, overdue] = results.map((r) => r.count ?? 0)
+      setState({ status: 'ready', data: { total, calibrated, under_calibration: under, new: fresh, overdue } })
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+    // `refresh` is the table's latest result: after an action reloads the table, the tiles recount too.
+  }, [supabase, key, refresh])
+
+  return state
 }
 
 export function useWarehouseSrvs(query: WarehouseQuery): {

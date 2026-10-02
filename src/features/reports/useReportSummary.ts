@@ -62,10 +62,6 @@ export function useReportSummary(
             ...bucket,
             value: row[bucket.key] as number,
           })),
-          {
-            key: 'unresolved', label: 'Unresolved Mapping', value: row.unresolved,
-            description: 'Records whose hierarchy the source did not fully prove',
-          },
         ] : null)
         return
       }
@@ -106,18 +102,7 @@ export function useReportSummary(
         }
       }
 
-      const mappingColumn = spec.filterColumns.mappingStatus
-      if (mappingColumn && !filters.mappingStatus) {
-        // "Unresolved" is every mapping state that is not `resolved`, counted as
-        // total minus resolved so no state is missed when a new one is added.
-        const resolved = await count({ column: mappingColumn, value: 'resolved' })
-        const total = results[0].value
-        results.push({
-          key: 'unresolved', label: 'Unresolved Mapping',
-          value: total === null || resolved === null ? null : total - resolved,
-          description: 'Records whose hierarchy the source did not fully prove',
-        })
-      }
+      // Owner request 2026-10-02: no "Unresolved Mapping" tile — mapping is no longer filtered or reported here.
 
       if (cancelled) return
       setLoading(false)

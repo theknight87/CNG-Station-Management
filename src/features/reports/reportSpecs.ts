@@ -137,7 +137,7 @@ export const REPORT_SPECS: ReportSpec[] = [
       ...DUE_COLUMNS,
       { key: 'mapping_status', header: 'Mapping Status', render: 'mapping_status' },
     ],
-    filters: ['region', 'station', 'unit', 'assetType', 'dueState', 'mappingStatus', 'dateRange', 'search'],
+    filters: ['region', 'station', 'unit', 'assetType', 'dueState', 'dateRange', 'search'],
     filterColumns: {
       region: 'region_id', station: 'station_id', unit: 'unit_id',
       assetType: 'asset_type', dueState: 'due_status', mappingStatus: 'mapping_status', dateRange: 'next_due_date',
@@ -176,7 +176,7 @@ export const REPORT_SPECS: ReportSpec[] = [
       { key: 'source_file', header: 'Source File' },
       { key: 'source_row', header: 'Source Row', kind: 'number', align: 'right' },
     ],
-    filters: ['region', 'station', 'unit', 'dueState', 'mappingStatus', 'dateRange', 'search'],
+    filters: ['region', 'station', 'unit', 'dueState', 'dateRange', 'search'],
     filterColumns: {
       region: 'region_id', station: 'station_id', unit: 'unit_id',
       dueState: 'due_status', mappingStatus: 'mapping_status', dateRange: 'last_calibration_date',
@@ -233,7 +233,7 @@ export const REPORT_SPECS: ReportSpec[] = [
       { key: 'due_status', header: 'Due State', render: 'due_status' },
       { key: 'mapping_status', header: 'Mapping Status', render: 'mapping_status' },
     ],
-    filters: ['region', 'station', 'unit', 'assetType', 'dueState', 'mappingStatus', 'dateRange', 'search'],
+    filters: ['region', 'station', 'unit', 'assetType', 'dueState', 'dateRange', 'search'],
     filterColumns: {
       region: 'region_id', station: 'station_id', unit: 'unit_id',
       assetType: 'asset_type', dueState: 'due_status', mappingStatus: 'mapping_status', dateRange: 'last_inspection_date',
@@ -269,7 +269,7 @@ export const REPORT_SPECS: ReportSpec[] = [
       { key: 'due_status', header: 'Due State', render: 'due_status' },
       { key: 'mapping_status', header: 'Mapping Status', render: 'mapping_status' },
     ],
-    filters: ['region', 'station', 'unit', 'dueState', 'mappingStatus', 'dateRange', 'search'],
+    filters: ['region', 'station', 'unit', 'dueState', 'dateRange', 'search'],
     filterColumns: {
       region: 'region_id', station: 'station_id', unit: 'unit_id',
       dueState: 'due_status', mappingStatus: 'mapping_status', dateRange: 'last_calibration_date',
@@ -298,7 +298,7 @@ export const REPORT_SPECS: ReportSpec[] = [
       { key: 'due_status', header: 'Due State', render: 'due_status' },
       { key: 'mapping_status', header: 'Mapping Status', render: 'mapping_status' },
     ],
-    filters: ['region', 'station', 'unit', 'dueState', 'mappingStatus', 'dateRange', 'search'],
+    filters: ['region', 'station', 'unit', 'dueState', 'dateRange', 'search'],
     filterColumns: {
       region: 'region_id', station: 'station_id', unit: 'unit_id',
       dueState: 'due_status', mappingStatus: 'mapping_status', dateRange: 'last_test_date',

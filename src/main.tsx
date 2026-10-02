@@ -5,7 +5,14 @@ import { App } from '@/App'
 import { AuthProvider } from '@/features/auth/AuthProvider'
 import { AppUserProvider } from '@/hooks/useAppUser'
 import { readSupabaseConfig } from '@/lib/supabase/config'
+import { reloadForNewVersion } from '@/lib/app/staleChunk'
 import '@/index.css'
+
+// A module preload that fails because this tab predates the latest deployment: load the new version once
+// instead of breaking the page (see lib/app/staleChunk.ts).
+window.addEventListener('vite:preloadError', (event) => {
+  if (reloadForNewVersion()) event.preventDefault()
+})
 
 const rootElement = document.getElementById('root')
 if (!rootElement) {

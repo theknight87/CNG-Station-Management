@@ -130,7 +130,18 @@ export function HosesManagementView() {
     Boolean(query.search.trim()) || query.regionId !== null || query.stationId !== null ||
     query.mapping !== 'all' || query.due !== 'all' || query.serial !== 'all' ||
     hasAssetFilters(query.filters)
-  const { state: summary } = useHoseSummary(hasFilters ? query : undefined)
+  // Owner request 2026-10-02: the tiles are quick filters. One bucket at a time; pressing the active one clears it.
+  // The tiles ARE these buckets, so their counts ignore the bucket a tile selects; every other filter applies.
+  type Bucket = Pick<HoseQuery, 'due' | 'mapping' | 'serial'>
+  const NONE: Bucket = { due: 'all', mapping: 'all', serial: 'all' }
+  const isPicked = (b: Partial<Bucket>) => {
+    const t = { ...NONE, ...b }
+    return query.due === t.due && query.mapping === t.mapping && query.serial === t.serial
+  }
+  const pick = (b: Partial<Bucket>) => update(isPicked(b) ? NONE : { ...NONE, ...b })
+  const tile = (b: Partial<Bucket>) => ({ onSelect: () => pick(b), active: isPicked(b) })
+  const otherFilters = Boolean(query.search.trim()) || query.regionId !== null || query.stationId !== null || hasAssetFilters(query.filters)
+  const { state: summary } = useHoseSummary(otherFilters ? { ...query, ...NONE } : undefined)
 
   return (
     <PageContainer>
@@ -154,30 +165,33 @@ export function HosesManagementView() {
               Hose attention summary
             </h2>
             <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4 lg:grid-cols-7">
-              <Metric label="Hoses" value={summary.data.total.toLocaleString()} hint={hasFilters ? 'matching the filters' : 'visible to you'} />
-              <Metric label="Overdue" value={summary.data.overdue.toLocaleString()} tone="overdue" />
+              <Metric label="Hoses" value={summary.data.total.toLocaleString()} hint={hasFilters ? 'matching the filters' : 'visible to you'} {...tile({})} />
+              <Metric label="Overdue" value={summary.data.overdue.toLocaleString()} tone="overdue" {...tile({ due: 'overdue' })} />
               <Metric
                 label="Due ≤30d"
                 value={summary.data.attention.toLocaleString()}
                 tone="due"
                 hint="includes overdue"
+                {...tile({ due: 'attention' })}
               />
               <Metric
                 label="Needs unit"
                 value={summary.data.needs_unit_mapping.toLocaleString()}
                 tone="unmapped"
                 hint="mapping"
+                {...tile({ mapping: 'needs_unit_mapping' })}
               />
               {/* A real data-quality signal: no exact date means no countdown is
                 * possible, which is different from being within date. */}
-              <Metric label="No exact date" value={summary.data.unknown_date.toLocaleString()} />
+              <Metric label="No exact date" value={summary.data.unknown_date.toLocaleString()} {...tile({ due: 'unknown' })} />
               {/* Serial quality is its OWN dimension — neither of these is a
                 * mapping problem and neither is an overdue test. */}
-              <Metric label="No serial" value={summary.data.serial_missing.toLocaleString()} hint="not recorded" />
+              <Metric label="No serial" value={summary.data.serial_missing.toLocaleString()} hint="not recorded" {...tile({ serial: 'missing' })} />
               <Metric
                 label="Duplicate serial"
                 value={summary.data.serial_duplicate.toLocaleString()}
                 hint="reported, never merged"
+                {...tile({ serial: 'duplicate' })}
               />
             </div>
             {hasFilters ? (
@@ -255,21 +269,7 @@ export function HosesManagementView() {
             </select>
           </label>
 
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span>Mapping</span>
-            <select
-              id="hoses-mapping" name="hoses-mapping" value={query.mapping}
-              onChange={(e) => update({ mapping: e.target.value as HoseQuery['mapping'] })}
-              className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
-            >
-              {/* Only the states a hose can actually hold. */}
-              <option value="all">All states</option>
-              <option value="resolved">Resolved</option>
-              <option value="needs_unit_mapping">Needs unit mapping</option>
-              <option value="conflict">Conflict</option>
-            </select>
-          </label>
-
+          {/* Owner request 2026-10-02: no Mapping filter; the Needs unit tile still filters. */}
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>Due</span>
             <select

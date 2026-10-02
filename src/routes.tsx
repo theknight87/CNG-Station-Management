@@ -4,6 +4,7 @@ import { createBrowserRouter, Navigate } from 'react-router-dom'
 
 import { AppLayout } from '@/components/layout/AppLayout'
 import { AuthGate } from '@/features/auth/AuthGate'
+import { RouteError } from '@/components/states/RouteError'
 import { SignInPage } from '@/features/auth/SignInPage'
 import { SignUpPage } from '@/features/auth/SignUpPage'
 import { ForgotPasswordPage, ResetPasswordPage } from '@/features/auth/PasswordResetPages'
@@ -30,8 +31,6 @@ const AdminDataQualitySection = lazy(() => import('@/features/admin/sections/Adm
 const AdminUsersSection = lazy(() => import('@/features/admin/sections/AdminUsersSection').then((m) => ({ default: m.AdminUsersSection })))
 // Temporary: the owner-run execution surface for the Stage B2 Station batch (Phase 6).
 // Remove again once B2 is committed, as the Stage B surface was.
-const ActivityReportSection = lazy(() => import('@/features/reports/sections/ReportSections').then((m) => ({ default: m.ActivityReportSection })))
-const DataQualityReportSection = lazy(() => import('@/features/reports/sections/ReportSections').then((m) => ({ default: m.DataQualityReportSection })))
 const DueReportSection = lazy(() => import('@/features/reports/sections/ReportSections').then((m) => ({ default: m.DueReportSection })))
 const GasDetectorsReportSection = lazy(() => import('@/features/reports/sections/ReportSections').then((m) => ({ default: m.GasDetectorsReportSection })))
 const HosesReportSection = lazy(() => import('@/features/reports/sections/ReportSections').then((m) => ({ default: m.HosesReportSection })))
@@ -75,6 +74,9 @@ export const router = createBrowserRouter([
         <AppLayout />
       </AuthGate>
     ),
+    // A failed page load (most often a tab older than the latest deployment) gets a real page, not the
+    // router's developer screen — and a stale tab reloads itself once (lib/app/staleChunk.ts).
+    errorElement: <RouteError />,
     children: [
       { index: true, element: <Navigate to="/dashboard" replace /> },
       { path: 'dashboard', element: <DashboardPage /> },
@@ -130,8 +132,10 @@ export const router = createBrowserRouter([
           { path: 'vessels', element: <VesselsReportSection /> },
           { path: 'gas-detectors', element: <GasDetectorsReportSection /> },
           { path: 'hoses', element: <HosesReportSection /> },
-          { path: 'data-quality', element: <DataQualityReportSection /> },
-          { path: 'activity', element: <ActivityReportSection /> },
+          // Owner request 2026-10-02: the Data Quality and Notification Activity reports were removed; an old
+          // bookmark lands on Due & Overdue instead of a not-found page.
+          { path: 'data-quality', element: <Navigate to="/reports/due" replace /> },
+          { path: 'activity', element: <Navigate to="/reports/due" replace /> },
         ],
       },
       { path: 'settings', element: <SettingsPage /> },

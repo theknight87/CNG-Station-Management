@@ -136,6 +136,15 @@ export function AlertsView() {
   )
 
   const clearFilters = useCallback(() => setQuery(DEFAULT_ALERT_QUERY), [])
+  // Owner request 2026-10-02: the tiles are quick filters. One bucket at a time; pressing the active one clears it.
+  type Bucket = Pick<AlertQuery, 'threshold' | 'read' | 'ack' | 'delivery'>
+  const NONE: Bucket = { threshold: 'all', read: 'all', ack: 'all', delivery: 'all' }
+  const isPicked = (b: Partial<Bucket>) => {
+    const t = { ...NONE, ...b }
+    return query.threshold === t.threshold && query.read === t.read && query.ack === t.ack && query.delivery === t.delivery
+  }
+  const pick = (b: Partial<Bucket>) => update(isPicked(b) ? NONE : { ...NONE, ...b })
+  const tile = (b: Partial<Bucket>) => ({ onSelect: () => pick(b), active: isPicked(b) })
   const hasFilters =
     Boolean(query.search.trim()) || query.regionId !== null || query.stationId !== null ||
     query.subject !== 'all' || query.threshold !== 'all' || query.read !== 'all' ||
@@ -179,15 +188,15 @@ export function AlertsView() {
               Alert summary
             </h2>
             <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4 lg:grid-cols-7">
-              <Metric label="Alerts" value={summary.data.total.toLocaleString()} hint="visible to you" />
-              <Metric label="Overdue" value={summary.data.overdue.toLocaleString()} tone="overdue" />
-              <Metric label="Due today" value={summary.data.due_today.toLocaleString()} tone="due" />
-              <Metric label="7-day" value={summary.data.due_7.toLocaleString()} tone="due" />
-              <Metric label="Unread" value={summary.data.unread.toLocaleString()} hint="yours" />
-              <Metric label="Unacknowledged" value={summary.data.unacknowledged.toLocaleString()} tone="unmapped" />
+              <Metric label="Alerts" value={summary.data.total.toLocaleString()} hint="visible to you" {...tile({})} />
+              <Metric label="Overdue" value={summary.data.overdue.toLocaleString()} tone="overdue" {...tile({ threshold: 'overdue' })} />
+              <Metric label="Due today" value={summary.data.due_today.toLocaleString()} tone="due" {...tile({ threshold: 'due_today' })} />
+              <Metric label="7-day" value={summary.data.due_7.toLocaleString()} tone="due" {...tile({ threshold: 'due_7' })} />
+              <Metric label="Unread" value={summary.data.unread.toLocaleString()} hint="yours" {...tile({ read: 'unread' })} />
+              <Metric label="Unacknowledged" value={summary.data.unacknowledged.toLocaleString()} tone="unmapped" {...tile({ ack: 'unacknowledged' })} />
               {/* A delivery failure is an alert that EXISTS but was not sent —
                 * never the same thing as no alert. */}
-              <Metric label="Delivery failed" value={summary.data.delivery_failed.toLocaleString()} hint="alert still stands" />
+              <Metric label="Delivery failed" value={summary.data.delivery_failed.toLocaleString()} hint="alert still stands" {...tile({ delivery: 'failed' })} />
             </div>
             {total !== null && total !== summary.data.total ? (
               <p className="mt-1.5 text-xs text-muted-foreground">

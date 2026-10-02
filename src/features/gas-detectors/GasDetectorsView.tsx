@@ -107,7 +107,8 @@ export function GasDetectorsView() {
   const supabase = useSupabaseClient()
   const { state, reload } = useGasDetectors(query)
   const makers = useMakers('v_gas_detector_management')
-  const { state: summary } = useGasDetectorSummary(query)
+  // The tiles ARE these buckets, so their counts ignore the bucket a tile selects; every other filter applies.
+  const { state: summary } = useGasDetectorSummary({ ...query, due: 'all', mapping: 'all' })
   const regions = useRegions()
 
   // Stations for the dependent filter, scoped to the chosen Region so the list
@@ -133,6 +134,15 @@ export function GasDetectorsView() {
   }, [])
 
   const clearFilters = useCallback(() => setQuery(DEFAULT_DETECTOR_QUERY), [])
+  // Owner request 2026-10-02: the tiles are quick filters. One bucket at a time; pressing the active one clears it.
+  type Bucket = Pick<DetectorQuery, 'due' | 'mapping' | 'presence'>
+  const NONE: Bucket = { due: 'all', mapping: 'all', presence: 'installed' }
+  const isPicked = (b: Partial<Bucket>) => {
+    const t = { ...NONE, ...b }
+    return query.due === t.due && query.mapping === t.mapping && query.presence === t.presence
+  }
+  const pick = (b: Partial<Bucket>) => update(isPicked(b) ? NONE : { ...NONE, ...b })
+  const tile = (b: Partial<Bucket>) => ({ onSelect: () => pick(b), active: isPicked(b) })
   const hasFilters =
     Boolean(query.search.trim()) || query.regionId !== null || query.stationId !== null ||
     query.area !== 'all' || query.mapping !== 'all' || query.due !== 'all' ||
@@ -161,28 +171,31 @@ export function GasDetectorsView() {
               Gas detector attention summary
             </h2>
             <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3 lg:grid-cols-6">
-              <Metric label="Detectors" value={summary.data.total.toLocaleString()} hint={hasFilters ? 'installed, matching the filters' : 'installed, visible to you'} />
-              <Metric label="Overdue" value={summary.data.overdue.toLocaleString()} tone="overdue" />
+              <Metric label="Detectors" value={summary.data.total.toLocaleString()} hint={hasFilters ? 'installed, matching the filters' : 'installed, visible to you'} {...tile({})} />
+              <Metric label="Overdue" value={summary.data.overdue.toLocaleString()} tone="overdue" {...tile({ due: 'overdue' })} />
               <Metric
                 label="Due ≤30d"
                 value={summary.data.attention.toLocaleString()}
                 tone="due"
                 hint="includes overdue"
+                {...tile({ due: 'attention' })}
               />
               <Metric
                 label="Needs unit"
                 value={summary.data.needs_unit_mapping.toLocaleString()}
                 tone="unmapped"
                 hint="mapping"
+                {...tile({ mapping: 'needs_unit_mapping' })}
               />
               {/* A real data-quality signal: no exact date means no countdown is
                 * possible, which is different from being within date. */}
-              <Metric label="No exact date" value={summary.data.unknown_date.toLocaleString()} />
+              <Metric label="No exact date" value={summary.data.unknown_date.toLocaleString()} {...tile({ due: 'unknown' })} />
               {/* Evidence, not a device — and never added to the detector count. */}
               <Metric
                 label="Not installed"
                 value={summary.data.not_installed.toLocaleString()}
                 hint="recorded absence"
+                {...tile({ presence: 'not_installed' })}
               />
             </div>
             <p className="mt-1.5 text-xs text-muted-foreground">
@@ -286,22 +299,7 @@ export function GasDetectorsView() {
             </select>
           </label>
 
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span>Mapping</span>
-            <select
-              id="gas-detectors-mapping" name="gas-detectors-mapping" value={query.mapping}
-              onChange={(e) => update({ mapping: e.target.value as DetectorQuery['mapping'] })}
-              className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
-            >
-              {/* Only the states a detector can actually hold. There is no
-                * "needs equipment mapping" — a detector hangs off a Unit. */}
-              <option value="all">All states</option>
-              <option value="resolved">Resolved</option>
-              <option value="needs_unit_mapping">Needs unit mapping</option>
-              <option value="conflict">Conflict</option>
-            </select>
-          </label>
-
+          {/* Owner request 2026-10-02: no Mapping filter; the Needs unit tile still filters. */}
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>Due</span>
             <select

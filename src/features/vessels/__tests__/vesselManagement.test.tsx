@@ -182,7 +182,8 @@ describe('Server-side query', () => {
     replies.vessels = { data: [vessel()], error: null, count: 1 }
     renderVessels()
     await screen.findByText('SV-00001')
-    await userEvent.selectOptions(screen.getByLabelText(/^mapping$/i), 'needs_unit_mapping')
+    // Owner request 2026-10-02: no Mapping dropdown; the Needs unit tile is the mapping filter.
+    await userEvent.click(await screen.findByRole('button', { name: /^needs unit/i }))
     await waitFor(() => expect(calls.list).toContain('v_vessel_management.eq:mapping_status=needs_unit_mapping'))
     await userEvent.selectOptions(screen.getByLabelText(/^due$/i), 'overdue')
     await waitFor(() => expect(calls.list).toContain('v_vessel_management.eq:due_status=overdue'))
@@ -209,7 +210,7 @@ describe('Server-side query', () => {
     calls.list = []
     await userEvent.type(screen.getByLabelText(/^search storage vessels$/i), 'SV')
     await waitFor(() => expect(calls.list.filter((c) => c.startsWith('v_vessel_management.or:') && c.includes('serial_number.ilike.*SV*')).length).toBeGreaterThanOrEqual(2))
-    expect(await screen.findByText('Counts match the current filters.')).toBeDefined()
+    expect(await screen.findByText(/^Counts match the current filters\./)).toBeDefined()
   })
 
   it('sorts with the requested column first and a deterministic tie-break', async () => {
@@ -233,14 +234,25 @@ describe('Server-side query', () => {
     expect(screen.getByText(/1–1 of 300/)).toBeDefined()
   })
 
-  it('offers only the mapping states these assets can hold', async () => {
+  it('owner request 2026-10-02: offers no Mapping filter', async () => {
     replies.vessels = { data: [vessel()], error: null, count: 1 }
     renderVessels()
     await screen.findByText('SV-00001')
-    const select = screen.getByLabelText(/^mapping$/i)
-    const options = within(select).getAllByRole('option').map((o) => o.textContent ?? '')
-    // A vessel IS equipment; there is no equipment parent to resolve.
-    expect(options.some((o) => /equipment/i.test(o))).toBe(false)
+    expect(screen.queryByLabelText(/^mapping$/i)).toBeNull()
+  })
+
+  it('owner request 2026-10-02: a tile filters the table to what it counts, and pressing it again clears it', async () => {
+    replies.vessels = { data: [vessel()], error: null, count: 1 }
+    renderVessels()
+    await screen.findByText('SV-00001')
+    const overdue = await screen.findByRole('button', { name: /^overdue/i })
+    expect(overdue.getAttribute('aria-pressed')).toBe('false')
+    calls.list = []
+    await userEvent.click(overdue)
+    await waitFor(() => expect(calls.list).toContain('v_vessel_management.eq:due_status=overdue'))
+    expect((await screen.findByRole('button', { name: /^overdue/i })).getAttribute('aria-pressed')).toBe('true')
+    await userEvent.click(screen.getByRole('button', { name: /^overdue/i }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /^overdue/i }).getAttribute('aria-pressed')).toBe('false'))
   })
 })
 
@@ -271,8 +283,8 @@ describe('Hierarchy and mapping presentation', () => {
       error: null, count: 1,
     }
     renderVessels()
-    expect(await screen.findByText('Conflict')).toBeDefined()
-    const table = screen.getByRole('table')
+    const table = await screen.findByRole('table')
+    expect(await within(table).findByText('Conflict')).toBeDefined()
     expect(within(table).queryByText(/needs unit mapping/i)).toBeNull()
   })
 })

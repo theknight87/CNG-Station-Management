@@ -188,12 +188,12 @@ describe('the Reports shell', () => {
   it('offers every required report category as a deep link', async () => {
     render(withRouter(<ReportsView />))
     const nav = await screen.findByRole('navigation', { name: /report categories/i })
-    for (const label of [
-      'Due & Overdue', 'SRV', 'Vessels', 'Gas Detectors', 'Hoses',
-      'Data Quality', 'Notification Activity',
-    ]) {
+    for (const label of ['Due & Overdue', 'SRV', 'Vessels', 'Gas Detectors', 'Hoses']) {
       expect(within(nav).getByRole('link', { name: label })).toBeDefined()
     }
+    // Owner request 2026-10-02: these two are no longer offered.
+    expect(within(nav).queryByRole('link', { name: 'Data Quality' })).toBeNull()
+    expect(within(nav).queryByRole('link', { name: 'Notification Activity' })).toBeNull()
   })
 
   it('shows a permission state to an account that is not active', async () => {
@@ -339,6 +339,30 @@ describe('summary metrics', () => {
   it('offers an Unknown Due Date metric, so a non-exact date is never hidden', async () => {
     render(withRouter(<ReportWorkspace spec={dueSpec} />))
     expect(await screen.findByText(/unknown due date/i)).toBeDefined()
+  })
+
+  it('owner request 2026-10-02: a due tile filters the report, and pressing it again clears it', async () => {
+    db.rows.v_report_due_summary = [{ total: 40, overdue: 10, due_today: 1, due_7: 2, due_30: 3, unknown: 4, unresolved: 5 }]
+    render(withRouter(<ReportWorkspace spec={dueSpec} />))
+    await screen.findByText('0012345')
+    const overdue = await screen.findByRole('button', { name: /^overdue/i })
+    expect(overdue.getAttribute('aria-pressed')).toBe('false')
+    await userEvent.click(overdue)
+    await waitFor(() => expect(queriesFor('v_report_due_compliance').at(-1)!.ops.join(' ')).toMatch(/eq:due_status=overdue/))
+    expect(screen.getByRole('button', { name: /^overdue/i }).getAttribute('aria-pressed')).toBe('true')
+    // The filter bar follows the tile.
+    expect((screen.getByLabelText(/due state/i) as HTMLSelectElement).value).toBe('overdue')
+    await userEvent.click(screen.getByRole('button', { name: /^overdue/i }))
+    await waitFor(() => expect(queriesFor('v_report_due_compliance').at(-1)!.ops.join(' ')).not.toMatch(/eq:due_status/))
+  })
+
+  it('owner request 2026-10-02: no Mapping status filter and no Unresolved Mapping tile', async () => {
+    db.rows.v_report_due_summary = [{ total: 40, overdue: 10, due_today: 1, due_7: 2, due_30: 3, unknown: 4, unresolved: 5 }]
+    render(withRouter(<ReportWorkspace spec={dueSpec} />))
+    await screen.findByText('0012345')
+    await screen.findByRole('button', { name: /^overdue/i })
+    expect(screen.queryByLabelText(/mapping status/i)).toBeNull()
+    expect(screen.queryByText(/unresolved mapping/i)).toBeNull()
   })
 })
 

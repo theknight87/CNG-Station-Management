@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { SectionHeader } from '@/components/layout/PageContainer'
@@ -9,6 +9,7 @@ import { cairoBusinessDate, downloadCsv, exportFilename, toCsv } from './csv'
 import { ReportFiltersBar } from './ReportFiltersBar'
 import { ReportTable } from './ReportTable'
 import { csvColumnsFor, type ReportSpec } from './reportSpecs'
+import { cn } from '@/lib/utils'
 import { EMPTY_FILTERS, EXPORT_MAX_ROWS, useReportQuery, type ReportFilterValues } from './useReportQuery'
 import { useReportSummary } from './useReportSummary'
 
@@ -24,7 +25,17 @@ import { useReportSummary } from './useReportSummary'
 export function ReportWorkspace({ spec }: { spec: ReportSpec }) {
   const [filters, setFilters] = useState<ReportFilterValues>(EMPTY_FILTERS)
   const query = useReportQuery(spec, filters)
-  const summary = useReportSummary(spec, filters)
+  // The due tiles ARE the due-state buckets, so they are counted without that one filter (memoized: the summary
+  // reloads whenever its filters object changes).
+  const summaryFilters = useMemo(() => ({ ...filters, dueState: '' }), [filters])
+  const summary = useReportSummary(spec, summaryFilters)
+  // Owner request 2026-10-02: the tiles are quick filters — Total clears the due state, a due tile selects it,
+  // and pressing the active tile again clears it.
+  const canPick = spec.filters.includes('dueState')
+  const pickTile = (key: string) => {
+    const dueState = key === 'total' || filters.dueState === key ? '' : key
+    setFilters({ ...filters, dueState })
+  }
   const [exporting, setExporting] = useState(false)
   const [exportNote, setExportNote] = useState<string | null>(null)
 
@@ -65,7 +76,10 @@ export function ReportWorkspace({ spec }: { spec: ReportSpec }) {
 
       <ReportFiltersBar spec={spec} applied={filters} onApply={setFilters} />
 
-      <ReportSummaryStrip metrics={summary.metrics} loading={summary.loading} />
+      <ReportSummaryStrip
+        metrics={summary.metrics} loading={summary.loading}
+        active={filters.dueState || 'total'} onPick={canPick ? pickTile : undefined}
+      />
 
       {exportNote ? (
         <p className="text-xs text-muted-foreground" role="status">{exportNote}</p>
@@ -111,27 +125,57 @@ function EmptyReport({ spec, filtered }: { spec: ReportSpec; filtered: boolean }
   )
 }
 
+/** Due-state keys a tile may select; anything else (a spec breakdown) stays a plain figure. */
+const PICKABLE = new Set(['total', 'overdue', 'due_today', 'due_7', 'due_30', 'unknown'])
+
 function ReportSummaryStrip({
-  metrics, loading,
-}: { metrics: ReturnType<typeof useReportSummary>['metrics']; loading: boolean }) {
+  metrics, loading, active, onPick,
+}: {
+  metrics: ReturnType<typeof useReportSummary>['metrics']
+  loading: boolean
+  active: string
+  onPick?: (key: string) => void
+}) {
   if (loading && !metrics) {
     return <LoadingState label="Counting records" className="py-2" />
   }
   if (!metrics) return null
   return (
-    <dl className="flex flex-wrap gap-2" aria-label="Summary for the current filters">
-      {metrics.map((m) => (
-        <div key={m.key} className="min-w-28 rounded border bg-card px-2 py-1">
-          <dt className="text-xs text-muted-foreground" title={m.description}>{m.label}</dt>
-          <dd className="tabular text-lg font-semibold">
-            {/* An unreadable count shows as unavailable, never as a confident 0. */}
-            {m.value === null
-              ? <span className="text-sm font-normal text-muted-foreground">unavailable</span>
-              : m.value.toLocaleString()}
-          </dd>
-        </div>
-      ))}
-    </dl>
+    <div role="group" className="flex flex-wrap gap-2" aria-label="Summary for the current filters">
+      {metrics.map((m) => {
+        const pickable = Boolean(onPick) && PICKABLE.has(m.key)
+        const pressed = pickable && active === m.key
+        return (
+          <div key={m.key} className={cn('min-w-28 rounded border border-b-2 bg-card', pressed ? 'border-b-brand-strong bg-brand-strong/10' : 'border-b-transparent')}>
+            {pickable ? (
+              <button
+                type="button" aria-pressed={pressed} onClick={() => onPick!(m.key)}
+                title={pressed && m.key !== 'total' ? `Showing ${m.label} only — press again to show all` : m.description}
+                className="block w-full rounded px-2 py-1 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-strong"
+              >
+                <SummaryFigure label={m.label} value={m.value} description={m.description} />
+              </button>
+            ) : (
+              <div className="px-2 py-1"><SummaryFigure label={m.label} value={m.value} description={m.description} /></div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function SummaryFigure({ label, value, description }: { label: string; value: number | null; description: string }) {
+  return (
+    <>
+      <span className="block text-xs text-muted-foreground" title={description}>{label}</span>
+      <span className="tabular block text-lg font-semibold">
+        {/* An unreadable count shows as unavailable, never as a confident 0. */}
+        {value === null
+          ? <span className="text-sm font-normal text-muted-foreground">unavailable</span>
+          : value.toLocaleString()}
+      </span>
+    </>
   )
 }
 

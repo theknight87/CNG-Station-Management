@@ -190,10 +190,10 @@ describe('Installed SRVs — server-side query', () => {
     renderSrv()
     await screen.findByText('RV-880124')
 
-    await userEvent.selectOptions(screen.getByLabelText(/^mapping$/i), 'needs_unit_mapping')
-    await waitFor(() =>
-      expect(calls.list).toContain('v_installed_srv_management.eq:mapping_status=needs_unit_mapping'),
-    )
+    // Owner request 2026-10-02: no Mapping dropdown; the Conflict tile filters by mapping state.
+    expect(screen.queryByLabelText(/^mapping$/i)).toBeNull()
+    await userEvent.click(await screen.findByRole('button', { name: /^conflict/i }))
+    await waitFor(() => expect(calls.list).toContain('v_installed_srv_management.eq:mapping_status=conflict'))
     await userEvent.selectOptions(screen.getByLabelText(/^due$/i), 'overdue')
     await waitFor(() => expect(calls.list).toContain('v_installed_srv_management.eq:due_status=overdue'))
     await userEvent.selectOptions(screen.getByLabelText(/^parent$/i), 'storage_vessel')
@@ -320,7 +320,7 @@ describe('Installed SRVs — mapping lifecycle presentation', () => {
       error: null, count: 1,
     }
     renderSrv()
-    await screen.findByText(/needs equipment mapping/i)
+    await screen.findByText('RV-880124')
     // Mapping mutation is deliberately deferred; no button may imply otherwise.
     expect(screen.queryByRole('button', { name: /resolve|assign|map |confirm/i })).toBeNull()
   })
@@ -500,6 +500,21 @@ describe('Warehouse isolation', () => {
     expect(within(table).queryByText(/Available —|in store \(UC\)/)).toBeNull()
   })
 
+  it('owner request 2026-10-02: warehouse tiles count the whole stock and filter the table by availability', async () => {
+    replies.warehouse = { data: [warehouse()], error: null, count: 1 }
+    replies.headCount = { data: null, error: null, count: 7 }
+    renderSrv('/manage/srvs/warehouse')
+    const calibrated = await screen.findByRole('button', { name: /^calibrated/i })
+    // A head-only exact count per bucket, not a tally of the page on screen.
+    expect(calibrated.textContent).toContain('7')
+    expect(screen.queryByText(/this page/i)).toBeNull()
+    calls.list = []
+    await userEvent.click(calibrated)
+    await waitFor(() => expect(calls.list.filter((c) => c === 'v_srv_warehouse_stock.eq:availability_status=available_calibrated').length).toBeGreaterThan(0))
+    expect(screen.getByRole('button', { name: /^calibrated/i }).getAttribute('aria-pressed')).toBe('true')
+    expect((screen.getByLabelText(/^availability$/i) as HTMLSelectElement).value).toBe('available_calibrated')
+  })
+
   it('shows a NULL warehouse serial as "not recorded"', async () => {
     replies.warehouse = {
       data: [warehouse({ serial_number: null, serial_number_raw: null, serial_status: 'unknown' })],
@@ -535,6 +550,23 @@ describe('Installed SRV attention summary (25J-B)', () => {
     needs_equipment_mapping: 0,
     conflict: 0,
   }
+
+  it('owner request 2026-10-02: a tile filters the table, and its counts do not change when it is pressed', async () => {
+    replies.installed = { data: [installed()], error: null, count: 1 }
+    replies.summary = { data: mixed, error: null }
+    renderSrv()
+    await screen.findByText('RV-880124')
+    calls.list = []
+    await userEvent.click(await screen.findByRole('button', { name: /^overdue/i }))
+    await waitFor(() => expect(calls.list).toContain('v_installed_srv_management.eq:due_status=overdue'))
+    expect(screen.getByRole('button', { name: /^overdue/i }).getAttribute('aria-pressed')).toBe('true')
+    // The strip is counted WITHOUT the bucket a tile selects, so no filtered summary carrying "due" is requested.
+    expect(calls.list.some((c) => c.startsWith('rpc:cng_installed_srv_summary_filtered') && c.includes('"due"'))).toBe(false)
+    expect(screen.getByRole('button', { name: /^installed/i }).textContent).toContain('2,662')
+    // Pressing it again shows everything.
+    await userEvent.click(screen.getByRole('button', { name: /^overdue/i }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /^installed/i }).getAttribute('aria-pressed')).toBe('true'))
+  })
 
   it('loads the whole strip from ONE query, not a seven-way count fan-out', async () => {
     replies.installed = { data: [installed()], error: null, count: 1 }
