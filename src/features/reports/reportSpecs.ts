@@ -1,4 +1,5 @@
 import type { CsvColumn } from './csv'
+import { AVAILABILITY_LABEL } from '../relief-valves/availabilityLabels'
 
 /**
  * The report registry.
@@ -425,8 +426,15 @@ export function csvColumnsFor(spec: ReportSpec): CsvColumn<ReportRow>[] {
     kind: c.kind ?? 'text',
     // The RAW value, not the rendered badge. A CSV carries data, not labels —
     // and a date is exported as its exact ISO date or blank, never as
-    // "2022 (year only)" masquerading as a date.
-    value: (row: ReportRow) => row[c.key],
+    // "2022 (year only)" masquerading as a date. One exception (owner request
+    // 2026-10-02): warehouse availability leaves as the same word the screen shows
+    // (CALIBRATED, IN TRANSIT, ...) rather than its stored code.
+    value: c.key === 'availability_status'
+      ? (row: ReportRow) => {
+          const v = row[c.key]
+          return v == null || v === '' ? v : AVAILABILITY_LABEL[String(v)] ?? v
+        }
+      : (row: ReportRow) => row[c.key],
   }))
 }
 

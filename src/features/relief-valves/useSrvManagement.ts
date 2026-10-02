@@ -131,14 +131,8 @@ const INSTALLED_COLUMNS =
   'next_calibration_precision, next_calibration_display, days_left, due_status, source_status_raw, ' +
   'needs_review, notes, source_file, source_sheet, source_row, warehouse_code, warehouse_code_source'
 
-/** Warehouse availability, as the store names it. Shared by the table and the export. */
-export const AVAILABILITY_LABEL: Record<string, string> = {
-  available_new: 'NEW',
-  available_calibrated: 'CALIBRATED',
-  available_in_store_uc: 'UNDER CALIBRATION',
-  sent_to_station_received: 'AT STATION',
-  sent_to_station_not_received: 'IN TRANSIT',
-}
+/** Warehouse availability labels live in their own dependency-free module; re-exported for callers here. */
+export { AVAILABILITY_LABEL } from './availabilityLabels'
 
 const WAREHOUSE_COLUMNS =
   'id, availability_status, warehouse_code, serial_number, serial_number_raw, serial_status, part_number, ' +

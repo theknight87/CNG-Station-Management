@@ -16,7 +16,7 @@ import { DueBadge, PrecisionDate, Serial } from '@/features/units/assetDisplay'
 import type { DatePrecision, DueStatus } from '@/features/units/useUnitWorkspace'
 import type { ReportColumn, ReportRow, ReportSpec } from './reportSpecs'
 import { humanizeAssetType, humanizeParentKind, humanizeTechnicalValue } from '@/lib/presentation/humanize'
-import { AVAILABILITY_LABEL } from '@/features/relief-valves/useSrvManagement'
+import { AVAILABILITY_LABEL } from '@/features/relief-valves/availabilityLabels'
 
 /**
  * The report table.

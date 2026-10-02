@@ -402,6 +402,16 @@ describe('CSV export', () => {
     expect(csvHeaders).toEqual(dueSpec.columns.map((c) => c.header))
   })
 
+  it('owner request 2026-10-02: exports warehouse availability as its word, everything else raw', () => {
+    const cols = csvColumnsFor(reportSpec('srv-warehouse'))
+    const availability = cols.find((c) => c.header === 'Availability')!
+    expect(availability.value({ availability_status: 'available_calibrated' })).toBe('CALIBRATED')
+    expect(availability.value({ availability_status: 'sent_to_station_received' })).toBe('AT STATION')
+    expect(availability.value({ availability_status: null })).toBeNull()
+    const due = cols.find((c) => c.header === 'Due State')!
+    expect(due.value({ due_status: 'due_30' })).toBe('due_30')
+  })
+
   it('exports raw values, so a year-only date never leaves as a calendar date', () => {
     const cols = csvColumnsFor(dueSpec)
     const nextDue = cols.find((c) => c.header === 'Next Due')!
