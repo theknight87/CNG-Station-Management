@@ -483,7 +483,7 @@ describe('Warehouse isolation', () => {
     expect(await screen.findByText(/unassigned stock/i)).toBeDefined()
   })
 
-  it('owner request 2026-10-02: availability reads Calibrated / Under calibration / New', async () => {
+  it('owner request 2026-10-02: availability reads CALIBRATED / UNDER CALIBRATION / NEW', async () => {
     replies.warehouse = {
       data: [
         warehouse({ id: 'w-c', availability_status: 'available_calibrated' }),
@@ -494,7 +494,7 @@ describe('Warehouse isolation', () => {
     }
     renderSrv('/manage/srvs/warehouse')
     const table = await screen.findByRole('table')
-    for (const label of ['Calibrated', 'Under calibration', 'New']) {
+    for (const label of ['CALIBRATED', 'UNDER CALIBRATION', 'NEW']) {
       expect(within(table).getByText(label, { exact: true })).toBeDefined()
     }
     expect(within(table).queryByText(/Available —|in store \(UC\)/)).toBeNull()

@@ -16,6 +16,7 @@ import { DueBadge, PrecisionDate, Serial } from '@/features/units/assetDisplay'
 import type { DatePrecision, DueStatus } from '@/features/units/useUnitWorkspace'
 import type { ReportColumn, ReportRow, ReportSpec } from './reportSpecs'
 import { humanizeAssetType, humanizeParentKind, humanizeTechnicalValue } from '@/lib/presentation/humanize'
+import { AVAILABILITY_LABEL } from '@/features/relief-valves/useSrvManagement'
 
 /**
  * The report table.
@@ -153,6 +154,7 @@ function Cell({ column, row }: { column: ReportColumn; row: ReportRow }) {
       if (typeof value === 'boolean') return <>{value ? 'Yes' : 'No'}</>
       if (column.kind === 'date') return <span className="whitespace-nowrap tabular">{String(value).replace('T', ' ').slice(0, 19)}</span>
       if (column.key === 'asset_type') return <>{humanizeAssetType(String(value))}</>
+      if (column.key === 'availability_status') return <>{AVAILABILITY_LABEL[String(value)] ?? String(value)}</>
       if (column.key === 'parent_kind') return <>{humanizeParentKind(String(value))}</>
       if (/(issue_kind|severity|state|subject)/.test(column.key)) return <>{humanizeTechnicalValue(String(value))}</>
       return <>{String(value)}</>

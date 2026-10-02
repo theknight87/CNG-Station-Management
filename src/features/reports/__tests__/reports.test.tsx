@@ -463,6 +463,17 @@ describe('SRV installed and warehouse stay apart', () => {
     expect(screen.getByRole('heading', { name: 'SRV (Warehouse)' })).toBeDefined()
     expect(screen.queryByText('10')).toBeNull()
   })
+
+  it('owner request 2026-10-02: shows warehouse availability by its label, never the stored code', async () => {
+    db.rows.v_warehouse_srv_management = [
+      { id: 'w1', serial_number: 'WH-1', availability_status: 'available_in_store_uc' },
+      { id: 'w2', serial_number: 'WH-2', availability_status: 'sent_to_station_not_received' },
+    ]
+    render(withRouter(<ReportWorkspace spec={reportSpec('srv-warehouse')} />))
+    expect(await screen.findByText('UNDER CALIBRATION')).toBeDefined()
+    expect(screen.getByText('IN TRANSIT')).toBeDefined()
+    expect(screen.queryByText(/available_in_store_uc|sent_to_station/)).toBeNull()
+  })
 })
 
 describe('data quality is read-only', () => {
