@@ -8,6 +8,7 @@ import { useSupabaseClient } from '@/lib/supabase/client'
 import { foldName } from '@/features/hierarchy/foldName'
 import type { Loadable } from '@/features/hierarchy/useHierarchy'
 import type { DatePrecision, DueStatus } from '@/features/units/useUnitWorkspace'
+import { applyMulti, DUE_ALIASES } from '@/components/data/multiFilter'
 
 /**
  * Global Gas Detector Management.
@@ -126,9 +127,10 @@ export type DetectorSort =
   | 'region' | 'next_due' | 'last_calibration' | 'station' | 'unit' | 'serial'
   | 'manufacturer' | 'area' | 'mapping'
 
-export type DetectorDueFilter = 'all' | 'overdue' | 'attention' | 'unknown'
+/** 'all', a legacy single bucket, or a multi-choice of due statuses (`multiFilter.ts`). */
+export type DetectorDueFilter = 'all' | 'overdue' | 'attention' | 'unknown' | (string & {})
 export type DetectorMappingFilter = 'all' | DetectorMappingStatus
-export type DetectorAreaFilter = 'all' | DetectorAreaType
+export type DetectorAreaFilter = 'all' | DetectorAreaType | (string & {})
 export type DetectorPresenceFilter = 'installed' | 'not_installed' | 'unknown' | 'all'
 
 export interface DetectorQuery {
@@ -185,13 +187,11 @@ export function applyDetectorQuery<B extends { eq: any; in: any; or: any; ilike:
 ): B {
   const term = q.search.trim()
   if (withPresence && q.presence !== 'all') b = b.eq('detector_presence', q.presence)
-  if (q.regionId) b = b.eq('region_id', q.regionId)
-  if (q.stationId) b = b.eq('station_id', q.stationId)
-  if (q.area !== 'all') b = b.eq('area_type', q.area)
+  b = applyMulti(b, 'region_id', q.regionId)
+  b = applyMulti(b, 'station_id', q.stationId)
+  b = applyMulti(b, 'area_type', q.area)
   if (q.mapping !== 'all') b = b.eq('mapping_status', q.mapping)
-  if (q.due === 'overdue') b = b.eq('due_status', 'overdue')
-  if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
-  if (q.due === 'attention') b = b.in('due_status', ATTENTION_BUCKETS)
+  b = applyMulti(b, 'due_status', q.due, { aliases: DUE_ALIASES })
   b = applyAssetFilters(b, q.filters, { serial: 'serial_number', station: 'station_name', maker: 'manufacturer', date: DETECTOR_DATE })
   if (term) {
     // Retrieval only. Matching a station name here RESOLVES NOTHING — no

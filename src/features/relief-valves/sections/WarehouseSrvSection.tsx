@@ -26,6 +26,8 @@ import { RemoveValveButton } from '@/features/relief-valves/SrvAdminActions'
 import { FormMessage, IssuePanel, ValveHistory } from '@/features/relief-valves/SrvWorkflowPieces'
 import { useIsAdmin, useWorkflowAction, workflowError } from '@/features/relief-valves/useSrvWorkflow'
 import { useSupabaseClient } from '@/lib/supabase/client'
+import { MultiSelectFilter } from '@/components/data/MultiSelectFilter'
+import { DUE_ALIASES, DUE_OPTIONS } from '@/components/data/multiFilter'
 
 /**
  * Warehouse relief valves — INVENTORY, not hierarchy.
@@ -319,35 +321,12 @@ export function WarehouseSrvSection() {
         </label>
 
         {/* No Region filter: warehouse stock has no Region. */}
-        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span>Availability</span>
-          <select
-            id="warehouse-srv-availability" name="warehouse-srv-availability" value={query.availability ?? ''}
-            onChange={(e) => update({ availability: e.target.value || null })}
-            className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
-          >
-            <option value="">All</option>
-            {Object.entries(AVAILABILITY_LABEL).filter(([value]) => STOCK_STATUSES.includes(value)).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <MultiSelectFilter id="warehouse-srv-availability" label="Availability" value={query.availability}
+                           onChange={(v) => update({ availability: v || null })}
+                           options={STOCK_STATUSES.map((value) => ({ value, label: AVAILABILITY_LABEL[value] }))} />
 
-        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span>Due</span>
-          <select
-            id="warehouse-srv-due" name="warehouse-srv-due" value={query.due}
-            onChange={(e) => update({ due: e.target.value as WarehouseQuery['due'] })}
-            className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
-          >
-            <option value="all">All</option>
-            <option value="overdue">Overdue</option>
-            <option value="attention">Due ≤30d (incl. overdue)</option>
-            <option value="unknown">No exact date</option>
-          </select>
-        </label>
+        <MultiSelectFilter id="warehouse-srv-due" label="Due" value={query.due} empty="all" aliases={DUE_ALIASES}
+                           onChange={(due) => update({ due })} options={DUE_OPTIONS} />
 
         <SmartFilterBar id="warehouse-srv" regionLabel="Destination Region" value={query.filters} onChange={(filters) => update({ filters })} date={WAREHOUSE_DATE} />
         {hasFilters ? (
@@ -431,7 +410,6 @@ export function WarehouseSrvSection() {
             </Fact>
             <Fact label="Days left">{r.days_left === null ? <NullValue /> : r.days_left.toLocaleString()}</Fact>
             <Fact label="Status"><DueBadge status={r.due_status} /></Fact>
-            <Fact label="Source status"><Text value={r.source_status_raw} /></Fact>
             <Fact label="Notes"><Text value={r.notes} /></Fact>
           </>
         )}

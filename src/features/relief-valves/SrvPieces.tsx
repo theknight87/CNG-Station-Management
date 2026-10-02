@@ -4,6 +4,7 @@ import { RegionChip } from '@/components/data/AssetChips'
 import { DateRangePicker } from '@/components/data/DateRangePicker'
 import { PressureFilter } from '@/components/data/FilterControls'
 import { filterControl, filterLabel } from '@/components/data/filterStyles'
+import { MultiSelectFilter } from '@/components/data/MultiSelectFilter'
 import type { DateOption } from '@/components/data/dateRange'
 import { StatusBadge } from '@/components/data/StatusBadge'
 import { Identifier } from '@/components/data/TechnicalText'
@@ -202,13 +203,8 @@ export function SmartFilterBar({ id, value, onChange, regionLabel = 'Region', sh
   return (
     <>
       {showRegion ? (
-        <label className={filterLabel} htmlFor={`${id}-region`}>
-          {regionLabel}
-          <select id={`${id}-region`} className={filterControl} value={value.region} onChange={(e) => set({ region: e.target.value })}>
-            <option value="">All</option>
-            {regions.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
-          </select>
-        </label>
+        <MultiSelectFilter id={`${id}-region`} label={regionLabel} value={value.region} onChange={(region) => set({ region })}
+                           options={regions.map((r) => ({ value: r.id, label: r.label }))} />
       ) : null}
       <label className={filterLabel} htmlFor={`${id}-size`}>
         Size
@@ -222,14 +218,8 @@ export function SmartFilterBar({ id, value, onChange, regionLabel = 'Region', sh
       </label>
       <PressureFilter id={id} label="Set pressure" value={value.pressure} unit={value.pressureUnit}
                       onChange={(p) => set({ ...(p.value !== undefined ? { pressure: p.value } : {}), ...(p.unit !== undefined ? { pressureUnit: p.unit } : {}) })} />
-      <label className={filterLabel} htmlFor={`${id}-manufacturer`}>
-        Manufacturer
-        <select id={`${id}-manufacturer`} className={filterControl} value={value.manufacturer}
-                onChange={(e) => set({ manufacturer: e.target.value })}>
-          <option value="">All</option>
-          {MANUFACTURERS.map((m) => <option key={m} value={m}>{m}</option>)}
-        </select>
-      </label>
+      <MultiSelectFilter id={`${id}-manufacturer`} label="Manufacturer" value={value.manufacturer}
+                         onChange={(manufacturer) => set({ manufacturer })} options={MANUFACTURERS.map((m) => ({ value: m, label: m }))} />
       {date ? <DateRangePicker id={id} value={value} onChange={set} option={date} /> : null}
     </>
   )

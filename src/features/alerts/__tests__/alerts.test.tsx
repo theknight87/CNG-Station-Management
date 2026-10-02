@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { pickMulti } from '@/test/multiPick'
 
 /**
  * The Alerts inbox.
@@ -159,8 +160,8 @@ describe('Route and shell', () => {
     renderAlerts()
     await screen.findByText('RV-880124')
     expect(calls.list.some((call) => call.startsWith('v_station_summary.'))).toBe(false)
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: /region/i }), 'r-east')
-    expect(await screen.findByRole('combobox', { name: /station/i })).toBeDefined()
+    await pickMulti('Region', ['East'])
+    expect(await screen.findByRole('button', { name: /^station:/i })).toBeDefined()
     expect(calls.list.filter((call) => call.startsWith('v_station_summary.range:'))).toHaveLength(1)
     expect(calls.list).toContain('v_station_summary.eq:region_id=r-east')
   })
@@ -424,9 +425,9 @@ describe('Server-side search, filters, sorting, pagination', () => {
     replies.regions = { data: [{ region_id: 'r-east', region_code: 'east', region_name: 'East', sort_order: 1, stations: 1, units: 1, assets: 1, overdue: 1, approaching_due: 0, unresolved_mapping: 0 }], error: null }
     renderAlerts()
     await screen.findByText('RV-880124')
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: /region/i }), 'r-east')
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: /subject/i }), 'srv_calibration')
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: /threshold/i }), 'overdue')
+    await pickMulti('Region', ['East'])
+    await pickMulti('Subject', ['SRV calibration'])
+    await pickMulti('Threshold', ['Overdue'])
     expect(calls.list).toContain('v_alert_inbox.eq:region_id=r-east')
     expect(calls.list).toContain('v_alert_inbox.eq:subject=srv_calibration')
     expect(calls.list).toContain('v_alert_inbox.eq:threshold=overdue')

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { useSupabaseClient } from '@/lib/supabase/client'
+import { applyMulti } from '@/components/data/multiFilter'
 
 /**
  * Dependent hierarchy options for the report filters.
@@ -51,9 +52,9 @@ export function useStationOptions(regionId: string): Option[] {
       // No Region chosen means no Station list: offering every Station would
       // invite a Station/Region pair the hierarchy does not support.
       if (!regionId) { setOptions([]); return }
-      const { data, error } = await supabase
-        .from('stations').select('id, station_name')
-        .eq('region_id', regionId).order('station_name')
+      let request = supabase.from('stations').select('id, station_name')
+      request = applyMulti(request, 'region_id', regionId)
+      const { data, error } = await request.order('station_name')
       if (cancelled || error) return
       setOptions((data ?? []).map((r) => ({
         id: r.id as string, label: (r.station_name as string) ?? '',
@@ -72,9 +73,9 @@ export function useUnitOptions(stationId: string): Option[] {
     void (async () => {
       if (!supabase) return
       if (!stationId) { setOptions([]); return }
-      const { data, error } = await supabase
-        .from('units').select('id, unit_name')
-        .eq('station_id', stationId).order('unit_name')
+      let request = supabase.from('units').select('id, unit_name')
+      request = applyMulti(request, 'station_id', stationId)
+      const { data, error } = await request.order('unit_name')
       if (cancelled || error) return
       setOptions((data ?? []).map((r) => ({
         id: r.id as string, label: (r.unit_name as string) ?? '',

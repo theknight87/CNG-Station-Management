@@ -8,6 +8,7 @@ import { useSupabaseClient } from '@/lib/supabase/client'
 import { foldName } from '@/features/hierarchy/foldName'
 import type { Loadable } from '@/features/hierarchy/useHierarchy'
 import type { DatePrecision, DueStatus } from '@/features/units/useUnitWorkspace'
+import { applyMulti, DUE_ALIASES } from '@/components/data/multiFilter'
 
 /**
  * Storage Vessels and Recovery Tanks.
@@ -108,7 +109,8 @@ const COLUMNS =
   'serial_missing, serial_duplicate, serial_duplicate_count'
 
 export type VesselSort = 'region' | 'next_due' | 'last_inspection' | 'station' | 'unit' | 'serial' | 'manufacturer' | 'mapping'
-export type VesselDueFilter = 'all' | 'overdue' | 'attention' | 'unknown'
+/** 'all', a legacy single bucket, or a multi-choice of due statuses (`multiFilter.ts`). */
+export type VesselDueFilter = 'all' | 'overdue' | 'attention' | 'unknown' | (string & {})
 export type VesselMappingFilter = 'all' | VesselMappingStatus
 
 export interface VesselQuery {
@@ -151,11 +153,9 @@ const SORT_COLUMNS: Record<VesselSort, string[]> = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function applyVesselQuery<B extends { eq: any; in: any; or: any; ilike: any; lte: any; gte: any; lt: any }>(b: B, q: VesselQuery): B {
   const term = q.search.trim()
-  if (q.regionId) b = b.eq('region_id', q.regionId)
+  b = applyMulti(b, 'region_id', q.regionId)
   if (q.mapping !== 'all') b = b.eq('mapping_status', q.mapping)
-  if (q.due === 'overdue') b = b.eq('due_status', 'overdue')
-  if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
-  if (q.due === 'attention') b = b.in('due_status', ATTENTION_BUCKETS)
+  b = applyMulti(b, 'due_status', q.due, { aliases: DUE_ALIASES })
   if (q.duplicateSerial) b = b.eq('serial_duplicate', true)
   b = applyAssetFilters(b, q.filters, { serial: 'serial_number', station: 'station_name', maker: 'manufacturer', date: VESSEL_DATE })
   if (term) {

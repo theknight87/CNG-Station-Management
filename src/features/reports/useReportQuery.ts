@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { applyMulti } from '@/components/data/multiFilter'
 import { useSupabaseClient } from '@/lib/supabase/client'
 import { selectColumnsFor, type ReportRow, type ReportSpec } from './reportSpecs'
 
@@ -60,6 +61,8 @@ function safeSearchTerm(raw: string): string {
 
 type QueryBuilder = {
   eq: (col: string, val: unknown) => QueryBuilder
+  in: (col: string, values: unknown[]) => QueryBuilder
+  ilike: (col: string, pattern: string) => QueryBuilder
   gte: (col: string, val: unknown) => QueryBuilder
   lte: (col: string, val: unknown) => QueryBuilder
   or: (expr: string) => QueryBuilder
@@ -80,11 +83,12 @@ export function applyReportFilters<Q extends QueryBuilder>(
 ): Q {
   const cols = spec.filterColumns
   let q = query
-  if (filters.region && cols.region) q = q.eq(cols.region, filters.region) as Q
-  if (filters.station && cols.station) q = q.eq(cols.station, filters.station) as Q
-  if (filters.unit && cols.unit) q = q.eq(cols.unit, filters.unit) as Q
-  if (filters.assetType && cols.assetType) q = q.eq(cols.assetType, filters.assetType) as Q
-  if (filters.dueState && cols.dueState) q = q.eq(cols.dueState, filters.dueState) as Q
+  // Region, Station, Unit, asset type and due state may each hold several values or exclude them (multiFilter.ts).
+  if (cols.region) q = applyMulti(q, cols.region, filters.region) as Q
+  if (cols.station) q = applyMulti(q, cols.station, filters.station) as Q
+  if (cols.unit) q = applyMulti(q, cols.unit, filters.unit) as Q
+  if (cols.assetType) q = applyMulti(q, cols.assetType, filters.assetType) as Q
+  if (cols.dueState) q = applyMulti(q, cols.dueState, filters.dueState) as Q
   if (filters.mappingStatus && cols.mappingStatus) {
     q = q.eq(cols.mappingStatus, filters.mappingStatus) as Q
   }

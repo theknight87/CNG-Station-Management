@@ -11,6 +11,8 @@ function builder() {
     gte(c: string, v: unknown) { calls.push(['gte', c, v]); return b },
     lt(c: string, v: unknown) { calls.push(['lt', c, v]); return b },
     eq(c: string, v: unknown) { calls.push(['eq', c, v]); return b },
+    in(c: string, v: unknown) { calls.push(['in', c, v]); return b },
+    or(e: string) { calls.push(['or', e, null]); return b },
   }
   return { b, calls }
 }

@@ -15,8 +15,10 @@ import { Fact } from '@/features/hierarchy/HierarchyPieces'
 import { useRegions } from '@/features/hierarchy/useHierarchy'
 import { DueBadge, PrecisionDate, PressureRange, Serial, Text } from '@/features/units/assetDisplay'
 import { ValveHistory } from '@/features/relief-valves/SrvWorkflowPieces'
-import { ManufacturerChip, RegionChip, SmartFilterBar, MappingBadge, Metric, ParentCell, SourceContext } from '@/features/relief-valves/SrvPieces'
+import { ManufacturerChip, RegionChip, SmartFilterBar, Metric, ParentCell } from '@/features/relief-valves/SrvPieces'
 import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
+import { MultiSelectFilter } from '@/components/data/MultiSelectFilter'
+import { DUE_ALIASES, DUE_OPTIONS } from '@/components/data/multiFilter'
 import {
   INSTALLED_DATE,
   hasSmartFilters,
@@ -43,6 +45,12 @@ import {
  * record is advanced through the lifecycle, and no parent is inferred. Mapping
  * mutation is deferred — see docs/srv-management.md.
  */
+
+const PARENT_OPTIONS = [
+  { value: 'compressor', label: 'Compressor' },
+  { value: 'storage_vessel', label: 'Storage Vessel' },
+  { value: 'dispenser', label: 'Dispenser' },
+]
 
 const COLUMNS: RegistryColumn<InstalledSrvRow>[] = [
   {
@@ -204,52 +212,15 @@ export function InstalledSrvSection() {
           />
         </label>
 
-        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span>Region</span>
-          <select
-            id="installed-srv-region" name="installed-srv-region" value={query.regionId ?? ''}
-            onChange={(e) => update({ regionId: e.target.value || null })}
-            className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
-          >
-            <option value="">All Regions</option>
-            {regions.state.status === 'ready'
-              ? regions.state.data.map((r) => (
-                  <option key={r.region_id} value={r.region_id}>
-                    {r.region_name}
-                  </option>
-                ))
-              : null}
-          </select>
-        </label>
+        <MultiSelectFilter id="installed-srv-region" label="Region" value={query.regionId} onChange={(v) => update({ regionId: v || null })}
+                           options={regions.state.status === 'ready' ? regions.state.data.map((r) => ({ value: r.region_id, label: r.region_name })) : []} />
 
         {/* Owner request 2026-10-02: no Mapping filter (every valve is mapped); the Conflict tile still filters. */}
-        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span>Due</span>
-          <select
-            id="installed-srv-due" name="installed-srv-due" value={query.due}
-            onChange={(e) => update({ due: e.target.value as InstalledQuery['due'] })}
-            className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
-          >
-            <option value="all">All</option>
-            <option value="overdue">Overdue</option>
-            <option value="attention">Due ≤30d (incl. overdue)</option>
-            <option value="unknown">No exact date</option>
-          </select>
-        </label>
+        <MultiSelectFilter id="installed-srv-due" label="Due" value={query.due} empty="all" aliases={DUE_ALIASES}
+                           onChange={(due) => update({ due })} options={DUE_OPTIONS} />
 
-        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span>Parent</span>
-          <select
-            id="installed-srv-parent" name="installed-srv-parent" value={query.parentKind}
-            onChange={(e) => update({ parentKind: e.target.value as InstalledQuery['parentKind'] })}
-            className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
-          >
-            <option value="all">Any</option>
-            <option value="compressor">Compressor</option>
-            <option value="storage_vessel">Storage Vessel</option>
-            <option value="dispenser">Dispenser</option>
-          </select>
-        </label>
+        <MultiSelectFilter id="installed-srv-parent" label="Parent" value={query.parentKind} empty="all" allLabel="Any"
+                           onChange={(parentKind) => update({ parentKind })} options={PARENT_OPTIONS} />
 
         <SmartFilterBar id="installed-srv" showRegion={false} value={query.filters} onChange={(filters) => update({ filters })} date={INSTALLED_DATE} />
         {hasFilters ? (
@@ -304,7 +275,6 @@ export function InstalledSrvSection() {
             <Fact label="Set pressure">
               <PressureRange min={r.pressure_min} max={r.pressure_max} unit={r.pressure_unit} raw={r.set_pressure_raw} />
             </Fact>
-            <Fact label="Mapping"><MappingBadge status={r.mapping_status} /></Fact>
             <Fact label="Region">
               {r.mapping_status === 'needs_station_mapping' ? (
                 <span className="text-muted-foreground">Not confirmed</span>
@@ -319,27 +289,8 @@ export function InstalledSrvSection() {
                 <Text value={r.station_name} />
               )}
             </Fact>
-            {/* The raw source station name is kept for traceability and shown
-              * as SOURCE TEXT. It is never treated as a canonical station and
-              * never as an authorization boundary. */}
-            <Fact label="Station name (source text)">
-              <SourceContext value={r.source_station_name_raw} note="unconfirmed source text" />
-            </Fact>
             <Fact label="Unit"><Text value={r.unit_name} /></Fact>
             <Fact label="Equipment parent"><ParentCell row={r} /></Fact>
-            <Fact label="Expected parent (source hint)">
-              {r.expected_parent_kind ? (
-                <span>
-                  {r.expected_parent_kind === 'compressor' ? 'Compressor' : r.expected_parent_kind === 'storage_vessel' ? 'Storage Vessel' : 'Dispenser'}
-                  <span className="ml-1 text-xs text-muted-foreground">which one is unknown</span>
-                </span>
-              ) : (
-                <NullValue />
-              )}
-            </Fact>
-            <Fact label="Location (source text)">
-              <SourceContext value={r.location_raw} note="source context, not an identity" />
-            </Fact>
             <Fact label="Last calibration">
               <PrecisionDate display={r.last_calibration_display} precision={r.last_calibration_precision} />
             </Fact>
@@ -348,10 +299,6 @@ export function InstalledSrvSection() {
             </Fact>
             <Fact label="Days left">{r.days_left === null ? <NullValue /> : r.days_left.toLocaleString()}</Fact>
             <Fact label="Status"><DueBadge status={r.due_status} /></Fact>
-            <Fact label="Source status"><Text value={r.source_status_raw} /></Fact>
-            <Fact label="Source file"><Text value={r.source_file} /></Fact>
-            <Fact label="Source sheet"><Text value={r.source_sheet} /></Fact>
-            <Fact label="Source row">{r.source_row === null ? <NullValue /> : r.source_row}</Fact>
             <Fact label="Notes"><Text value={r.notes} /></Fact>
           </>
         )}

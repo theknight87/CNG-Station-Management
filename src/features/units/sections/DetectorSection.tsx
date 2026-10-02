@@ -78,7 +78,6 @@ export function DetectorSection() {
           </Fact>
           <Fact label="Days left">{r.days_left === null ? <NullValue /> : r.days_left.toLocaleString()}</Fact>
           <Fact label="Status"><DueBadge status={r.due_status} /></Fact>
-          <Fact label="Source status"><Text value={r.source_status_raw} /></Fact>
           <Fact label="Notes"><Text value={r.notes} /></Fact>
         </>
       )}

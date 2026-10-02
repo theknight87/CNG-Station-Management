@@ -6,7 +6,6 @@ import { DueBadge, PrecisionDate, Serial, SourceStatus, Text } from '@/features/
 import { useUnitEquipment, type VesselRow } from '@/features/units/useUnitWorkspace'
 import { Identifier } from '@/components/data/TechnicalText'
 import { NullValue } from '@/components/data/NullValue'
-import { StatusBadge } from '@/components/data/StatusBadge'
 
 /**
  * Storage Vessels and Recovery Tanks.
@@ -94,13 +93,9 @@ export function VesselSection({ kind }: { kind: 'storage_vessel' | 'recovery_tan
           </Fact>
           <Fact label="Days left">{r.days_left === null ? <NullValue /> : r.days_left.toLocaleString()}</Fact>
           <Fact label="Status"><DueBadge status={r.due_status} /></Fact>
-          <Fact label="Source status"><Text value={r.source_status_raw} /></Fact>
           {kind === 'storage_vessel' ? (
             <Fact label="Placement">{r.station_level ? 'Station level · all units' : 'This Unit'}</Fact>
           ) : null}
-          <Fact label="Mapping">
-            {r.needs_mapping ? <StatusBadge kind="unmapped" label={r.mapping_status} /> : <span>Resolved</span>}
-          </Fact>
           <Fact label="Notes"><Text value={r.notes} /></Fact>
         </>
       )}

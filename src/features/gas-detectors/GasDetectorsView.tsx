@@ -27,6 +27,8 @@ import {
   type DetectorQuery, type DetectorRegistryRow, type DetectorSort,
   detectorRequest,
 } from '@/features/gas-detectors/useGasDetectorManagement'
+import { MultiSelectFilter } from '@/components/data/MultiSelectFilter'
+import { DUE_ALIASES, DUE_OPTIONS } from '@/components/data/multiFilter'
 
 /**
  * Global Gas Detector Management — the company-wide calibration registry.
@@ -227,60 +229,18 @@ export function GasDetectorsView() {
             />
           </label>
 
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span>Region</span>
-            <select
-              id="gas-detectors-region" name="gas-detectors-region" value={query.regionId ?? ''}
-              // Changing Region clears the Station: a station from the old
-              // region would silently contradict the new one.
-              onChange={(e) => update({ regionId: e.target.value || null, stationId: null })}
-              className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
-            >
-              <option value="">All Regions</option>
-              {regions.state.status === 'ready'
-                ? regions.state.data.map((r) => (
-                    <option key={r.region_id} value={r.region_id}>
-                      {r.region_name}
-                    </option>
-                  ))
-                : null}
-            </select>
-          </label>
+          {/* Changing Region clears the Station: a station from the old region would silently contradict the new one. */}
+          <MultiSelectFilter id="gas-detectors-region" label="Region" value={query.regionId} onChange={(v) => update({ regionId: v || null, stationId: null })}
+                             options={regions.state.status === 'ready' ? regions.state.data.map((r) => ({ value: r.region_id, label: r.region_name })) : []} />
 
           {query.regionId ? (
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span>Station</span>
-              <select
-                id="gas-detectors-station" name="gas-detectors-station" value={query.stationId ?? ''}
-                onChange={(e) => update({ stationId: e.target.value || null })}
-                className="h-7 max-w-[12rem] rounded border bg-background px-1.5 text-sm text-foreground"
-              >
-                <option value="">All Stations</option>
-                {stations.state.status === 'ready'
-                  ? stations.state.data.rows.map((s) => (
-                      <option key={s.station_id} value={s.station_id}>
-                        {s.station_name}
-                      </option>
-                    ))
-                  : null}
-              </select>
-            </label>
+            <MultiSelectFilter id="gas-detectors-station" label="Station" value={query.stationId} onChange={(v) => update({ stationId: v || null })}
+                               options={stations.state.status === 'ready' ? stations.state.data.rows.map((s) => ({ value: s.station_id, label: s.station_name })) : []} />
           ) : null}
 
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span>Area</span>
-            <select
-              id="gas-detectors-area" name="gas-detectors-area" value={query.area}
-              onChange={(e) => update({ area: e.target.value as DetectorQuery['area'] })}
-              className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
-            >
-              {/* A classification, not a status. The order is alphabetical, not
-                * "good to bad", because neither value is either. */}
-              <option value="all">All areas</option>
-              <option value="closed">Closed</option>
-              <option value="open">Open</option>
-            </select>
-          </label>
+          {/* A classification, not a status: listed alphabetically, because neither value is "good" or "bad". */}
+          <MultiSelectFilter id="gas-detectors-area" label="Area" value={query.area} empty="all" allLabel="All areas"
+                             onChange={(area) => update({ area })} options={[{ value: 'closed', label: 'Closed' }, { value: 'open', label: 'Open' }]} />
 
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>Presence</span>
@@ -300,19 +260,8 @@ export function GasDetectorsView() {
           </label>
 
           {/* Owner request 2026-10-02: no Mapping filter; the Needs unit tile still filters. */}
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span>Due</span>
-            <select
-              id="gas-detectors-due" name="gas-detectors-due" value={query.due}
-              onChange={(e) => update({ due: e.target.value as DetectorQuery['due'] })}
-              className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
-            >
-              <option value="all">All</option>
-              <option value="overdue">Overdue</option>
-              <option value="attention">Due ≤30d (incl. overdue)</option>
-              <option value="unknown">No exact date</option>
-            </select>
-          </label>
+          <MultiSelectFilter id="gas-detectors-due" label="Due" value={query.due} empty="all" aliases={DUE_ALIASES}
+                             onChange={(due) => update({ due })} options={DUE_OPTIONS} />
 
           <AssetFilterBar id="gas-detectors" value={query.filters} onChange={(filters) => update({ filters })}
                           makers={makers.length ? makers : undefined} date={DETECTOR_DATE} />
@@ -356,11 +305,8 @@ export function GasDetectorsView() {
               <Fact label="Region"><RegionChip name={r.region_name} /></Fact>
               <Fact label="Station"><Text value={r.station_name} /></Fact>
               <Fact label="Unit"><DetectorUnitCell row={r} /></Fact>
-              <Fact label="Mapping"><DetectorMappingBadge status={r.mapping_status} /></Fact>
               <Fact label="Presence"><PresenceBadge value={r.detector_presence} /></Fact>
               <Fact label="Area type"><AreaType value={r.area_type} /></Fact>
-              {/* Raw source text, preserved and never interpreted. */}
-              <Fact label="Area (source text)"><Text value={r.area_type_raw} /></Fact>
               <Fact label="Last calibration">
                 <PrecisionDate display={r.last_calibration_display} precision={r.last_calibration_precision} />
               </Fact>
@@ -369,7 +315,6 @@ export function GasDetectorsView() {
               </Fact>
               <Fact label="Days left">{r.days_left === null ? <NullValue /> : r.days_left.toLocaleString()}</Fact>
               <Fact label="Status"><DueBadge status={r.due_status} /></Fact>
-              <Fact label="Source status"><Text value={r.source_status_raw} /></Fact>
               <Fact label="Notes"><Text value={r.notes} /></Fact>
             </>
           )}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { useSupabaseClient } from '@/lib/supabase/client'
+import { matchesMulti } from '@/components/data/multiFilter'
 import { applyReportFilters, type ReportFilterValues } from './useReportQuery'
 import type { ReportSpec } from './reportSpecs'
 
@@ -78,7 +79,7 @@ export function useReportSummary(
       // one after another, the strip took several round trips to fill).
       const dueColumn = spec.filterColumns.dueState
       // A bucket the user has already filtered to would just restate the total, so it is skipped.
-      const buckets = dueColumn ? DUE_BUCKETS.filter((b) => !filters.dueState || filters.dueState === b.key) : []
+      const buckets = dueColumn ? DUE_BUCKETS.filter((b) => matchesMulti(b.key, filters.dueState)) : []
       const breakdown = spec.summaryBreakdown?.values ?? []
       const [total, bucketCounts, breakdownCounts] = await Promise.all([
         count(),

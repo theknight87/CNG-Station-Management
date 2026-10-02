@@ -3,6 +3,7 @@
  * the SRV screens have them: serial contains, Station name contains, manufacturer, and — where the asset has one — a
  * pressure given as one value (30) or a range (30-35), matching every record whose recorded value falls in it.
  */
+import { applyMulti } from '@/components/data/multiFilter'
 import { applyDateRange, EMPTY_DATE_RANGE, hasDateRange, type DateOption, type DateRange } from '@/components/data/dateRange'
 
 export interface AssetFilters extends DateRange {
@@ -39,11 +40,11 @@ export interface AssetFilterColumns {
 
 /** Applies the filters to a PostgREST builder; a column the dataset lacks is simply not filtered. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function applyAssetFilters<B extends { ilike: any; lte: any; gte: any; lt: any; eq: any }>(b: B, f: AssetFilters, c: AssetFilterColumns): B {
+export function applyAssetFilters<B extends { ilike: any; lte: any; gte: any; lt: any; eq: any; in: any; or: any }>(b: B, f: AssetFilters, c: AssetFilterColumns): B {
   const clean = (v: string) => v.trim().replace(/[%*,()]/g, ' ').trim()
   if (c.serial && clean(f.serial)) b = b.ilike(c.serial, `%${clean(f.serial)}%`)
   if (c.station && clean(f.station)) b = b.ilike(c.station, `%${clean(f.station)}%`)
-  if (c.maker && f.maker) b = b.ilike(c.maker, clean(f.maker))
+  if (c.maker) b = applyMulti(b, c.maker, f.maker, { caseInsensitive: true })
   const range = parseRange(f.pressure)
   if (c.pressure && range) b = b.gte(c.pressure, range.lo).lte(c.pressure, range.hi)
   if (c.pressureUnit && f.pressureUnit) b = b.eq(c.pressureUnit, f.pressureUnit)

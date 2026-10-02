@@ -26,6 +26,8 @@ import {
   type HoseQuery, type HoseRegistryRow, type HoseSort,
   hoseRequest,
 } from '@/features/hoses/useHoseManagement'
+import { MultiSelectFilter } from '@/components/data/MultiSelectFilter'
+import { DUE_ALIASES, DUE_OPTIONS } from '@/components/data/multiFilter'
 
 /**
  * Global Hoses Management — the company-wide hose registry.
@@ -214,44 +216,13 @@ export function HosesManagementView() {
             />
           </label>
 
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span>Region</span>
-            <select
-              id="hoses-region" name="hoses-region" value={query.regionId ?? ''}
-              // Changing Region clears the Station: a station from the old
-              // region would silently contradict the new one.
-              onChange={(e) => update({ regionId: e.target.value || null, stationId: null })}
-              className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
-            >
-              <option value="">All Regions</option>
-              {regions.state.status === 'ready'
-                ? regions.state.data.map((r) => (
-                    <option key={r.region_id} value={r.region_id}>
-                      {r.region_name}
-                    </option>
-                  ))
-                : null}
-            </select>
-          </label>
+          {/* Changing Region clears the Station: a station from the old region would silently contradict the new one. */}
+          <MultiSelectFilter id="hoses-region" label="Region" value={query.regionId} onChange={(v) => update({ regionId: v || null, stationId: null })}
+                             options={regions.state.status === 'ready' ? regions.state.data.map((r) => ({ value: r.region_id, label: r.region_name })) : []} />
 
           {query.regionId ? (
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span>Station</span>
-              <select
-                id="hoses-station" name="hoses-station" value={query.stationId ?? ''}
-                onChange={(e) => update({ stationId: e.target.value || null })}
-                className="h-7 max-w-[12rem] rounded border bg-background px-1.5 text-sm text-foreground"
-              >
-                <option value="">All Stations</option>
-                {stations.state.status === 'ready'
-                  ? stations.state.data.rows.map((s) => (
-                      <option key={s.station_id} value={s.station_id}>
-                        {s.station_name}
-                      </option>
-                    ))
-                  : null}
-              </select>
-            </label>
+            <MultiSelectFilter id="hoses-station" label="Station" value={query.stationId} onChange={(v) => update({ stationId: v || null })}
+                               options={stations.state.status === 'ready' ? stations.state.data.rows.map((s) => ({ value: s.station_id, label: s.station_name })) : []} />
           ) : null}
 
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -270,19 +241,8 @@ export function HosesManagementView() {
           </label>
 
           {/* Owner request 2026-10-02: no Mapping filter; the Needs unit tile still filters. */}
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span>Due</span>
-            <select
-              id="hoses-due" name="hoses-due" value={query.due}
-              onChange={(e) => update({ due: e.target.value as HoseQuery['due'] })}
-              className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
-            >
-              <option value="all">All</option>
-              <option value="overdue">Overdue</option>
-              <option value="attention">Due ≤30d (incl. overdue)</option>
-              <option value="unknown">No exact date</option>
-            </select>
-          </label>
+          <MultiSelectFilter id="hoses-due" label="Due" value={query.due} empty="all" aliases={DUE_ALIASES}
+                             onChange={(due) => update({ due })} options={DUE_OPTIONS} />
 
           <AssetFilterBar id="hoses" value={query.filters} onChange={(filters) => update({ filters })} pressureLabel="Working pressure" date={HOSE_DATE} />
           {hasFilters ? (
@@ -328,7 +288,6 @@ export function HosesManagementView() {
               <Fact label="Station"><Text value={r.station_name} /></Fact>
               <Fact label="Unit"><HoseUnitCell row={r} /></Fact>
               <Fact label="Dispenser"><Text value={r.dispenser_name} /></Fact>
-              <Fact label="Mapping"><HoseMappingBadge status={r.mapping_status} /></Fact>
               <Fact label="Working pressure">
                 <Pressure value={r.working_pressure_value} unit={r.working_pressure_unit} raw={r.working_pressure_raw} />
               </Fact>
@@ -343,11 +302,6 @@ export function HosesManagementView() {
               </Fact>
               <Fact label="Days left">{r.days_left === null ? <NullValue /> : r.days_left.toLocaleString()}</Fact>
               <Fact label="Status"><DueBadge status={r.due_status} /></Fact>
-              <Fact label="Source status"><Text value={r.source_status_raw} /></Fact>
-              <Fact label="Source file"><Text value={r.source_file} /></Fact>
-              <Fact label="Source row">
-                {r.source_row === null ? <NullValue /> : <span className="tabular">{r.source_row}</span>}
-              </Fact>
               <Fact label="Notes"><Text value={r.notes} /></Fact>
             </>
           )}

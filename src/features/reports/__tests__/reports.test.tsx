@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
+import { pickMulti } from '@/test/multiPick'
 
 /**
  * The Reports workspace.
@@ -74,7 +75,7 @@ vi.mock('@/lib/supabase/client', () => {
         if (opts?.head) trace.head = true
         return chain
       }
-      for (const method of ['eq', 'gte', 'lte', 'or', 'ilike']) {
+      for (const method of ['eq', 'gte', 'lte', 'or', 'ilike', 'in']) {
         chain[method] = (...args: unknown[]) => {
           trace.ops.push(`${method}:${String(args[0] ?? '')}=${String(args[1] ?? '')}`)
           return chain
@@ -251,8 +252,8 @@ describe('filters', () => {
   it('applies Region, due state and search to the server query', async () => {
     render(withRouter(<ReportWorkspace spec={dueSpec} />))
     await screen.findByText('0012345')
-    await userEvent.selectOptions(screen.getByLabelText('Region'), 'r1')
-    await userEvent.selectOptions(screen.getByLabelText(/due state/i), 'overdue')
+    await pickMulti('Region', ['East'])
+    await pickMulti('Due state', ['Overdue'])
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
 
     const ops = queriesFor('v_report_due_compliance').at(-1)!.ops.join(' ')
@@ -264,7 +265,7 @@ describe('filters', () => {
     render(withRouter(<ReportWorkspace spec={dueSpec} />))
     await screen.findByText('0012345')
     const before = queriesFor('v_report_due_compliance').length
-    await userEvent.selectOptions(screen.getByLabelText('Region'), 'r1')
+    await pickMulti('Region', ['East'])
     expect(queriesFor('v_report_due_compliance').length).toBe(before)
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
     expect(queriesFor('v_report_due_compliance').length).toBeGreaterThan(before)
@@ -273,18 +274,18 @@ describe('filters', () => {
   it('offers no Station until a Region is chosen, and no Unit until a Station is', async () => {
     render(withRouter(<ReportWorkspace spec={dueSpec} />))
     await screen.findByText('0012345')
-    expect((screen.getByLabelText('Station') as HTMLSelectElement).disabled).toBe(true)
-    expect((screen.getByLabelText('Unit') as HTMLSelectElement).disabled).toBe(true)
+    expect(screen.queryByRole('button', { name: /^station:/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^unit:/i })).toBeNull()
 
-    await userEvent.selectOptions(screen.getByLabelText('Region'), 'r1')
-    expect((screen.getByLabelText('Station') as HTMLSelectElement).disabled).toBe(false)
-    expect((screen.getByLabelText('Unit') as HTMLSelectElement).disabled).toBe(true)
+    await pickMulti('Region', ['East'])
+    expect(screen.getByRole('button', { name: /^station:/i })).toBeDefined()
+    expect(screen.queryByRole('button', { name: /^unit:/i })).toBeNull()
   })
 
   it('scopes the Station list to the chosen Region', async () => {
     render(withRouter(<ReportWorkspace spec={dueSpec} />))
     await screen.findByText('0012345')
-    await userEvent.selectOptions(screen.getByLabelText('Region'), 'r1')
+    await pickMulti('Region', ['East'])
     const ops = db.queries.filter((q) => q.table === 'stations').at(-1)!.ops.join(' ')
     expect(ops).toMatch(/eq:region_id=r1/)
   })
@@ -292,13 +293,20 @@ describe('filters', () => {
   it('clears a Station and Unit when the Region changes', async () => {
     render(withRouter(<ReportWorkspace spec={dueSpec} />))
     await screen.findByText('0012345')
-    await userEvent.selectOptions(screen.getByLabelText('Region'), 'r1')
-    await userEvent.selectOptions(screen.getByLabelText('Station'), 'st1')
-    expect((screen.getByLabelText('Station') as HTMLSelectElement).value).toBe('st1')
-    await userEvent.selectOptions(screen.getByLabelText('Region'), 'r2')
-    // A Station/Unit pair from another Region is not expressible.
-    expect((screen.getByLabelText('Station') as HTMLSelectElement).value).toBe('')
-    expect((screen.getByLabelText('Unit') as HTMLSelectElement).value).toBe('')
+    await pickMulti('Region', ['East'])
+    await screen.findByRole('button', { name: /^station:/i })
+    await waitFor(async () => {
+      await userEvent.click(screen.getByRole('button', { name: /^station:/i }))
+      expect(screen.getByRole('checkbox', { name: 'Abnub' })).toBeDefined()
+    })
+    await userEvent.keyboard('{Escape}')
+    await pickMulti('Station', ['Abnub'])
+    expect(screen.getByRole('button', { name: /^station:/i }).textContent).toContain('Abnub')
+    expect(screen.getByRole('button', { name: /^unit:/i })).toBeDefined()
+    await pickMulti('Region', ['West'])
+    // A Station/Unit pair from another Region is not expressible: both are cleared.
+    expect(screen.getByRole('button', { name: /^station:/i }).textContent).toContain('Every Station')
+    expect(screen.queryByRole('button', { name: /^unit:/i })).toBeNull()
   })
 
   it('resets paging when the filters change', async () => {
@@ -315,7 +323,7 @@ describe('filters', () => {
     await screen.findByText('S-50')
     await waitFor(() => expect([...queriesFor('v_report_due_compliance')].reverse().find((query) => query.ops.some((op) => op.startsWith('range:')))!.ops).toContain('range:50-99'))
 
-    await userEvent.selectOptions(screen.getByLabelText(/due state/i), 'overdue')
+    await pickMulti('Due state', ['Overdue'])
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
     // Page 2 of the old question must not survive into the new one.
     await waitFor(() => expect([...queriesFor('v_report_due_compliance')].reverse().find((query) => query.ops.some((op) => op.startsWith('range:')))!.ops).toContain('range:0-49'))
@@ -351,7 +359,7 @@ describe('summary metrics', () => {
     await waitFor(() => expect(queriesFor('v_report_due_compliance').at(-1)!.ops.join(' ')).toMatch(/eq:due_status=overdue/))
     expect(screen.getByRole('button', { name: /^overdue/i }).getAttribute('aria-pressed')).toBe('true')
     // The filter bar follows the tile.
-    expect((screen.getByLabelText(/due state/i) as HTMLSelectElement).value).toBe('overdue')
+    expect(screen.getByRole('button', { name: /^due state:/i }).textContent).toContain('Overdue')
     await userEvent.click(screen.getByRole('button', { name: /^overdue/i }))
     await waitFor(() => expect(queriesFor('v_report_due_compliance').at(-1)!.ops.join(' ')).not.toMatch(/eq:due_status/))
   })
@@ -383,7 +391,7 @@ describe('CSV export', () => {
   it('re-runs the same view, filters and order as the table', async () => {
     render(withRouter(<ReportWorkspace spec={dueSpec} />))
     await screen.findByText('0012345')
-    await userEvent.selectOptions(screen.getByLabelText('Region'), 'r1')
+    await pickMulti('Region', ['East'])
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
     db.queries = []
 
@@ -557,7 +565,7 @@ describe('empty states', () => {
     // Unfiltered and empty: production simply has no canonical assets yet.
     expect(await screen.findByText(/no canonical assets have been imported yet/i)).toBeDefined()
 
-    await userEvent.selectOptions(screen.getByLabelText(/due state/i), 'overdue')
+    await pickMulti('Due state', ['Overdue'])
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
     expect(await screen.findByText(/no records match the selected filters/i)).toBeDefined()
   })

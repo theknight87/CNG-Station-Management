@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { pickMulti } from '@/test/multiPick'
 
 /**
  * Vessels Management.
@@ -185,7 +186,7 @@ describe('Server-side query', () => {
     // Owner request 2026-10-02: no Mapping dropdown; the Needs unit tile is the mapping filter.
     await userEvent.click(await screen.findByRole('button', { name: /^needs unit/i }))
     await waitFor(() => expect(calls.list).toContain('v_vessel_management.eq:mapping_status=needs_unit_mapping'))
-    await userEvent.selectOptions(screen.getByLabelText(/^due$/i), 'overdue')
+    await pickMulti('Due', ['Overdue'])
     await waitFor(() => expect(calls.list).toContain('v_vessel_management.eq:due_status=overdue'))
   })
 

@@ -2,7 +2,7 @@ import type { AssetFilters } from '@/components/data/assetFilters'
 import { DateRangePicker } from '@/components/data/DateRangePicker'
 import { PressureFilter } from '@/components/data/FilterControls'
 import type { DateOption } from '@/components/data/dateRange'
-import { filterControl, filterLabel } from '@/components/data/filterStyles'
+import { MultiSelectFilter } from '@/components/data/MultiSelectFilter'
 
 /**
  * The registry filters of Vessels, Gas Detectors and Hoses, drawn INSIDE the page's toolbar beside its search:
@@ -24,13 +24,8 @@ export function AssetFilterBar({ id, value, onChange, makers, pressureLabel, dat
   return (
     <>
       {makers ? (
-        <label className={filterLabel} htmlFor={`${id}-maker`}>
-          Manufacturer
-          <select id={`${id}-maker`} className={filterControl} value={value.maker} onChange={(e) => set({ maker: e.target.value })}>
-            <option value="">All</option>
-            {makers.map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
-        </label>
+        <MultiSelectFilter id={`${id}-maker`} label="Manufacturer" value={value.maker} onChange={(maker) => set({ maker })}
+                           options={makers.map((m) => ({ value: m, label: m }))} />
       ) : null}
       {pressureLabel ? (
         <PressureFilter id={id} label={pressureLabel} value={value.pressure} unit={value.pressureUnit}

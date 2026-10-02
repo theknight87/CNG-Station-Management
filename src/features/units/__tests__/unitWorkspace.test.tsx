@@ -332,15 +332,16 @@ describe('Unit SRV visibility rules', () => {
     expect(cells[2]).toContain('SS-4R3A')
   })
 
-  it('labels the source Location as a hint, never as an equipment identity', async () => {
+  it('owner request 2026-10-02: the details no longer show the source Location or parent hint', async () => {
     replies.srvs = {
       data: [srv({ mapping_status: 'needs_equipment_mapping', needs_mapping: true, parent_kind: null, parent_label: null })],
       error: null,
     }
     renderUnit('/units/u-1/srvs')
     await userEvent.click((await screen.findAllByRole('button', { name: /show the full technical record/i }))[0])
-    expect(screen.getByText(/source context, not an identity/i)).toBeDefined()
-    expect(screen.getByText(/which one is unknown/i)).toBeDefined()
+    expect(screen.queryByText(/source context, not an identity/i)).toBeNull()
+    expect(screen.queryByText(/which one is unknown/i)).toBeNull()
+    expect(screen.getAllByText(/^equipment parent$/i).length).toBeGreaterThan(0)
   })
 
   it('filters by mapping status within the Unit-confirmed set', async () => {

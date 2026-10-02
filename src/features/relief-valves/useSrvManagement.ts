@@ -6,6 +6,7 @@ import type { RegistryPage } from '@/components/data/RegistryTable'
 import { foldName } from '@/features/hierarchy/foldName'
 import type { Loadable } from '@/features/hierarchy/useHierarchy'
 import type { DatePrecision, DueStatus, PressureUnit } from '@/features/units/useUnitWorkspace'
+import { applyMulti, DUE_ALIASES, encodeMulti, parseMulti } from '@/components/data/multiFilter'
 import { applyDateRange, EMPTY_DATE_RANGE, hasDateRange, type DateOption, type DateRange } from '@/components/data/dateRange'
 
 /**
@@ -197,12 +198,12 @@ export function parsePressure(value: string): { lo: number; hi: number } | null 
 
 /** Applies the dedicated filters to a PostgREST builder. Station and Region columns differ per dataset. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function applySmartFilters<B extends { ilike: any; lte: any; gte: any; lt: any; eq: any }>(
+export function applySmartFilters<B extends { ilike: any; lte: any; gte: any; lt: any; eq: any; in: any; or: any }>(
   b: B, f: SrvSmartFilters, stationColumn: string, regionColumn = 'region_id', date?: DateOption,
 ): B {
   const clean = (v: string) => v.trim().replace(/[%*,()]/g, ' ').trim()
   if (clean(f.serial)) b = b.ilike('serial_number', `%${clean(f.serial)}%`)
-  if (f.region) b = b.eq(regionColumn, f.region)
+  b = applyMulti(b, regionColumn, f.region)
   if (clean(f.station)) b = b.ilike(stationColumn, `%${clean(f.station)}%`)
   if (f.size.trim()) {
     const size = parseSize(f.size)
@@ -212,7 +213,7 @@ export function applySmartFilters<B extends { ilike: any; lte: any; gte: any; lt
   }
   const range = parsePressure(f.pressure)
   if (range) b = b.lte('pressure_min', range.hi).gte('pressure_max', range.lo)
-  if (f.manufacturer) b = b.ilike('manufacturer', clean(f.manufacturer))
+  b = applyMulti(b, 'manufacturer', f.manufacturer, { caseInsensitive: true })
   if (f.pressureUnit) b = b.eq('pressure_unit', f.pressureUnit)
   return applyDateRange(b, f, date)
 }
@@ -222,8 +223,11 @@ export const INSTALLED_DATE: DateOption = { column: 'next_calibration_date', lab
 export const WAREHOUSE_DATE: DateOption = INSTALLED_DATE
 
 export type MappingFilter = 'all' | 'resolved' | 'needs_equipment_mapping' | 'needs_unit_mapping' | 'needs_station_mapping' | 'conflict'
-/** 'attention' is overdue OR any due bucket — stated, never left ambiguous. */
-export type DueFilter = 'all' | 'overdue' | 'attention' | 'unknown'
+/**
+ * 'attention' is overdue OR any due bucket — stated, never left ambiguous. Any other value is a multi-choice of due
+ * statuses ('overdue|due_7', '!valid'), see `multiFilter.ts`.
+ */
+export type DueFilter = 'all' | 'overdue' | 'attention' | 'unknown' | (string & {})
 export type InstalledSort = 'region' | 'next_due' | 'last_calibration' | 'station' | 'unit' | 'serial' | 'mapping'
   | 'pressure' | 'manufacturer' | 'size' | 'due'
 
@@ -232,7 +236,8 @@ export interface InstalledQuery {
   regionId: string | null
   mapping: MappingFilter
   due: DueFilter
-  parentKind: 'all' | 'compressor' | 'storage_vessel' | 'dispenser'
+  /** 'all' or a multi-choice of parent kinds. */
+  parentKind: 'all' | 'compressor' | 'storage_vessel' | 'dispenser' | (string & {})
   filters: SrvSmartFilters
   sort: InstalledSort
   direction: 'asc' | 'desc'
@@ -266,9 +271,6 @@ const INSTALLED_SORT: Record<InstalledSort, string[]> = {
   mapping: ['mapping_status', 'id'],
 }
 
-/** Buckets that mean "needs attention within 30 days OR already overdue" (owner request 2026-10-01: was 60). */
-const ATTENTION_BUCKETS = ['overdue', 'due_today', 'due_7', 'due_15', 'due_30']
-
 /** The shared registry page shape. Re-exported so callers here keep one import. */
 export type SrvPage<T> = RegistryPage<T>
 
@@ -279,12 +281,10 @@ export type SrvPage<T> = RegistryPage<T>
 export function installedRequest(supabase: SupabaseClient, q: InstalledQuery) {
   const term = q.search.trim()
   let b = supabase.from('v_installed_srv_management').select(INSTALLED_COLUMNS, { count: 'exact' })
-  if (q.regionId) b = b.eq('region_id', q.regionId)
+  b = applyMulti(b, 'region_id', q.regionId)
   if (q.mapping !== 'all') b = b.eq('mapping_status', q.mapping)
-  if (q.parentKind !== 'all') b = b.eq('parent_kind', q.parentKind)
-  if (q.due === 'overdue') b = b.eq('due_status', 'overdue')
-  if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
-  if (q.due === 'attention') b = b.in('due_status', ATTENTION_BUCKETS)
+  b = applyMulti(b, 'parent_kind', q.parentKind)
+  b = applyMulti(b, 'due_status', q.due, { aliases: DUE_ALIASES })
   b = applySmartFilters(b, q.filters, 'station_display', 'region_id', INSTALLED_DATE)
   if (term) {
     // Retrieval, never resolution: matching a station name here does not
@@ -418,10 +418,8 @@ export function warehouseRequest(supabase: SupabaseClient, q: WarehouseQuery) {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function applyWarehouseFilters<B extends { eq: any; in: any; or: any; ilike: any; lte: any; gte: any; lt: any }>(b: B, q: WarehouseQuery): B {
   const term = q.search.trim()
-  if (q.availability) b = b.eq('availability_status', q.availability)
-  if (q.due === 'overdue') b = b.eq('due_status', 'overdue')
-  if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
-  if (q.due === 'attention') b = b.in('due_status', ATTENTION_BUCKETS)
+  b = applyMulti(b, 'availability_status', q.availability)
+  b = applyMulti(b, 'due_status', q.due, { aliases: DUE_ALIASES })
   b = applySmartFilters(b, q.filters, 'target_station_name', 'target_region_id', WAREHOUSE_DATE)
   if (term) {
     const raw = term.replace(/[,()]/g, ' ')
@@ -657,7 +655,7 @@ export function summaryParams(q: InstalledQuery): Record<string, string> {
     region_id: q.regionId ?? '',
     mapping: q.mapping === 'all' ? '' : q.mapping,
     parent_kind: q.parentKind === 'all' ? '' : q.parentKind,
-    due: q.due === 'all' ? '' : q.due,
+    due: encodeMulti(parseMulti(q.due, DUE_ALIASES)),
     serial: clean(q.filters.serial),
     station: clean(q.filters.station),
     size_type: q.filters.size.trim() && size.type ? size.type : '',

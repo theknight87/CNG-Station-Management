@@ -21,6 +21,7 @@ import {
   type AlertQuery, type AlertRow, type AlertSort,
 } from '@/features/alerts/useAlerts'
 import { RegionChip } from '@/components/data/AssetChips'
+import { MultiSelectFilter } from '@/components/data/MultiSelectFilter'
 
 /**
  * The Alerts inbox.
@@ -221,77 +222,30 @@ export function AlertsView() {
             />
           </label>
 
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span>Region</span>
-            <select
-              id="alerts-region" name="alerts-region" value={query.regionId ?? ''}
-              onChange={(e) => update({ regionId: e.target.value || null, stationId: null })}
-              className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
-            >
-              <option value="">All Regions</option>
-              {regions.state.status === 'ready'
-                ? regions.state.data.map((r) => (
-                    <option key={r.region_id} value={r.region_id}>
-                      {r.region_name}
-                    </option>
-                  ))
-                : null}
-            </select>
-          </label>
+          <MultiSelectFilter id="alerts-region" label="Region" value={query.regionId} onChange={(v) => update({ regionId: v || null, stationId: null })}
+                             options={regions.state.status === 'ready' ? regions.state.data.map((r) => ({ value: r.region_id, label: r.region_name })) : []} />
 
           {query.regionId ? (
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span>Station</span>
-              <select
-                id="alerts-station" name="alerts-station" value={query.stationId ?? ''}
-                onChange={(e) => update({ stationId: e.target.value || null })}
-                className="h-7 max-w-[12rem] rounded border bg-background px-1.5 text-sm text-foreground"
-              >
-                <option value="">All Stations</option>
-                {stations.state.status === 'ready'
-                  ? stations.state.data.rows.map((s) => (
-                      <option key={s.station_id} value={s.station_id}>
-                        {s.station_name}
-                      </option>
-                    ))
-                  : null}
-              </select>
-            </label>
+            <MultiSelectFilter id="alerts-station" label="Station" value={query.stationId} onChange={(v) => update({ stationId: v || null })}
+                               options={stations.state.status === 'ready' ? stations.state.data.rows.map((s) => ({ value: s.station_id, label: s.station_name })) : []} />
           ) : null}
 
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span>Subject</span>
-            <select
-              id="alerts-subject" name="alerts-subject" value={query.subject}
-              onChange={(e) => update({ subject: e.target.value as AlertQuery['subject'] })}
-              className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
-            >
-              {/* The five subjects the schema defines. None invented. */}
-              <option value="all">All subjects</option>
-              <option value="srv_calibration">SRV calibration</option>
-              <option value="storage_inspection">Storage vessel inspection</option>
-              <option value="recovery_tank_inspection">Recovery tank inspection</option>
-              <option value="gas_detector_calibration">Gas detector calibration</option>
-              <option value="hose_hydrotest">Hose hydrotest</option>
-            </select>
-          </label>
+          {/* The five subjects the schema defines. None invented. */}
+          <MultiSelectFilter id="alerts-subject" label="Subject" value={query.subject} empty="all" allLabel="All subjects"
+                             onChange={(subject) => update({ subject })} options={[
+                               { value: 'srv_calibration', label: 'SRV calibration' },
+                               { value: 'storage_inspection', label: 'Storage vessel inspection' },
+                               { value: 'recovery_tank_inspection', label: 'Recovery tank inspection' },
+                               { value: 'gas_detector_calibration', label: 'Gas detector calibration' },
+                               { value: 'hose_hydrotest', label: 'Hose hydrotest' },
+                             ]} />
 
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span>Threshold</span>
-            <select
-              id="alerts-threshold" name="alerts-threshold" value={query.threshold}
-              onChange={(e) => update({ threshold: e.target.value as AlertQuery['threshold'] })}
-              className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
-            >
-              <option value="all">All thresholds</option>
-              <option value="overdue">Overdue</option>
-              <option value="due_today">Due today</option>
-              <option value="due_7">7 days</option>
-              <option value="due_15">15 days</option>
-              <option value="due_30">30 days</option>
-              <option value="due_60">60 days</option>
-            </select>
-          </label>
+          <MultiSelectFilter id="alerts-threshold" label="Threshold" value={query.threshold} empty="all" allLabel="All thresholds"
+                             onChange={(threshold) => update({ threshold })} options={[
+                               { value: 'overdue', label: 'Overdue' }, { value: 'due_today', label: 'Due today' },
+                               { value: 'due_7', label: '7 days' }, { value: 'due_15', label: '15 days' },
+                               { value: 'due_30', label: '30 days' }, { value: 'due_60', label: '60 days' },
+                             ]} />
 
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>Read</span>
@@ -365,8 +319,6 @@ export function AlertsView() {
               <Fact label="Asset type"><Text value={humanizeAssetType(r.asset_type)} /></Fact>
               <Fact label="Region"><RegionChip name={r.region_name} /></Fact>
               <Fact label="Station"><AlertStationCell row={r} /></Fact>
-              {/* Preserved verbatim; never promoted to a canonical Station. */}
-              <Fact label="Station (source text)"><Text value={r.source_station_name_raw} /></Fact>
               <Fact label="Unit"><AlertUnitCell row={r} /></Fact>
               <Fact label="Due date"><span className="tabular">{r.due_date}</span></Fact>
               <Fact label="Days left">{r.days_left === null ? <NullValue /> : r.days_left.toLocaleString()}</Fact>

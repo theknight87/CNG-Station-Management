@@ -28,6 +28,8 @@ import {
   type VesselAssetType, type VesselQuery, type VesselRegistryRow, type VesselSort,
   vesselRequest,
 } from '@/features/vessels/useVesselManagement'
+import { MultiSelectFilter } from '@/components/data/MultiSelectFilter'
+import { DUE_ALIASES, DUE_OPTIONS } from '@/components/data/multiFilter'
 
 /**
  * One registry, driven by asset type.
@@ -200,38 +202,12 @@ export function VesselRegistrySection({ assetType }: { assetType: VesselAssetTyp
           />
         </label>
 
-        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span>Region</span>
-          <select
-            value={query.regionId ?? ''}
-            onChange={(e) => update({ regionId: e.target.value || null })}
-            className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
-          >
-            <option value="">All Regions</option>
-            {regions.state.status === 'ready'
-              ? regions.state.data.map((r) => (
-                  <option key={r.region_id} value={r.region_id}>
-                    {r.region_name}
-                  </option>
-                ))
-              : null}
-          </select>
-        </label>
+        <MultiSelectFilter id="vessel-region" label="Region" value={query.regionId} onChange={(v) => update({ regionId: v || null })}
+                           options={regions.state.status === 'ready' ? regions.state.data.map((r) => ({ value: r.region_id, label: r.region_name })) : []} />
 
         {/* Owner request 2026-10-02: no Mapping filter; the Needs unit / Conflict tiles still filter. */}
-        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span>Due</span>
-          <select
-            value={query.due}
-            onChange={(e) => update({ due: e.target.value as VesselQuery['due'] })}
-            className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
-          >
-            <option value="all">All</option>
-            <option value="overdue">Overdue</option>
-            <option value="attention">Due ≤30d (incl. overdue)</option>
-            <option value="unknown">No exact date</option>
-          </select>
-        </label>
+        <MultiSelectFilter id="vessel-due" label="Due" value={query.due} empty="all" aliases={DUE_ALIASES}
+                           onChange={(due) => update({ due })} options={DUE_OPTIONS} />
 
         {/* A single checkbox rather than a new filtering system: it narrows the
           * existing query by one server-side column and hides no member of a
@@ -288,8 +264,6 @@ export function VesselRegistrySection({ assetType }: { assetType: VesselAssetTyp
             ) : null}
             <Fact label="Manufacturer"><Text value={r.manufacturer} /></Fact>
             <Fact label="Model"><Text value={r.model} /></Fact>
-            {/* Raw source text, preserved and never interpreted. */}
-            <Fact label="Type (source text)"><Text value={r.compressor_type_raw} /></Fact>
             <Fact label="Region">
               {r.mapping_status === 'needs_station_mapping' ? (
                 <span className="text-muted-foreground">Not confirmed</span>
@@ -305,7 +279,6 @@ export function VesselRegistrySection({ assetType }: { assetType: VesselAssetTyp
               )}
             </Fact>
             <Fact label="Unit"><VesselUnitCell row={r} /></Fact>
-            <Fact label="Mapping"><VesselMappingBadge status={r.mapping_status} /></Fact>
             <Fact label="Last inspection">
               <PrecisionDate display={r.last_inspection_display} precision={r.last_inspection_precision} />
             </Fact>
@@ -314,7 +287,6 @@ export function VesselRegistrySection({ assetType }: { assetType: VesselAssetTyp
             </Fact>
             <Fact label="Days left">{r.days_left === null ? <NullValue /> : r.days_left.toLocaleString()}</Fact>
             <Fact label="Status"><DueBadge status={r.due_status} /></Fact>
-            <Fact label="Source status"><Text value={r.source_status_raw} /></Fact>
             <Fact label="Notes"><Text value={r.notes} /></Fact>
 
             {/* ONLY Storage Vessels. A Recovery Tank cannot own an SRV: there

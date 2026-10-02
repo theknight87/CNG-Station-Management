@@ -5,6 +5,7 @@ import { useSupabaseClient } from '@/lib/supabase/client'
 import { foldName } from '@/features/hierarchy/foldName'
 import type { Loadable } from '@/features/hierarchy/useHierarchy'
 import type { DueStatus } from '@/features/units/useUnitWorkspace'
+import { applyMulti } from '@/components/data/multiFilter'
 
 /**
  * The Alerts inbox.
@@ -94,8 +95,9 @@ export interface AlertQuery {
   search: string
   regionId: string | null
   stationId: string | null
-  subject: 'all' | AlertSubject
-  threshold: 'all' | AlertThreshold
+  /** 'all' or a multi-choice of subjects / thresholds (`multiFilter.ts`). */
+  subject: 'all' | AlertSubject | (string & {})
+  threshold: 'all' | AlertThreshold | (string & {})
   read: AlertReadFilter
   ack: AlertAckFilter
   delivery: AlertDeliveryFilter
@@ -148,10 +150,11 @@ export function useAlerts(query: AlertQuery): {
       const term = q.search.trim()
 
       let b = supabase.from('v_alert_inbox').select(COLUMNS, { count: 'exact' })
-      if (q.regionId) b = b.eq('region_id', q.regionId)
-      if (q.stationId) b = b.eq('station_id', q.stationId)
-      if (q.subject !== 'all') b = b.eq('subject', q.subject)
-      if (q.threshold !== 'all') b = b.eq('threshold', q.threshold)
+      // Region, Station, subject and threshold may each hold several values or exclude them (multiFilter.ts).
+      b = applyMulti(b, 'region_id', q.regionId)
+      b = applyMulti(b, 'station_id', q.stationId)
+      b = applyMulti(b, 'subject', q.subject)
+      b = applyMulti(b, 'threshold', q.threshold)
       if (q.read !== 'all') b = b.eq('is_read', q.read === 'read')
       // Acknowledgement is a property of the ALERT; read state is per-user.
       // They filter independently because they mean different things.

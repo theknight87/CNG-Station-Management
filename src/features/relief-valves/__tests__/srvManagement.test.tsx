@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { ATTENTION_LABELS, pickMulti } from '@/test/multiPick'
 
 /**
  * Global SRV Management.
@@ -194,9 +195,9 @@ describe('Installed SRVs — server-side query', () => {
     expect(screen.queryByLabelText(/^mapping$/i)).toBeNull()
     await userEvent.click(await screen.findByRole('button', { name: /^conflict/i }))
     await waitFor(() => expect(calls.list).toContain('v_installed_srv_management.eq:mapping_status=conflict'))
-    await userEvent.selectOptions(screen.getByLabelText(/^due$/i), 'overdue')
+    await pickMulti('Due', ['Overdue'])
     await waitFor(() => expect(calls.list).toContain('v_installed_srv_management.eq:due_status=overdue'))
-    await userEvent.selectOptions(screen.getByLabelText(/^parent$/i), 'storage_vessel')
+    await pickMulti('Parent', ['Storage Vessel'])
     await waitFor(() => expect(calls.list).toContain('v_installed_srv_management.eq:parent_kind=storage_vessel'))
   })
 
@@ -204,10 +205,11 @@ describe('Installed SRVs — server-side query', () => {
     replies.installed = { data: [installed()], error: null, count: 1 }
     renderSrv()
     await screen.findByText('RV-880124')
-    await userEvent.selectOptions(screen.getByLabelText(/^due$/i), 'attention')
+    await pickMulti('Due', ATTENTION_LABELS)
     await waitFor(() => expect(calls.list).toContain(
       'v_installed_srv_management.in:due_status=[overdue|due_today|due_7|due_15|due_30]'))
-    expect(screen.getByRole('option', { name: /due ≤30d/i })).toBeDefined()
+    await userEvent.click(screen.getByRole('button', { name: /^due:/i }))
+    expect(screen.getByRole('checkbox', { name: /due ≤30d/i })).toBeDefined()
     expect(calls.list.some((c) => c.includes('due_60'))).toBe(false)
   })
 
@@ -267,8 +269,8 @@ describe('Installed SRVs — mapping lifecycle presentation', () => {
     }
     renderSrv()
     await userEvent.click((await screen.findAllByRole('button', { name: /show the full technical record/i }))[0])
-    expect((await screen.findAllByText(/needs equipment mapping/i)).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/not confirmed/i).length).toBeGreaterThan(0)
+    // The parent is stated as unconfirmed (owner 2026-10-02: no separate Mapping field in the details).
+    expect((await screen.findAllByText(/not confirmed/i)).length).toBeGreaterThan(0)
     expect(screen.queryByText('F-19822')).toBeNull()
   })
 
@@ -375,12 +377,15 @@ describe('Identifiers and technical values', () => {
     expect(within(table).queryByText('PSI')).toBeNull()
   })
 
-  it('labels source Location as context, never as an equipment identity', async () => {
+  it('owner request 2026-10-02: the details show no mapping, source-text, source-hint or provenance fields', async () => {
     replies.installed = { data: [installed()], error: null, count: 1 }
     renderSrv()
     await userEvent.click((await screen.findAllByRole('button', { name: /show the full technical record/i }))[0])
-    expect(screen.getByText(/source context, not an identity/i)).toBeDefined()
-    expect(screen.getByText(/which one is unknown/i)).toBeDefined()
+    for (const label of [/^mapping$/i, /station name \(source text\)/i, /expected parent/i, /location \(source text\)/i,
+      /^source status$/i, /^source file$/i, /^source sheet$/i, /^source row$/i]) {
+      expect(screen.queryByText(label)).toBeNull()
+    }
+    expect(screen.getByText(/^equipment parent$/i)).toBeDefined()
   })
 })
 
@@ -512,7 +517,7 @@ describe('Warehouse isolation', () => {
     await userEvent.click(calibrated)
     await waitFor(() => expect(calls.list.filter((c) => c === 'v_srv_warehouse_stock.eq:availability_status=available_calibrated').length).toBeGreaterThan(0))
     expect(screen.getByRole('button', { name: /^calibrated/i }).getAttribute('aria-pressed')).toBe('true')
-    expect((screen.getByLabelText(/^availability$/i) as HTMLSelectElement).value).toBe('available_calibrated')
+    expect(screen.getByRole('button', { name: /^availability:/i }).textContent).toContain('CALIBRATED')
   })
 
   it('shows a NULL warehouse serial as "not recorded"', async () => {
@@ -624,6 +629,8 @@ describe('smart filters and warehouse code', () => {
       gte(c: string, v: unknown) { calls.push(['gte', c, v]); return b },
       lt(c: string, v: unknown) { calls.push(['lt', c, v]); return b },
       eq(c: string, v: unknown) { calls.push(['eq', c, v]); return b },
+      in(c: string, v: unknown) { calls.push(['in', c, v]); return b },
+      or(e: string) { calls.push(['or', e, null]); return b },
     }
     applySmartFilters(b, { serial: ' 0003,262 ', region: 'r-1', station: 'الهرم', size: 'M 3/4" X 1"', pressure: '316', pressureUnit: 'BAR', manufacturer: 'COI', search: '', dateFrom: '', dateTo: '' }, 'station_display')
     expect(calls).toEqual([
@@ -653,6 +660,8 @@ describe('smart filters and warehouse code', () => {
       gte(c: string, v: unknown) { calls.push(['gte', c, v]); return b },
       lt(c: string, v: unknown) { calls.push(['lt', c, v]); return b },
       eq(c: string, v: unknown) { calls.push(['eq', c, v]); return b },
+      in(c: string, v: unknown) { calls.push(['in', c, v]); return b },
+      or(e: string) { calls.push(['or', e, null]); return b },
     }
     apply(b, { ...E, pressure: '30-35' }, 'station_display')
     expect(calls).toEqual([['lte', 'pressure_min', 35], ['gte', 'pressure_max', 30]])
@@ -668,10 +677,12 @@ describe('smart filters and warehouse code', () => {
 
   it('FILTER-2 empty filters add nothing', async () => {
     const { applySmartFilters, EMPTY_SMART_FILTERS, hasSmartFilters } = await import('@/features/relief-valves/useSrvManagement')
-    const b = { ilike: vi.fn(), lte: vi.fn(), gte: vi.fn(), lt: vi.fn(), eq: vi.fn() }
+    const b = { ilike: vi.fn(), lte: vi.fn(), gte: vi.fn(), lt: vi.fn(), eq: vi.fn(), in: vi.fn(), or: vi.fn() }
     applySmartFilters(b, EMPTY_SMART_FILTERS, 'station_display')
     expect(b.ilike).not.toHaveBeenCalled()
     expect(b.eq).not.toHaveBeenCalled()
+    expect(b.in).not.toHaveBeenCalled()
+    expect(b.or).not.toHaveBeenCalled()
     expect(hasSmartFilters(EMPTY_SMART_FILTERS)).toBe(false)
   })
 

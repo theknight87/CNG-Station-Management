@@ -210,28 +210,6 @@ export function SrvSection() {
             </Fact>
             <Fact label="Set pressure (source)"><Text value={r.set_pressure_raw} /></Fact>
             <Fact label="Equipment parent"><ParentCell row={r} /></Fact>
-            {/* The source hint, labelled as exactly that. `Stage` is never
-              * rendered as though it named a compressor. */}
-            <Fact label="Expected parent (source hint)">
-              {r.expected_parent_kind ? (
-                <span>
-                  {PARENT_KIND_LABEL[r.expected_parent_kind]}
-                  <span className="ml-1 text-xs text-muted-foreground">which one is unknown</span>
-                </span>
-              ) : (
-                <NullValue />
-              )}
-            </Fact>
-            <Fact label="Location (source text)">
-              {r.location_raw ? (
-                <span>
-                  <Identifier value={r.location_raw} />
-                  <span className="ml-1 text-xs text-muted-foreground">source context, not an identity</span>
-                </span>
-              ) : (
-                <NullValue />
-              )}
-            </Fact>
             <Fact label="Last calibration">
               <PrecisionDate display={r.last_calibration_display} precision={r.last_calibration_precision} />
             </Fact>
@@ -240,7 +218,6 @@ export function SrvSection() {
             </Fact>
             <Fact label="Days left">{r.days_left === null ? <NullValue /> : r.days_left.toLocaleString()}</Fact>
             <Fact label="Status"><DueBadge status={r.due_status} /></Fact>
-            <Fact label="Source status"><Text value={r.source_status_raw} /></Fact>
             <Fact label="Notes"><Text value={r.notes} /></Fact>
             <div className="col-span-full"><ReplaceValvePanel valve={r} onDone={reload} /></div>
           </>

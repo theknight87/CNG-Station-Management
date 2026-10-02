@@ -173,7 +173,7 @@ export const WORKFLOW_DATES: Record<keyof typeof SPECS, DateOption> = {
 
 /** The tab's filters on a workflow query (everything except status), shared by the list and its counts. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function workflowFilters<B extends { ilike: any; lte: any; gte: any; lt: any; eq: any; or: any }>(b: B, kind: keyof typeof SPECS, f?: SrvSmartFilters): B {
+function workflowFilters<B extends { ilike: any; lte: any; gte: any; lt: any; eq: any; in: any; or: any }>(b: B, kind: keyof typeof SPECS, f?: SrvSmartFilters): B {
   if (!f) return b
   const spec = SPECS[kind]
   const term = (f.search ?? '').trim().replace(/[,()*%]/g, ' ').trim()

@@ -32,6 +32,7 @@ import {
   type StationSort,
 } from '@/features/hierarchy/useHierarchy'
 import { RegionChip } from '@/components/data/AssetChips'
+import { MultiSelectFilter } from '@/components/data/MultiSelectFilter'
 
 /**
  * The Stations browser: search, filter, sort and pagination over
@@ -149,25 +150,9 @@ export function StationsBrowser({
             Region: {lockedRegionName ?? '—'}
           </span>
         ) : (
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span>Region</span>
-            <select
-              value={query.regionId ?? ''}
-              onChange={(e) => update({ regionId: e.target.value || null })}
-              className="h-7 rounded border bg-background px-1.5 text-sm text-foreground"
-            >
-              {/* Only Regions the caller can read are offered. The option list
-                * is built from the same RLS-scoped query as the table. */}
-              <option value="">All Regions</option>
-              {regions.state.status === 'ready'
-                ? regions.state.data.map((r) => (
-                    <option key={r.region_id} value={r.region_id}>
-                      {r.region_name}
-                    </option>
-                  ))
-                : null}
-            </select>
-          </label>
+          // Only Regions the caller can read are offered: the list comes from the same RLS-scoped query as the table.
+          <MultiSelectFilter id="stations-region" label="Region" value={query.regionId} onChange={(v) => update({ regionId: v || null })}
+                             options={regions.state.status === 'ready' ? regions.state.data.map((r) => ({ value: r.region_id, label: r.region_name })) : []} />
         )}
 
         <label className="flex items-center gap-1.5 text-xs text-muted-foreground">

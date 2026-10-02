@@ -8,6 +8,7 @@ import { useSupabaseClient } from '@/lib/supabase/client'
 import { foldName } from '@/features/hierarchy/foldName'
 import type { Loadable } from '@/features/hierarchy/useHierarchy'
 import type { DatePrecision, DueStatus, PressureUnit } from '@/features/units/useUnitWorkspace'
+import { applyMulti, DUE_ALIASES } from '@/components/data/multiFilter'
 
 /**
  * Global Hoses Management.
@@ -111,7 +112,8 @@ const COLUMNS =
 export type HoseSort =
   | 'region' | 'working_pressure' | 'next_due' | 'last_test' | 'station' | 'unit' | 'serial' | 'description' | 'mapping'
 
-export type HoseDueFilter = 'all' | 'overdue' | 'attention' | 'unknown'
+/** 'all', a legacy single bucket, or a multi-choice of due statuses (`multiFilter.ts`). */
+export type HoseDueFilter = 'all' | 'overdue' | 'attention' | 'unknown' | (string & {})
 export type HoseMappingFilter = 'all' | HoseMappingStatus
 /** Serial QUALITY — a different dimension from mapping and from due status. */
 export type HoseSerialFilter = 'all' | 'missing' | 'duplicate' | 'recorded'
@@ -158,12 +160,10 @@ export const HOSE_DATE: DateOption = { column: 'next_test_date', label: 'Next te
 /** Every filter the registry applies (no sort, no paging): the table AND its summary use this, so they agree. */
 export function applyHoseQuery<B extends { eq: any; in: any; or: any; ilike: any; lte: any; gte: any; lt: any }>(b: B, q: HoseQuery): B { // eslint-disable-line @typescript-eslint/no-explicit-any
   const term = q.search.trim()
-  if (q.regionId) b = b.eq('region_id', q.regionId)
-  if (q.stationId) b = b.eq('station_id', q.stationId)
+  b = applyMulti(b, 'region_id', q.regionId)
+  b = applyMulti(b, 'station_id', q.stationId)
   if (q.mapping !== 'all') b = b.eq('mapping_status', q.mapping)
-  if (q.due === 'overdue') b = b.eq('due_status', 'overdue')
-  if (q.due === 'unknown') b = b.eq('due_status', 'unknown')
-  if (q.due === 'attention') b = b.in('due_status', ATTENTION_BUCKETS)
+  b = applyMulti(b, 'due_status', q.due, { aliases: DUE_ALIASES })
   // Serial quality is its own axis: a missing serial is not an unresolved
   // mapping and not an overdue test.
   if (q.serial === 'missing') b = b.eq('serial_missing', true)

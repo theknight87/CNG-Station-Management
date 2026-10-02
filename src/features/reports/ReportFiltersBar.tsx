@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 
+import { MultiSelectFilter } from '@/components/data/MultiSelectFilter'
 import { DataToolbar } from '@/components/layout/PageContainer'
 import { Button } from '@/components/ui/button'
 import type { ReportSpec } from './reportSpecs'
@@ -78,74 +79,34 @@ export function ReportFiltersBar({
       }}
     >
       <DataToolbar label={`Filter the ${spec.label} report`}>
+        {/* Each may hold several values, or exclude them ("All except"); see multiFilter.ts. */}
         {has('region') ? (
-          <Field label="Region" htmlFor={controlId('region')}>
-            <select
-              id={controlId('region')} name={controlId('region')} value={draft.region}
-              onChange={(e) => set({ region: e.target.value, station: '', unit: '' })}
-              className="h-7 rounded border bg-background px-1 text-xs"
-            >
-              <option value="">Every Region</option>
-              {regions.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
-            </select>
-          </Field>
+          <MultiSelectFilter id={controlId('region')} label="Region" allLabel="Every Region" value={draft.region}
+                             onChange={(region) => set({ region, station: '', unit: '' })}
+                             options={regions.map((r) => ({ value: r.id, label: r.label }))} />
         ) : null}
 
-        {has('station') ? (
-          <Field label="Station" htmlFor={controlId('station')}>
-            <select
-              id={controlId('station')} name={controlId('station')} value={draft.station} disabled={draft.region === ''}
-              onChange={(e) => set({ station: e.target.value, unit: '' })}
-              className="h-7 rounded border bg-background px-1 text-xs"
-            >
-              <option value="">
-                {draft.region === '' ? 'Choose a Region first' : 'Every Station'}
-              </option>
-              {stations.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-            </select>
-          </Field>
+        {/* Stations are offered once a Region is chosen, Units once a Station is: a pair the hierarchy does not
+          * support is never offered. */}
+        {has('station') && draft.region !== '' ? (
+          <MultiSelectFilter id={controlId('station')} label="Station" allLabel="Every Station" value={draft.station}
+                             onChange={(station) => set({ station, unit: '' })}
+                             options={stations.map((s) => ({ value: s.id, label: s.label }))} />
         ) : null}
 
-        {has('unit') ? (
-          <Field label="Unit" htmlFor={controlId('unit')}>
-            <select
-              id={controlId('unit')} name={controlId('unit')} value={draft.unit} disabled={draft.station === ''}
-              onChange={(e) => set({ unit: e.target.value })}
-              className="h-7 rounded border bg-background px-1 text-xs"
-            >
-              <option value="">
-                {draft.station === '' ? 'Choose a Station first' : 'Every Unit'}
-              </option>
-              {units.map((u) => <option key={u.id} value={u.id}>{u.label}</option>)}
-            </select>
-          </Field>
+        {has('unit') && draft.station !== '' ? (
+          <MultiSelectFilter id={controlId('unit')} label="Unit" allLabel="Every Unit" value={draft.unit}
+                             onChange={(unit) => set({ unit })} options={units.map((u) => ({ value: u.id, label: u.label }))} />
         ) : null}
 
         {has('assetType') && spec.assetTypeOptions ? (
-          <Field label="Asset type" htmlFor={controlId('asset')}>
-            <select
-              id={controlId('asset')} name={controlId('asset')} value={draft.assetType}
-              onChange={(e) => set({ assetType: e.target.value })}
-              className="h-7 rounded border bg-background px-1 text-xs"
-            >
-              <option value="">Every asset type</option>
-              {spec.assetTypeOptions.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </Field>
+          <MultiSelectFilter id={controlId('asset')} label="Asset type" allLabel="Every asset type" value={draft.assetType}
+                             onChange={(assetType) => set({ assetType })} options={spec.assetTypeOptions} />
         ) : null}
 
         {has('dueState') ? (
-          <Field label="Due state" htmlFor={controlId('due')}>
-            <select
-              id={controlId('due')} name={controlId('due')} value={draft.dueState}
-              onChange={(e) => set({ dueState: e.target.value })}
-              className="h-7 rounded border bg-background px-1 text-xs"
-            >
-              {DUE_STATES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </Field>
+          <MultiSelectFilter id={controlId('due')} label="Due state" allLabel="Any due state" value={draft.dueState}
+                             onChange={(dueState) => set({ dueState })} options={DUE_STATES.filter((o) => o.value !== '')} />
         ) : null}
 
         {has('mappingStatus') ? (

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { ATTENTION_LABELS, pickMulti } from '@/test/multiPick'
 
 /**
  * Global Gas Detector Management.
@@ -224,7 +225,7 @@ describe('Area Type is a classification, never a status', () => {
     replies.detectors = { data: [detector()], error: null, count: 1 }
     renderDetectors()
     await screen.findByText('GD-00001')
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: /area/i }), 'closed')
+    await pickMulti('Area', ['Closed'])
     expect(calls.list).toContain('v_gas_detector_management.eq:area_type=closed')
   })
 })
@@ -452,9 +453,9 @@ describe('Server-side search, filters and their intersection', () => {
     replies.regions = { data: [{ region_id: 'r-east', region_code: 'east', region_name: 'East', sort_order: 1, stations: 1, units: 1, assets: 1, overdue: 1, approaching_due: 0, unresolved_mapping: 0 }], error: null }
     renderDetectors()
     await screen.findByText('GD-00001')
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: /region/i }), 'r-east')
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: /area/i }), 'closed')
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: /due/i }), 'overdue')
+    await pickMulti('Region', ['East'])
+    await pickMulti('Area', ['Closed'])
+    await pickMulti('Due', ['Overdue'])
     // All three reach the server. None is applied in React.
     expect(calls.list).toContain('v_gas_detector_management.eq:region_id=r-east')
     expect(calls.list).toContain('v_gas_detector_management.eq:area_type=closed')
@@ -465,8 +466,9 @@ describe('Server-side search, filters and their intersection', () => {
     replies.detectors = { data: [detector()], error: null, count: 1 }
     renderDetectors()
     await screen.findByText('GD-00001')
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: /due/i }), 'attention')
-    const bucket = calls.list.find((c) => c.includes('.in:due_status='))
+    await pickMulti('Due', ATTENTION_LABELS)
+    await waitFor(() => expect(calls.list.filter((c) => c.includes('.in:due_status=')).at(-1)).toContain('due_30'))
+    const bucket = calls.list.filter((c) => c.includes('.in:due_status=')).at(-1)
     expect(bucket).toBeDefined()
     expect(bucket).toContain('overdue')
     // Owner request 2026-10-01: the window is 30 days, never 60.
@@ -480,10 +482,10 @@ describe('Server-side search, filters and their intersection', () => {
     renderDetectors()
     await screen.findByText('GD-00001')
     // The Station filter only appears once a Region narrows it.
-    expect(screen.queryByRole('combobox', { name: /station/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^station:/i })).toBeNull()
     expect(calls.list.some((call) => call.startsWith('v_station_summary.'))).toBe(false)
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: /region/i }), 'r-east')
-    expect(await screen.findByRole('combobox', { name: /station/i })).toBeDefined()
+    await pickMulti('Region', ['East'])
+    expect(await screen.findByRole('button', { name: /^station:/i })).toBeDefined()
     expect(calls.list.filter((call) => call.startsWith('v_station_summary.range:'))).toHaveLength(1)
     expect(calls.list).toContain('v_station_summary.eq:region_id=r-east')
   })
@@ -582,8 +584,9 @@ describe('Accessibility', () => {
     expect(expand.getAttribute('aria-expanded')).toBe('false')
     await userEvent.click(expand)
     expect(screen.getByRole('button', { name: /hide the full technical record/i }).getAttribute('aria-expanded')).toBe('true')
-    // The detail exposes the raw source text, preserved and uninterpreted.
-    expect(screen.getByText('Close Area')).toBeDefined()
+    // Owner request 2026-10-02: the details no longer show mapping, source-text, source-hint or source-provenance fields.
+    expect(screen.queryByText('Close Area')).toBeNull()
+    expect(screen.queryByText(/^source status$/i)).toBeNull()
   })
 
   it('does not convey due status by colour alone', async () => {

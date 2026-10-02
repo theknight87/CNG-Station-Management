@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useSupabaseClient } from '@/lib/supabase/client'
 import { foldName } from './foldName'
+import { applyMulti } from '@/components/data/multiFilter'
 
 /**
  * Hierarchy browsing data: Regions, Stations, and the Units inside a Station.
@@ -225,7 +226,7 @@ export function useStations(query: StationQuery, options: UseStationsOptions = {
         // user pages through is their own total and never reveals the size of
         // a region they cannot read.
         let b = supabase!.from('v_station_summary').select(STATION_COLUMNS, { count: 'exact' })
-        if (q.regionId) b = b.eq('region_id', q.regionId)
+        b = applyMulti(b, 'region_id', q.regionId)
         if (q.attention === 'overdue') b = b.gt('overdue', 0)
         if (q.attention === 'unresolved') b = b.gt('unresolved_mapping', 0)
         if (term) {
