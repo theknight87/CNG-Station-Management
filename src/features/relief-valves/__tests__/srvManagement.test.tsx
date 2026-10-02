@@ -483,6 +483,23 @@ describe('Warehouse isolation', () => {
     expect(await screen.findByText(/unassigned stock/i)).toBeDefined()
   })
 
+  it('owner request 2026-10-02: availability reads Calibrated / Under calibration / New', async () => {
+    replies.warehouse = {
+      data: [
+        warehouse({ id: 'w-c', availability_status: 'available_calibrated' }),
+        warehouse({ id: 'w-u', availability_status: 'available_in_store_uc' }),
+        warehouse({ id: 'w-n', availability_status: 'available_new' }),
+      ],
+      error: null, count: 3,
+    }
+    renderSrv('/manage/srvs/warehouse')
+    const table = await screen.findByRole('table')
+    for (const label of ['Calibrated', 'Under calibration', 'New']) {
+      expect(within(table).getByText(label, { exact: true })).toBeDefined()
+    }
+    expect(within(table).queryByText(/Available —|in store \(UC\)/)).toBeNull()
+  })
+
   it('shows a NULL warehouse serial as "not recorded"', async () => {
     replies.warehouse = {
       data: [warehouse({ serial_number: null, serial_number_raw: null, serial_status: 'unknown' })],

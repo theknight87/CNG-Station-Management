@@ -133,9 +133,9 @@ const INSTALLED_COLUMNS =
 
 /** Warehouse availability, as the store names it. Shared by the table and the export. */
 export const AVAILABILITY_LABEL: Record<string, string> = {
-  available_new: 'Available — new',
-  available_calibrated: 'Available — calibrated',
-  available_in_store_uc: 'Available — in store (UC)',
+  available_new: 'New',
+  available_calibrated: 'Calibrated',
+  available_in_store_uc: 'Under calibration',
   sent_to_station_received: 'Sent to station — received',
   sent_to_station_not_received: 'Sent to station — not received',
 }

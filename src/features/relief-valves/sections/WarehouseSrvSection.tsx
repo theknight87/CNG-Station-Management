@@ -187,7 +187,7 @@ function columns(reload: () => void): RegistryColumn<WarehouseSrvRow>[] { return
   },
   {
     key: 'availability', header: 'Availability', sort: 'availability',
-    // The + to send a valve to the calibration company sits beside its "in store (UC)" chip, so it is
+    // The + to send a valve to the calibration company sits beside its "Under calibration" chip, so it is
     // reachable straight from the table on every screen size.
     render: (r) => (
       <span className="inline-flex items-center gap-1.5">
