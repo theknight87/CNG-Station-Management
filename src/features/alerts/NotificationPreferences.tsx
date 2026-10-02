@@ -82,7 +82,7 @@ export function NotificationPreferences() {
       ) : null}
 
       <div className="rounded border bg-card">
-        <table className="w-full text-sm">
+        <table className="table-fit w-full text-sm">
           <thead>
             <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
               <th scope="col" className="px-3 py-2 font-medium">Channel</th>

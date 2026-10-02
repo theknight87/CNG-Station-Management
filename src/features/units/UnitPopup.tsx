@@ -153,7 +153,7 @@ function TabList<T>({ spec, unitId, onOpen }: { spec: TabSpec<T>; unitId: string
   }
   return (
     <div className="overflow-x-auto rounded border">
-      <table className="w-full text-sm" aria-label={spec.label}>
+      <table className="table-fit w-full text-sm" aria-label={spec.label}>
         <thead className="bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
             {spec.columns.map((c) => (

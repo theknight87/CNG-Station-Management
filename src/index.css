@@ -223,13 +223,47 @@
     overflow-x: auto;
   }
 
-  .compact-records :is(td, th) {
-    overflow: hidden;
-  }
-
   .compact-records :is(td, th) > * {
     min-width: 0;
     max-width: 100%;
+  }
+
+  /* Owner request 2026-10-02: every table fits the page, centered, with nothing clipped and no sideways
+   * scrollbar. Text wraps at spaces, never inside a word (a long column name is hyphenated instead), and
+   * anything marked nowrap (a name, a size, a chip) stays on one line whenever the column has room. */
+  .table-fit :is(td, th) {
+    white-space: normal;
+    overflow-wrap: break-word;
+    text-align: center;
+  }
+
+  .table-fit :is(td, th) .whitespace-nowrap {
+    white-space: normal;
+  }
+
+  /* Column names: normal letter-spacing, and a long single word is hyphenated (MANU-FACTURER) rather than
+   * forcing its column wider than the page. */
+  .table-fit thead th,
+  .table-fit thead th button {
+    letter-spacing: normal;
+    hyphens: auto;
+  }
+
+  /* Narrower desktops: tighter cells, and the faded sort icon of an unsorted column only on hover (the
+   * active sort keeps its arrow), so a wide registry still fits without a sideways scrollbar. */
+  @media (max-width: 1279px) {
+    .table-fit :is(td, th) {
+      padding-left: 0.375rem;
+      padding-right: 0.375rem;
+    }
+
+    .table-fit thead th:not(:hover) .sort-idle {
+      display: none;
+    }
+  }
+
+  .table-fit :is(td, th) > :is(div, span, label).flex {
+    justify-content: center;
   }
 
   /* A search field never collapses to an icon when a filter row gets crowded
@@ -259,7 +293,11 @@
     [role='dialog'] button {
       min-width: 2.75rem;
     }
+  }
 
+  /* Below 1024px a record table becomes stacked cards, so no table ever needs a
+   * horizontal scrollbar (owner 2026-10-02: every table fits the page). */
+  @media (max-width: 1023px) {
     .responsive-records,
     .responsive-records tbody,
     .responsive-records tr,
@@ -321,6 +359,19 @@
 
     .responsive-records tbody tr > :last-child {
       border-bottom: 0;
+    }
+
+    .table-fit :is(td, th) {
+      padding-left: 0.25rem;
+      padding-right: 0.25rem;
+    }
+
+    .table-fit thead th {
+      font-size: 0.6875rem;
+    }
+
+    .responsive-records tbody :is(td, th) > :is(div, span, label).flex {
+      justify-content: flex-start;
     }
   }
 

@@ -235,7 +235,7 @@ export function SelectableTable<T extends { id: string }>({
   const all = pickable.length > 0 && pickable.every((r) => selected.has(r.id))
   return (
     <div className="overflow-x-auto rounded border">
-      <table className="w-full text-sm" aria-label={label}>
+      <table className="table-fit w-full text-sm" aria-label={label}>
         {/* Headers may break between words when the page is narrow (SET / PRESSURE), so a header is never what
           * makes the table wider than its data (owner request 2026-09-29: fit the page). */}
         <thead className="bg-muted/50 text-xs uppercase tracking-normal text-muted-foreground">
@@ -250,9 +250,9 @@ export function SelectableTable<T extends { id: string }>({
               const active = sort?.key === c.key
               return (
                 <th key={c.key} aria-sort={active ? (sort!.asc ? 'ascending' : 'descending') : undefined}
-                    className={cn('px-1.5 py-1.5 text-left align-bottom font-semibold leading-tight', c.align === 'right' && 'text-right')}>
+                    className="px-1.5 py-1.5 text-center align-middle font-semibold leading-tight">
                   {c.sortValue ? (
-                    <button type="button" className={cn('inline-flex items-end gap-1 uppercase hover:text-foreground', c.align === 'right' ? 'text-right' : 'text-left')}
+                    <button type="button" className="inline-flex items-center gap-1 text-center uppercase hover:text-foreground"
                             onClick={() => setSort(active ? { key: c.key, asc: !sort!.asc } : { key: c.key, asc: true })}>
                       {c.header}<span aria-hidden="true">{active ? (sort!.asc ? '↑' : '↓') : '↕'}</span>
                     </button>

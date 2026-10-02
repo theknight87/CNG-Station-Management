@@ -60,7 +60,9 @@ export function DataTable({
   className?: string
 }) {
   return (
-    <table className={cn('w-max min-w-full border-collapse text-sm', className)}>
+    // Owner request 2026-10-02: every table fits the page — no clipped column, no sideways scrollbar. The table
+    // takes the container's width and its cells wrap (see `.table-fit` in index.css) instead of growing past it.
+    <table className={cn('table-fit w-full border-collapse text-sm', className)}>
       <caption className="sr-only">{caption}</caption>
       {children}
     </table>
@@ -91,13 +93,14 @@ export function SortableHeader({
   children,
   sort,
   onSort,
-  align = 'left',
+  align: _align,
   className,
   ...rest
 }: {
   children: ReactNode
   sort?: SortDirection
   onSort?: () => void
+  /** Kept for existing callers; every column is centered (owner request 2026-10-02). */
   align?: 'left' | 'center' | 'right'
 } & ThHTMLAttributes<HTMLTableCellElement>) {
   const ariaSort = sort === 'asc' ? 'ascending' : sort === 'desc' ? 'descending' : 'none'
@@ -108,8 +111,7 @@ export function SortableHeader({
       scope="col"
       aria-sort={onSort ? ariaSort : undefined}
       className={cn(
-        'whitespace-nowrap border-b px-[--table-cell-x] py-[--table-cell-y] text-xs font-semibold uppercase leading-tight tracking-wide text-muted-foreground',
-        align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left',
+        'border-b px-[--table-cell-x] py-[--table-cell-y] text-center align-middle text-xs font-semibold uppercase leading-tight tracking-wide text-muted-foreground',
         className,
       )}
       {...rest}
@@ -118,14 +120,10 @@ export function SortableHeader({
         <button
           type="button"
           onClick={onSort}
-          className={cn(
-            'flex w-full items-center gap-1 rounded font-semibold uppercase tracking-wide hover:text-foreground',
-            align === 'right' && 'justify-end',
-            align === 'center' && 'justify-center',
-          )}
+          className="flex w-full items-center justify-center gap-1 rounded font-semibold uppercase tracking-wide hover:text-foreground"
         >
           <span>{children}</span>
-          <Arrow className={cn('h-3 w-3 shrink-0', sort ? 'opacity-100' : 'opacity-40')} aria-hidden="true" />
+          <Arrow className={cn('h-3 w-3 shrink-0', sort ? 'opacity-100' : 'sort-idle opacity-40')} aria-hidden="true" />
         </button>
       ) : (
         children
@@ -136,12 +134,12 @@ export function SortableHeader({
 
 export function TableHeader({
   children,
-  align = 'left',
+  align: _align,
   className,
   ...rest
 }: { children: ReactNode; align?: 'left' | 'center' | 'right' } & ThHTMLAttributes<HTMLTableCellElement>) {
   return (
-    <SortableHeader align={align} className={className} {...rest}>
+    <SortableHeader className={className} {...rest}>
       {children}
     </SortableHeader>
   )
@@ -177,17 +175,18 @@ export function TableRow({
 
 export function TableCell({
   children,
-  align = 'left',
+  align: _align,
   /** Numbers, pressures and dates line up when they share a tabular figure. */
   numeric = false,
-  wrap = false,
+  wrap: _wrap,
   className,
   dataLabel,
 }: {
   children: ReactNode
+  /** Kept for existing callers; every column is centered (owner request 2026-10-02). */
   align?: 'left' | 'center' | 'right'
   numeric?: boolean
-  /** Opt in to wrapping, for a genuinely long free-text column such as notes. */
+  /** Kept for existing callers; every cell may wrap so the table fits the page (owner request 2026-10-02). */
   wrap?: boolean
   className?: string
   dataLabel?: string
@@ -196,10 +195,8 @@ export function TableCell({
     <td
       data-label={dataLabel}
       className={cn(
-        'h-[--table-row-height] whitespace-nowrap px-[--table-cell-x] py-[--table-cell-y] align-middle',
-        align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left',
+        'h-[--table-row-height] px-[--table-cell-x] py-[--table-cell-y] text-center align-middle',
         numeric && 'tabular',
-        wrap && 'whitespace-normal',
         className,
       )}
     >
@@ -215,7 +212,7 @@ export function RowHeaderCell({ children, className, dataLabel }: { children: Re
       scope="row"
       data-label={dataLabel}
       className={cn(
-        'h-[--table-row-height] whitespace-nowrap px-[--table-cell-x] py-[--table-cell-y] text-left align-middle font-medium text-foreground',
+        'h-[--table-row-height] px-[--table-cell-x] py-[--table-cell-y] text-center align-middle font-medium text-foreground',
         className,
       )}
     >
