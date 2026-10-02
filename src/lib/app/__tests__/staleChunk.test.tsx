@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 
 import { RouteError } from '@/components/states/RouteError'
@@ -52,7 +52,8 @@ describe('the route error page', () => {
   it('a stale tab says a new version is loading and reloads itself', async () => {
     renderFailing(new TypeError('Failed to fetch dynamically imported module: https://x/assets/AdminPage-BwGlbkm5.js'))
     expect(await screen.findByText(/a new version of the application is available/i)).toBeDefined()
-    expect(reload).toHaveBeenCalledTimes(1)
+    // The reload starts from an effect, which may run after the message is already on screen.
+    await waitFor(() => expect(reload).toHaveBeenCalledTimes(1))
     expect(screen.queryByText(/hey developer/i)).toBeNull()
   })
 
