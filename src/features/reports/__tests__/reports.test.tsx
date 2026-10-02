@@ -356,6 +356,19 @@ describe('summary metrics', () => {
     await waitFor(() => expect(queriesFor('v_report_due_compliance').at(-1)!.ops.join(' ')).not.toMatch(/eq:due_status/))
   })
 
+  it('owner report 2026-10-02: pressing a due tile filters the table without recounting the strip', async () => {
+    db.rows.v_report_due_summary = [{ total: 40, overdue: 10, due_today: 1, due_7: 2, due_30: 3, unknown: 4, unresolved: 5 }]
+    render(withRouter(<ReportWorkspace spec={dueSpec} />))
+    await screen.findByText('0012345')
+    await screen.findByRole('button', { name: /^overdue/i })
+    const before = db.queries.filter((q) => q.table === 'v_report_due_summary').length
+    await userEvent.click(screen.getByRole('button', { name: /^overdue/i }))
+    await waitFor(() => expect(queriesFor('v_report_due_compliance').at(-1)!.ops.join(' ')).toMatch(/eq:due_status=overdue/))
+    expect(db.queries.filter((q) => q.table === 'v_report_due_summary').length).toBe(before)
+    // And the strip still shows the whole picture, so the other tiles stay meaningful.
+    expect(screen.getByRole('button', { name: /^total records/i }).textContent).toContain('40')
+  })
+
   it('owner request 2026-10-02: no Mapping status filter and no Unresolved Mapping tile', async () => {
     db.rows.v_report_due_summary = [{ total: 40, overdue: 10, due_today: 1, due_7: 2, due_30: 3, unknown: 4, unresolved: 5 }]
     render(withRouter(<ReportWorkspace spec={dueSpec} />))

@@ -74,33 +74,28 @@ export function useReportSummary(
         return error ? null : (n ?? null)
       }
 
+      // Every figure is an independent head count, so they are requested together (owner report 2026-10-02:
+      // one after another, the strip took several round trips to fill).
+      const dueColumn = spec.filterColumns.dueState
+      // A bucket the user has already filtered to would just restate the total, so it is skipped.
+      const buckets = dueColumn ? DUE_BUCKETS.filter((b) => !filters.dueState || filters.dueState === b.key) : []
+      const breakdown = spec.summaryBreakdown?.values ?? []
+      const [total, bucketCounts, breakdownCounts] = await Promise.all([
+        count(),
+        Promise.all(buckets.map((b) => count({ column: dueColumn!, value: b.key }))),
+        Promise.all(breakdown.map((b) => count({ column: spec.summaryBreakdown!.column, value: b.value }))),
+      ])
+
       const results: SummaryMetric[] = [{
-        key: 'total', label: 'Total Records', value: await count(),
+        key: 'total', label: 'Total Records', value: total,
         description: 'Records matching the current filters, within your authorized Regions',
       }]
-
-      const dueColumn = spec.filterColumns.dueState
-      if (dueColumn) {
-        for (const bucket of DUE_BUCKETS) {
-          // A bucket the user has already filtered to would just restate the
-          // total, so it is skipped rather than shown twice.
-          if (filters.dueState && filters.dueState !== bucket.key) continue
-          results.push({
-            key: bucket.key, label: bucket.label, description: bucket.description,
-            value: await count({ column: dueColumn, value: bucket.key }),
-          })
-        }
-      }
-
-      // A spec-declared breakdown, where the generic due/mapping split says
-      // nothing useful. Each value is counted under the SAME filters and the
-      // same RLS, so a zero is a real zero for that caller.
-      if (spec.summaryBreakdown) {
-        for (const b of spec.summaryBreakdown.values) {
-          const n = await count({ column: spec.summaryBreakdown.column, value: b.value })
-          if (n) results.push({ key: b.value, label: b.label, value: n, description: b.description })
-        }
-      }
+      buckets.forEach((b, i) => results.push({ key: b.key, label: b.label, description: b.description, value: bucketCounts[i] }))
+      // A spec-declared breakdown, where the generic due/mapping split says nothing useful. Each value is
+      // counted under the SAME filters and the same RLS, so a zero is a real zero for that caller.
+      breakdown.forEach((b, i) => {
+        if (breakdownCounts[i]) results.push({ key: b.value, label: b.label, value: breakdownCounts[i], description: b.description })
+      })
 
       // Owner request 2026-10-02: no "Unresolved Mapping" tile — mapping is no longer filtered or reported here.
 

@@ -27,7 +27,9 @@ export function ReportWorkspace({ spec }: { spec: ReportSpec }) {
   const query = useReportQuery(spec, filters)
   // The due tiles ARE the due-state buckets, so they are counted without that one filter (memoized: the summary
   // reloads whenever its filters object changes).
-  const summaryFilters = useMemo(() => ({ ...filters, dueState: '' }), [filters])
+  // Keyed on the filters WITHOUT the due state, so pressing a due tile does not recount the strip.
+  const summaryKey = JSON.stringify({ ...filters, dueState: '' })
+  const summaryFilters = useMemo(() => JSON.parse(summaryKey) as ReportFilterValues, [summaryKey])
   const summary = useReportSummary(spec, summaryFilters)
   // Owner request 2026-10-02: the tiles are quick filters — Total clears the due state, a due tile selects it,
   // and pressing the active tile again clears it.

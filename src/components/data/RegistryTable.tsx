@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { Eye } from 'lucide-react'
 
+import { cn } from '@/lib/utils'
 import {
   DataTable, RowHeaderCell, SortableHeader, TableBody, TableCell, TableHead, TableRow, TableScroll,
 } from '@/components/data/DataTable'
@@ -99,14 +100,19 @@ export function RegistryTable<T>({
   selection?: RegistrySelection<T>
 }) {
   const [selected, setSelected] = useState<T | null>(null)
+  // The last result shown. While the next one loads (a tile, filter, sort or page change) the table keeps it on
+  // screen, dimmed and marked busy, instead of blanking to a loading screen (owner report 2026-10-02).
+  const [shown, setShown] = useState<RegistryPage<T> | null>(state.status === 'ready' ? state.data : null)
+  if (state.status === 'ready' && state.data !== shown) setShown(state.data)
+  const refreshing = state.status === 'loading' && shown !== null
 
-  if (state.status === 'loading') return <LoadingState label={`Loading ${label}`} />
+  if (state.status === 'loading' && !refreshing) return <LoadingState label={`Loading ${label}`} />
   if (state.status === 'unconfigured')
     return <NotImplemented feature={label} phase="waiting on database configuration" />
   // A query failure is never an empty table and never a zero count.
   if (state.status === 'error') return <ErrorState title={errorTitle} message={state.message} onRetry={reload} />
 
-  const { rows, total, filtered } = state.data
+  const { rows, total, filtered } = state.status === 'ready' ? state.data : shown!
   if (rows.length === 0 && filtered) return <NoResultsState onClear={onClearFilters} />
   if (rows.length === 0) return <EmptyState title={emptyTitle} description={emptyDescription} />
 
@@ -126,7 +132,9 @@ export function RegistryTable<T>({
   }
 
   return (
-    <div className="flex min-w-0 flex-col gap-2">
+    <div className="flex min-w-0 flex-col gap-2" aria-busy={refreshing}>
+      {refreshing ? <p role="status" className="sr-only">Updating {label}…</p> : null}
+      <div className={cn('transition-opacity', refreshing && 'pointer-events-none opacity-60')}>
       <TableScroll label={label}>
         <DataTable className="responsive-records compact-records" caption={`${label}, with mapping state and calibration status`}>
           <TableHead>
@@ -202,6 +210,7 @@ export function RegistryTable<T>({
           </TableBody>
         </DataTable>
       </TableScroll>
+      </div>
 
       <PaginationControls label={label} page={page} pageSize={pageSize} total={total} visibleRows={rows.length} onPage={onPage} />
       {footnote ? <p className="text-sm text-muted-foreground">{footnote}</p> : null}

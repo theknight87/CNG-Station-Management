@@ -104,6 +104,11 @@ more (Admin → Data Quality included — its queue lists every unresolved statu
 are quick filters: pressing one shows exactly the rows it counts, pressing it again clears it, and tile counts ignore the
 bucket a tile selects. Reports no longer offer Data Quality or Notification Activity (old links redirect to Due &
 Overdue). A tab older than the latest deployment reloads itself once instead of failing (`lib/app/staleChunk.ts`).
+**Due functions inline (2026-10-02).** `cng_business_date`, `cng_days_left` and `cng_due_status` (SECURITY INVOKER) no longer
+`SET search_path` — a SET blocks SQL-function inlining, which made every due filter evaluate them per row. Bodies are
+identical but schema-qualified. Production, owner RLS: Installed Overdue page 443 -> ~20 ms, Due report page 1,050 -> ~130 ms.
+Tables keep the last result on screen while the next loads; the Reports strip counts in parallel and is not recounted
+when a due tile is pressed. Migration `20261002090000`; suite `due_functions_inline`.
 
 **Safety Relief Valves (SRVs) are children of their parent equipment**, never independent
 station assets. An SRV may belong to a **Compressor**, a **Storage Vessel**, or a
