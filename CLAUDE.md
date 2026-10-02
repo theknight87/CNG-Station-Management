@@ -94,6 +94,10 @@ jobs, SRV log and warehouse history were deleted at the owner's request (audited
 no canonical Station matches is shown from `target_station_raw` ("as in sheet — not linked"), never linked by
 similarity. The due / needs-attention window is **30 days everywhere** (due_60 is still a status, never "attention").
 Migrations `20261001120000`, `20261001130000`; suite `warehouse_raw_station_30d`.
+**Warehouse destinations linked (owner 2026-10-02).** The 589 valves whose sheet Station matched no canonical Station were
+linked from the owner's reply to `warehouse_station_matching.xlsx` (107 suggestions approved, 13 names answered by the owner) —
+120 rows in `owner_station_rulings` set `WH-2026-10-02`; the Region follows the linked Station (73 valves, as
+`wrv_target_station_region_fk` requires) and `source_raw` keeps the sheet's own Station and Region. Audited; data only, no migration.
 
 **Safety Relief Valves (SRVs) are children of their parent equipment**, never independent
 station assets. An SRV may belong to a **Compressor**, a **Storage Vessel**, or a
