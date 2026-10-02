@@ -41,6 +41,11 @@ const AlertsPage = lazy(() => import('@/pages/AlertsPage').then((m) => ({ defaul
 const DashboardPage = lazy(() => import('@/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })))
 const GasDetectorsPage = lazy(() => import('@/pages/GasDetectorsPage').then((m) => ({ default: m.GasDetectorsPage })))
 const HosesManagementPage = lazy(() => import('@/pages/HosesManagementPage').then((m) => ({ default: m.HosesManagementPage })))
+const EquipmentWorkspacePage = lazy(() => import('@/features/equipment/EquipmentSections').then((m) => ({ default: m.EquipmentWorkspace })))
+const EquipmentWarehousePage = lazy(() => import('@/features/equipment/EquipmentSections').then((m) => ({ default: m.EquipmentWarehouseSection })))
+const EquipmentLogPage = lazy(() => import('@/features/equipment/EquipmentSections').then((m) => ({ default: m.EquipmentLogSection })))
+const EquipmentJobsPage = lazy(() => import('@/features/equipment/EquipmentSections').then((m) => ({ default: m.EquipmentJobsSection })))
+const EquipmentEmergencyPage = lazy(() => import('@/features/equipment/EquipmentSections').then((m) => ({ default: m.EquipmentEmergencySection })))
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })))
 const RegionDetailPage = lazy(() => import('@/pages/RegionDetailPage').then((m) => ({ default: m.RegionDetailPage })))
 const RegionsPage = lazy(() => import('@/pages/RegionsPage').then((m) => ({ default: m.RegionsPage })))
@@ -119,8 +124,31 @@ export const router = createBrowserRouter([
           { path: 'recovery', element: <VesselRegistrySection assetType="recovery_tank" /> },
         ],
       },
-      { path: 'manage/gas-detectors', element: <GasDetectorsPage /> },
-      { path: 'manage/hoses', element: <HosesManagementPage /> },
+      // Hoses and Gas Detectors carry the relief-valve tabs (owner request 2026-10-02).
+      {
+        path: 'manage/gas-detectors',
+        element: <EquipmentWorkspacePage kind="gas_detector" />,
+        children: [
+          { index: true, element: <Navigate to="/manage/gas-detectors/installed" replace /> },
+          { path: 'installed', element: <GasDetectorsPage /> },
+          { path: 'warehouse', element: <EquipmentWarehousePage kind="gas_detector" /> },
+          { path: 'log', element: <EquipmentLogPage kind="gas_detector" /> },
+          { path: 'calibration', element: <EquipmentJobsPage kind="gas_detector" /> },
+          { path: 'emergency', element: <EquipmentEmergencyPage kind="gas_detector" /> },
+        ],
+      },
+      {
+        path: 'manage/hoses',
+        element: <EquipmentWorkspacePage kind="hose" />,
+        children: [
+          { index: true, element: <Navigate to="/manage/hoses/installed" replace /> },
+          { path: 'installed', element: <HosesManagementPage /> },
+          { path: 'warehouse', element: <EquipmentWarehousePage kind="hose" /> },
+          { path: 'log', element: <EquipmentLogPage kind="hose" /> },
+          { path: 'testing', element: <EquipmentJobsPage kind="hose" /> },
+          { path: 'emergency', element: <EquipmentEmergencyPage kind="hose" /> },
+        ],
+      },
       { path: 'alerts', element: <AlertsPage /> },
       {
         path: 'reports',

@@ -10,7 +10,7 @@ import { Search, X } from 'lucide-react'
 
 import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
 import { NullValue } from '@/components/data/NullValue'
-import { DataToolbar, PageContainer, PageHeader } from '@/components/layout/PageContainer'
+import { DataToolbar } from '@/components/layout/PageContainer'
 import { Button } from '@/components/ui/button'
 import { Fact } from '@/features/hierarchy/HierarchyPieces'
 import { DEFAULT_STATION_QUERY, useRegions, useStations } from '@/features/hierarchy/useHierarchy'
@@ -144,12 +144,9 @@ export function HosesManagementView() {
   const otherFilters = Boolean(query.search.trim()) || query.regionId !== null || query.stationId !== null || hasAssetFilters(query.filters)
   const { state: summary } = useHoseSummary(otherFilters ? { ...query, ...NONE } : undefined)
 
+  // The page header and the section tabs belong to the workspace (Installed is one of its tabs).
   return (
-    <PageContainer>
-      <PageHeader
-        title="Hoses Management"
-        description="Hoses across every Region you are authorized for, with their test status and serial traceability."
-      />
+    <>
 
       <div className="flex min-w-0 flex-col gap-3">
         {/* Counted over the whole authorized dataset, not the current page and
@@ -308,6 +305,6 @@ export function HosesManagementView() {
           }
         />
       </div>
-    </PageContainer>
+    </>
   )
 }

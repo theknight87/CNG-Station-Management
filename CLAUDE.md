@@ -110,6 +110,13 @@ Overdue). A tab older than the latest deployment reloads itself once instead of 
 identical but schema-qualified. Production, owner RLS: Installed Overdue page 443 -> ~20 ms, Due report page 1,050 -> ~130 ms.
 Tables keep the last result on screen while the next loads; the Reports strip counts in parallel and is not recounted
 when a due tile is pressed. Migration `20261002090000`; suite `due_functions_inline`.
+**Hoses and Gas Detectors workflow tabs (owner 2026-10-02).** Both registries now carry the SRV tabs: Installed, Warehouse,
+Log, a 3rd-party tab (Hoses: *Hydrotest* — TESTED / UNDER TEST, never "calibrated"; Gas Detectors: *Calibration*) and Emergency.
+Own tables `equipment_stock`, `equipment_issues`, `equipment_field_log`, `equipment_calibration_jobs`, `equipment_history`
+(kind `hose`|`gas_detector`; select-only RLS, no browser write grant); every change is an admin-only SECURITY DEFINER
+`cng_equipment_*` function, audited, with PT409 on a stale selection. Issuing inserts the installed hose/detector (Unit from the
+choice or the replaced item, else `needs_unit_mapping` — never inferred) and archives what it replaces. The warehouse starts
+empty; no SRV-style undo-issue. Migrations `20261002120000..120200` (split, no DROPs); suite `equipment_workflow`.
 
 **Safety Relief Valves (SRVs) are children of their parent equipment**, never independent
 station assets. An SRV may belong to a **Compressor**, a **Storage Vessel**, or a

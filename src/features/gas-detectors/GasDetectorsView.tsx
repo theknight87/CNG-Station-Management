@@ -11,7 +11,7 @@ import { Search, X } from 'lucide-react'
 
 import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
 import { NullValue } from '@/components/data/NullValue'
-import { DataToolbar, PageContainer, PageHeader } from '@/components/layout/PageContainer'
+import { DataToolbar } from '@/components/layout/PageContainer'
 import { Button } from '@/components/ui/button'
 import { Fact } from '@/features/hierarchy/HierarchyPieces'
 import { DEFAULT_STATION_QUERY, useRegions, useStations } from '@/features/hierarchy/useHierarchy'
@@ -150,12 +150,9 @@ export function GasDetectorsView() {
     query.presence !== DEFAULT_DETECTOR_QUERY.presence || hasAssetFilters(query.filters)
   const total = state.status === 'ready' ? state.data.total : null
 
+  // The page header and the section tabs belong to the workspace (Installed is one of its tabs).
   return (
-    <PageContainer>
-      <PageHeader
-        title="Gas Detector Management"
-        description="Gas detectors across every Region you are authorized for, with their calibration status and the areas they cover."
-      />
+    <>
 
       <div className="flex min-w-0 flex-col gap-3">
         {/* Counted over the whole authorized dataset, not the current page and
@@ -321,6 +318,6 @@ export function GasDetectorsView() {
           }
         />
       </div>
-    </PageContainer>
+    </>
   )
 }

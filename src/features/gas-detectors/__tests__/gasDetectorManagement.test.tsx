@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ATTENTION_LABELS, pickMulti } from '@/test/multiPick'
+import { EquipmentWorkspace } from '@/features/equipment/EquipmentSections'
 
 /**
  * Global Gas Detector Management.
@@ -138,9 +139,12 @@ afterEach(() => vi.clearAllMocks())
 
 function renderDetectors() {
   return render(
-    <MemoryRouter initialEntries={['/manage/gas-detectors']}>
+    <MemoryRouter initialEntries={['/manage/gas-detectors/installed']}>
       <Routes>
-        <Route path="/manage/gas-detectors" element={<GasDetectorsView />} />
+        {/* The registry is the Installed tab of the workspace, which owns the page header and the tabs. */}
+        <Route path="/manage/gas-detectors" element={<EquipmentWorkspace kind="gas_detector" />}>
+          <Route path="installed" element={<GasDetectorsView />} />
+        </Route>
       </Routes>
     </MemoryRouter>,
   )

@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ATTENTION_LABELS, pickMulti } from '@/test/multiPick'
+import { EquipmentWorkspace } from '@/features/equipment/EquipmentSections'
 
 /**
  * Global Hoses Management.
@@ -133,9 +134,12 @@ afterEach(() => vi.clearAllMocks())
 
 function renderHoses() {
   return render(
-    <MemoryRouter initialEntries={['/manage/hoses']}>
+    <MemoryRouter initialEntries={['/manage/hoses/installed']}>
       <Routes>
-        <Route path="/manage/hoses" element={<HosesManagementView />} />
+        {/* The registry is the Installed tab of the workspace, which owns the page header and the tabs. */}
+        <Route path="/manage/hoses" element={<EquipmentWorkspace kind="hose" />}>
+          <Route path="installed" element={<HosesManagementView />} />
+        </Route>
       </Routes>
     </MemoryRouter>,
   )
