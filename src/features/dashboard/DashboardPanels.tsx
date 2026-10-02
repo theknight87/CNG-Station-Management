@@ -1,7 +1,6 @@
 import { Fragment } from 'react'
 import { Link } from 'react-router-dom'
 
-import { StatusBadge } from '@/components/data/StatusBadge'
 import { SectionHeader } from '@/components/layout/PageContainer'
 import {
   DataTable,
@@ -21,7 +20,11 @@ import {
   DUE_BUCKETS,
 
 } from './dueBuckets'
-import { assetTotal, dueFor, type AssetCount, type DueRow, type MappingRow, type RegionRow, type WarehouseRow } from './useDashboard'
+import {
+  assetTotal, dueFor, TOP_STATIONS,
+  type AssetCount, type DueRow, type ManufacturerDueRow, type RegionRow, type StationOverdueRow, type WarehouseRow,
+} from './useDashboard'
+import { ManufacturerChip } from '@/features/relief-valves/SrvPieces'
 import { RegionChip } from '@/components/data/AssetChips'
 import { regionTone } from '@/components/data/assetColors'
 
@@ -380,48 +383,127 @@ export function RegionOverview({ regions }: { regions: RegionRow[] }) {
   )
 }
 
-const MAPPING_LABEL: Record<string, string> = {
-  needs_station_mapping: 'Needs station mapping',
-  needs_unit_mapping: 'Needs unit mapping',
-  needs_equipment_mapping: 'Needs equipment mapping',
-  conflict: 'Conflict',
+/**
+ * Where late work is piling up (owner request 2026-10-02: the dashboard's spare space shows insights from the data).
+ * The Stations with the most overdue assets, worst first, each a link to its Station. Counts come from
+ * v_dashboard_station_overdue under the caller's RLS, so a Region the caller cannot read never appears.
+ */
+export function TopStationsPanel({ stations }: { stations: StationOverdueRow[] }) {
+  return (
+    <section aria-labelledby="top-stations-heading" className="space-y-1.5">
+      <SectionHeader
+        id="top-stations-heading"
+        title="Stations with the most overdue assets"
+        description={`The ${TOP_STATIONS} Stations with the most overdue assets of every kind, worst first.`}
+      />
+      {stations.length === 0 ? (
+        <p className="rounded border border-dashed px-3 py-4 text-sm text-muted-foreground">
+          No Station visible to you has an overdue asset.
+        </p>
+      ) : (
+        <TableScroll label="Stations with the most overdue assets">
+          <DataTable className="table-auto" caption="Stations with the most overdue assets, with due-soon and total assets">
+            <TableHead>
+              <TableRow>
+                <TableHeader>Station</TableHeader>
+                <TableHeader>Region</TableHeader>
+                <TableHeader align="right">Overdue</TableHeader>
+                <TableHeader align="right">Due ≤30d</TableHeader>
+                <TableHeader align="right">Assets</TableHeader>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {stations.map((s) => (
+                <TableRow key={s.station_id}>
+                  <RowHeaderCell>
+                    <Link to={`/stations/${s.station_id}`} dir="auto" className="underline-offset-4 hover:underline">
+                      {s.station_name}
+                    </Link>
+                  </RowHeaderCell>
+                  <TableCell><RegionChip name={s.region_name} /></TableCell>
+                  <TableCell align="right" numeric>
+                    <span className="font-semibold text-status-overdue">{s.overdue.toLocaleString()}</span>
+                  </TableCell>
+                  <TableCell align="right" numeric>
+                    <span className={cn(s.approaching_due > 0 ? 'text-status-due-soon' : 'text-muted-foreground')}>
+                      {s.approaching_due.toLocaleString()}
+                    </span>
+                  </TableCell>
+                  <TableCell align="right" numeric>{s.assets.toLocaleString()}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </DataTable>
+        </TableScroll>
+      )}
+    </section>
+  )
 }
 
-/** Unresolved work is surfaced, never hidden — it is the Data Quality queue. */
-export function DataQualityPanel({ mapping }: { mapping: MappingRow[] }) {
-  const byStatus = new Map<string, number>()
-  for (const m of mapping) byStatus.set(m.mapping_status, (byStatus.get(m.mapping_status) ?? 0) + m.total)
-  const statuses = [...byStatus.entries()].filter(([, n]) => n > 0)
-
+/**
+ * Installed relief valves by manufacturer, with the share of each that is overdue — a manufacturer whose valves
+ * are mostly late stands out at a glance. The bar is a visual aid beside the numbers, never a replacement for them.
+ */
+export function ManufacturerPanel({ manufacturers }: { manufacturers: ManufacturerDueRow[] }) {
   return (
-    <section aria-labelledby="dq-heading" className="space-y-1.5">
+    <section aria-labelledby="makers-heading" className="space-y-1.5">
       <SectionHeader
-        id="dq-heading"
-        title="Data quality"
-        description="Assets whose place in the hierarchy is not yet confirmed. Unresolved is missing evidence, not a fault."
+        id="makers-heading"
+        title="Installed SRVs by manufacturer"
+        description="How many of each manufacturer's installed valves are overdue calibration."
         actions={
-          <Link to="/admin" className="text-xs underline-offset-4 hover:underline">
-            Open Data Quality
+          <Link to="/manage/srvs/installed" className="text-xs underline-offset-4 hover:underline">
+            Open Installed SRVs
           </Link>
         }
       />
-
-      {statuses.length === 0 ? (
+      {manufacturers.length === 0 ? (
         <p className="rounded border border-dashed px-3 py-4 text-sm text-muted-foreground">
-          No unresolved mapping work in the records visible to you.
+          No installed relief valve visible to you has a recorded manufacturer.
         </p>
       ) : (
-        <div className="flex flex-wrap gap-1.5">
-          {statuses.map(([status, n]) => (
-            <div key={status} className="flex items-center gap-2 rounded border bg-card px-2.5 py-1.5">
-              <StatusBadge
-                kind={status === 'conflict' ? 'conflict' : 'unmapped'}
-                label={MAPPING_LABEL[status] ?? status}
-              />
-              <span className="tabular text-sm font-semibold">{n.toLocaleString()}</span>
-            </div>
-          ))}
-        </div>
+        <TableScroll label="Installed SRVs by manufacturer">
+          <DataTable className="table-auto" caption="Installed relief valves by manufacturer, with how many are overdue">
+            <TableHead>
+              <TableRow>
+                <TableHeader>Manufacturer</TableHeader>
+                <TableHeader align="right">Installed</TableHeader>
+                <TableHeader align="right">Overdue</TableHeader>
+                <TableHeader align="right">Due ≤30d</TableHeader>
+                <TableHeader>Overdue share</TableHeader>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {manufacturers.map((m) => {
+                const share = m.total > 0 ? Math.round((m.overdue / m.total) * 100) : 0
+                return (
+                  <TableRow key={m.manufacturer}>
+                    <RowHeaderCell><ManufacturerChip value={m.manufacturer} /></RowHeaderCell>
+                    <TableCell align="right" numeric>{m.total.toLocaleString()}</TableCell>
+                    <TableCell align="right" numeric>
+                      <span className={cn(m.overdue > 0 ? 'font-semibold text-status-overdue' : 'text-muted-foreground')}>
+                        {m.overdue.toLocaleString()}
+                      </span>
+                    </TableCell>
+                    <TableCell align="right" numeric>
+                      <span className={cn(m.approaching_due > 0 ? 'text-status-due-soon' : 'text-muted-foreground')}>
+                        {m.approaching_due.toLocaleString()}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="inline-flex items-center gap-2">
+                        <span aria-hidden="true" className="h-1.5 w-16 overflow-hidden rounded-sm bg-muted">
+                          <span className="block h-full bg-status-overdue" style={{ width: `${share}%` }} />
+                        </span>
+                        <span className="tabular text-xs">{share}%</span>
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </DataTable>
+        </TableScroll>
       )}
     </section>
   )

@@ -122,7 +122,7 @@ export function SourceContext({ value, note }: { value: string | null; note: str
   return (
     <span>
       <Identifier value={value} />
-      <span className="ml-1 text-xs text-muted-foreground">{note}</span>
+      <span className="cell-note ml-1 text-xs text-muted-foreground">{note}</span>
     </span>
   )
 }

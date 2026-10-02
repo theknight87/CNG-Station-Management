@@ -544,7 +544,8 @@ describe('Technical detail and accessibility', () => {
     expect(expand.getAttribute('aria-expanded')).toBe('false')
     await userEvent.click(expand)
     const body = document.body.textContent ?? ''
-    expect(body).toMatch(/serial \(source\)/i)
+    // Owner request 2026-10-02 (b): no "Serial (source)" either.
+    expect(body).not.toMatch(/serial \(source\)/i)
     expect(body).toMatch(/test pressure/i)
     // Owner request 2026-10-02: the details no longer show mapping, source-text, source-hint or source-provenance fields.
     expect(body).not.toMatch(/HOSES\.xlsx/)

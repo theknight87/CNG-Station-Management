@@ -2,7 +2,7 @@ import { PageContainer, PageHeader } from '@/components/layout/PageContainer'
 import { ErrorState, LoadingState, PermissionDenied } from '@/components/states/AppStates'
 import { useAppUser } from '@/hooks/useAppUser'
 import {
-  DataQualityPanel,
+  ManufacturerPanel, TopStationsPanel,
   DueMatrix,
   RegionOverview,
   SummaryStrip,
@@ -111,9 +111,13 @@ function DashboardBody({ data }: { data: DashboardData }) {
       <DueMatrix due={data.due} />
       <RegionOverview regions={data.regions} />
 
+      {/* Owner request 2026-10-02: no Data quality strip here; the space shows insights from the data. */}
       <div className="grid gap-4 xl:grid-cols-2">
-        <DataQualityPanel mapping={data.mapping} />
-        <WarehousePanel warehouse={data.warehouse} />
+        <TopStationsPanel stations={data.stations} />
+        <div className="space-y-4">
+          <WarehousePanel warehouse={data.warehouse} />
+          <ManufacturerPanel manufacturers={data.manufacturers} />
+        </div>
       </div>
     </div>
   )

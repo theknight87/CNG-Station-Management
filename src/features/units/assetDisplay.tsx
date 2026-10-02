@@ -52,15 +52,14 @@ export function PrecisionDate({
   precision: DatePrecision | null
 }) {
   if (!display) return <NullValue />
+  // The view's display string carries its own "(year only)" / "(unreadable)" suffix; the value is shown alone and
+  // the qualifier as a note, which a table hides and the record details keep (owner request 2026-10-02).
+  const value = display.replace(/ \((year only|unreadable)\)$/, '')
   return (
     <span className="tabular">
-      {display}
-      {precision === 'year_only' ? (
-        <span className="ml-1 text-xs text-muted-foreground">year only</span>
-      ) : null}
-      {precision === 'invalid' ? (
-        <span className="ml-1 text-xs text-muted-foreground">unreadable in source</span>
-      ) : null}
+      {value}
+      {precision === 'year_only' ? <span className="cell-note ml-1 text-xs text-muted-foreground">year only</span> : null}
+      {precision === 'invalid' ? <span className="cell-note ml-1 text-xs text-muted-foreground">unreadable in source</span> : null}
     </span>
   )
 }
@@ -146,7 +145,7 @@ export function PressureRange({
 export function SourceStatus({ value }: { value: string | null }) {
   if (!value) return null
   return (
-    <span className="ml-1.5 text-xs text-muted-foreground">
+    <span className="cell-note ml-1.5 text-xs text-muted-foreground">
       source says <Identifier value={value} />
     </span>
   )

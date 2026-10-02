@@ -3,13 +3,14 @@ import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 import {
-  DataQualityPanel,
   DueMatrix,
+  ManufacturerPanel,
   RegionOverview,
   SummaryStrip,
+  TopStationsPanel,
   WarehousePanel,
 } from '../DashboardPanels'
-import type { DueRow, MappingRow, RegionRow } from '../useDashboard'
+import type { DueRow, RegionRow } from '../useDashboard'
 
 const at = (ui: React.ReactElement) => render(<MemoryRouter>{ui}</MemoryRouter>)
 
@@ -124,29 +125,40 @@ describe('region overview', () => {
   })
 })
 
-describe('data quality panel', () => {
-  it('DQ-1 surfaces unresolved work with its lifecycle label', () => {
-    const mapping: MappingRow[] = [
-      { asset_kind: 'installed_relief_valve', mapping_status: 'needs_station_mapping', total: 9 },
-      { asset_kind: 'storage_vessel', mapping_status: 'conflict', total: 2 },
-    ]
-    at(<DataQualityPanel mapping={mapping} />)
-    expect(screen.getByText('Needs station mapping')).toBeDefined()
-    expect(screen.getByText('9')).toBeDefined()
-    expect(screen.getByText('Conflict')).toBeDefined()
+describe('insights (owner request 2026-10-02: replace the Data quality strip)', () => {
+  it('INS-1 lists Stations worst first, each linking to its Station, with overdue, due-soon and total', () => {
+    at(<TopStationsPanel stations={[
+      { station_id: 's1', station_name: 'شبرا', region_name: 'East', overdue: 16, approaching_due: 4, assets: 40 },
+      { station_id: 's2', station_name: 'الكابتن', region_name: 'Delta', overdue: 12, approaching_due: 0, assets: 20 },
+    ]} />)
+    const link = screen.getByRole('link', { name: 'شبرا' })
+    expect(link.getAttribute('href')).toBe('/stations/s1')
+    const rows = screen.getAllByRole('row').slice(1)
+    expect(rows[0].textContent).toContain('16')
+    expect(rows[0].textContent).toContain('40')
+    expect(rows[1].textContent).toContain('الكابتن')
   })
 
-  it('DQ-2 NEGATIVE: no Prompt-6 dry-run figure is ever hard-coded', () => {
-    const { container } = at(<DataQualityPanel mapping={[]} />)
-    const text = container.textContent ?? ''
-    for (const dryRunFigure of ['387', '1,599', '1599', '262', '801']) {
-      expect(text, `${dryRunFigure} is an import-analysis fact, not production data`).not.toContain(dryRunFigure)
-    }
+  it('INS-2 an empty Station list says no visible Station is overdue, not an error', () => {
+    at(<TopStationsPanel stations={[]} />)
+    expect(screen.getByText(/No Station visible to you has an overdue asset/i)).toBeDefined()
   })
 
-  it('DQ-3 an empty queue reads as "none visible to you", not as an error', () => {
-    at(<DataQualityPanel mapping={[]} />)
-    expect(screen.getByText(/No unresolved mapping work/i)).toBeDefined()
+  it('INS-3 shows each manufacturer with its overdue share, computed from the counts', () => {
+    at(<ManufacturerPanel manufacturers={[
+      { manufacturer: 'EKC', total: 264, overdue: 146, approaching_due: 3 },
+      { manufacturer: 'COI', total: 346, overdue: 13, approaching_due: 0 },
+    ]} />)
+    expect(screen.getByText('EKC')).toBeDefined()
+    expect(screen.getByText('55%')).toBeDefined()
+    expect(screen.getByText('4%')).toBeDefined()
+    expect(screen.getByRole('link', { name: /open installed srvs/i }).getAttribute('href')).toBe('/manage/srvs/installed')
+  })
+
+  it('INS-4 NEGATIVE: no Data quality strip remains on the dashboard panels', () => {
+    const { container } = at(<ManufacturerPanel manufacturers={[]} />)
+    expect(container.textContent).not.toMatch(/Data quality/i)
+    expect(screen.getByText(/No installed relief valve visible to you/i)).toBeDefined()
   })
 })
 
@@ -178,7 +190,8 @@ describe('headings are not duplicated', () => {
     for (const [ui, name] of [
       [<DueMatrix due={[]} />, /Inspection and calibration/i],
       [<RegionOverview regions={[]} />, /^Regions$/i],
-      [<DataQualityPanel mapping={[]} />, /Data quality/i],
+      [<TopStationsPanel stations={[]} />, /Stations with the most overdue assets/i],
+      [<ManufacturerPanel manufacturers={[]} />, /Installed SRVs by manufacturer/i],
       [<WarehousePanel warehouse={{ total: 0, overdue: 0, approaching_due: 0 }} />, /Warehouse inventory/i],
     ] as const) {
       const { unmount } = at(ui)

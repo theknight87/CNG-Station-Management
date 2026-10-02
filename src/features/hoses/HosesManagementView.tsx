@@ -9,7 +9,6 @@ import { hasAssetFilters } from '@/components/data/assetFilters'
 import { Search, X } from 'lucide-react'
 
 import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
-import { Identifier } from '@/components/data/TechnicalText'
 import { NullValue } from '@/components/data/NullValue'
 import { DataToolbar, PageContainer, PageHeader } from '@/components/layout/PageContainer'
 import { Button } from '@/components/ui/button'
@@ -277,9 +276,6 @@ export function HosesManagementView() {
           detail={(r) => (
             <>
               <Fact label="Serial"><HoseSerial row={r} /></Fact>
-              <Fact label="Serial (source)">
-                {r.serial_number_raw ? <Identifier value={r.serial_number_raw} /> : <NullValue />}
-              </Fact>
               {/* The full text, untruncated — the column shows a shortened form. */}
               <Fact label="Description">
                 {r.description ? <span dir="auto">{r.description}</span> : <NullValue />}

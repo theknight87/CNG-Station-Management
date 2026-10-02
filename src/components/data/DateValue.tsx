@@ -28,7 +28,7 @@ export function DateValue({ date }: { date: PrecisionDate | null | undefined }) 
       return (
         <span className="tabular" title="the source gave a year only; no exact date exists">
           {date.year ?? date.raw}
-          <span className="ml-1 text-xs text-muted-foreground">(year only)</span>
+          <span className="cell-note ml-1 text-xs text-muted-foreground">(year only)</span>
         </span>
       )
 

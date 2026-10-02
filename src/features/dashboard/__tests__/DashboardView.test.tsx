@@ -17,6 +17,8 @@ const queryResult = vi.hoisted(() => ({
   regions: { data: [] as unknown[], error: null as { message: string } | null },
   mapping: { data: [] as unknown[], error: null as { message: string } | null },
   warehouse: { data: null as unknown, error: null as { message: string } | null },
+  stations: { data: [] as unknown[], error: null as { message: string } | null },
+  manufacturers: { data: [] as unknown[], error: null as { message: string } | null },
 }))
 
 vi.mock('@/hooks/useAppUser', () => ({ useAppUser: () => appUserState.current }))
@@ -35,11 +37,16 @@ vi.mock('@/lib/supabase/client', () => {
         : table === 'v_dashboard_due_summary' ? 'due'
         : table === 'v_dashboard_region_summary' ? 'regions'
         : table === 'v_dashboard_mapping_summary' ? 'mapping'
+        : table === 'v_dashboard_station_overdue' ? 'stations'
+        : table === 'v_dashboard_srv_manufacturer_due' ? 'manufacturers'
         : 'warehouse'
       const result = queryResult[key as keyof typeof queryResult]
-      const chain = {
+      // Every filter returns the chain, which is itself awaitable: a query may order twice or add a limit.
+      const chain: Record<string, unknown> = {
         select: () => chain,
-        order: () => Promise.resolve(result),
+        gt: () => chain,
+        limit: () => chain,
+        order: () => chain,
         maybeSingle: () => Promise.resolve(result),
         then: (resolve: (v: unknown) => unknown) => Promise.resolve(result).then(resolve),
       }
@@ -59,6 +66,8 @@ function reset() {
   queryResult.regions = { data: [], error: null }
   queryResult.mapping = { data: [], error: null }
   queryResult.warehouse = { data: null, error: null }
+  queryResult.stations = { data: [], error: null }
+  queryResult.manufacturers = { data: [], error: null }
 }
 afterEach(reset)
 

@@ -147,7 +147,7 @@ export function AlertStationCell({ row }: { row: AlertRow }) {
       <span className="whitespace-nowrap">
         <span className="text-muted-foreground">Station not confirmed</span>
         {row.source_station_name_raw ? (
-          <span className="ml-1.5 text-xs text-muted-foreground" dir="auto">
+          <span className="cell-note ml-1.5 text-xs text-muted-foreground" dir="auto">
             source: {row.source_station_name_raw}
           </span>
         ) : null}

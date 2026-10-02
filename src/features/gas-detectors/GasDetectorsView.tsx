@@ -10,7 +10,6 @@ import { useMakers } from '@/components/data/useMakers'
 import { Search, X } from 'lucide-react'
 
 import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
-import { Identifier } from '@/components/data/TechnicalText'
 import { NullValue } from '@/components/data/NullValue'
 import { DataToolbar, PageContainer, PageHeader } from '@/components/layout/PageContainer'
 import { Button } from '@/components/ui/button'
@@ -297,9 +296,6 @@ export function GasDetectorsView() {
           detail={(r) => (
             <>
               <Fact label="Serial"><Serial value={r.serial_number} status={r.serial_status} /></Fact>
-              <Fact label="Serial (source)">
-                {r.serial_number_raw ? <Identifier value={r.serial_number_raw} /> : <NullValue />}
-              </Fact>
               <Fact label="Manufacturer"><Text value={r.manufacturer} /></Fact>
               <Fact label="Model"><Text value={r.model} /></Fact>
               <Fact label="Region"><RegionChip name={r.region_name} /></Fact>

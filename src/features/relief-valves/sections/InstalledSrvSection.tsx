@@ -69,7 +69,7 @@ const COLUMNS: RegistryColumn<InstalledSrvRow>[] = [
       ) : r.station_name ? (
         <span className="whitespace-nowrap">
           <span dir="auto">{r.station_name}</span>
-          <span className="ml-1.5 text-xs text-muted-foreground">station level</span>
+          <span className="cell-note ml-1.5 text-xs text-muted-foreground">station level</span>
         </span>
       ) : (
         <span className="whitespace-nowrap text-muted-foreground">Not confirmed</span>
@@ -110,7 +110,7 @@ function WarehouseCode({ row }: { row: InstalledSrvRow }) {
     <span className="inline-flex items-center gap-1 whitespace-nowrap">
       <Identifier value={row.warehouse_code} />
       {row.warehouse_code_source === 'serial_match' ? (
-        <span className="text-[0.7rem] text-muted-foreground" title="Found by matching the serial to exactly one warehouse record">by serial</span>
+        <span className="cell-note text-[0.7rem] text-muted-foreground" title="Found by matching the serial to exactly one warehouse record">by serial</span>
       ) : null}
     </span>
   )
@@ -262,9 +262,6 @@ export function InstalledSrvSection() {
         detail={(r) => (
           <>
             <Fact label="Serial"><Serial value={r.serial_number} status={r.serial_status} /></Fact>
-            <Fact label="Serial (source)">
-              {r.serial_number_raw ? <Identifier value={r.serial_number_raw} /> : <NullValue />}
-            </Fact>
             <Fact label="Part number">{r.part_number ? <Identifier value={r.part_number} /> : <NullValue />}</Fact>
             <Fact label="Warehouse code"><WarehouseCode row={r} /></Fact>
             <Fact label="Tag number">{r.tag_number ? <Identifier value={r.tag_number} /> : <NullValue />}</Fact>

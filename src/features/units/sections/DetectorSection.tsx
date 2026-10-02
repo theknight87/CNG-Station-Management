@@ -4,7 +4,6 @@ import { Fact } from '@/features/hierarchy/HierarchyPieces'
 import { EquipmentSection, type Column } from '@/features/units/EquipmentSection'
 import { DueBadge, PrecisionDate, Serial, SourceStatus, Text } from '@/features/units/assetDisplay'
 import { useUnitEquipment, type DetectorRow } from '@/features/units/useUnitWorkspace'
-import { Identifier } from '@/components/data/TechnicalText'
 import { NullValue } from '@/components/data/NullValue'
 
 /**
@@ -64,7 +63,6 @@ export function DetectorSection() {
       detail={(r) => (
         <>
           <Fact label="Serial"><Serial value={r.serial_number} status={r.serial_status} /></Fact>
-          <Fact label="Serial (source)">{r.serial_number_raw ? <Identifier value={r.serial_number_raw} /> : <NullValue />}</Fact>
           <Fact label="Manufacturer"><Text value={r.manufacturer} /></Fact>
           <Fact label="Model"><Text value={r.model} /></Fact>
           <Fact label="Area type"><Text value={r.area_type} /></Fact>

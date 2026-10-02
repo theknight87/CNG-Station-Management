@@ -52,7 +52,7 @@ const PARENT_KIND_LABEL: Record<string, string> = {
 
 /** Ruling 6y: a Station-level storage record, shown under every Unit of its Station. */
 export function StationLevelTag() {
-  return <span className="ml-1.5 text-xs text-muted-foreground">Station level · all units</span>
+  return <span className="cell-note ml-1.5 text-xs text-muted-foreground">Station level · all units</span>
 }
 
 /** The equipment parent, or an explicit statement that it is unresolved. */
@@ -198,7 +198,6 @@ export function SrvSection() {
         detail={(r) => (
           <>
             <Fact label="Serial"><Serial value={r.serial_number} status={r.serial_status} /></Fact>
-            <Fact label="Serial (source)">{r.serial_number_raw ? <Identifier value={r.serial_number_raw} /> : <NullValue />}</Fact>
             <Fact label="Part number">{r.part_number ? <Identifier value={r.part_number} /> : <NullValue />}</Fact>
             <Fact label="Tag number">{r.tag_number ? <Identifier value={r.tag_number} /> : <NullValue />}</Fact>
             <Fact label="Manufacturer"><Text value={r.manufacturer} /></Fact>

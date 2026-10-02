@@ -10,7 +10,6 @@ import { useMakers } from '@/components/data/useMakers'
 import { Search, X } from 'lucide-react'
 
 import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
-import { Identifier } from '@/components/data/TechnicalText'
 import { NullValue } from '@/components/data/NullValue'
 import { DataToolbar } from '@/components/layout/PageContainer'
 import { Button } from '@/components/ui/button'
@@ -256,9 +255,6 @@ export function VesselRegistrySection({ assetType }: { assetType: VesselAssetTyp
         detail={(r) => (
           <>
             <Fact label="Serial"><Serial value={r.serial_number} status={r.serial_status} /></Fact>
-            <Fact label="Serial (source)">
-              {r.serial_number_raw ? <Identifier value={r.serial_number_raw} /> : <NullValue />}
-            </Fact>
             {r.serial_duplicate ? (
               <Fact label="Serial review"><VesselDuplicateSerialBadge row={r} /></Fact>
             ) : null}

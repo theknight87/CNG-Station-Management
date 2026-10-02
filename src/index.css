@@ -262,6 +262,12 @@
     }
   }
 
+  /* Qualifiers such as "year only" or "station level" stay in the record details, not in a table row
+   * (owner request 2026-10-02: they cost width and say nothing a column needs). */
+  .table-fit .cell-note {
+    display: none;
+  }
+
   .table-fit :is(td, th) > :is(div, span, label).flex {
     justify-content: center;
   }

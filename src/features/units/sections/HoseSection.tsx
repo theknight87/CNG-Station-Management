@@ -4,7 +4,6 @@ import { Fact } from '@/features/hierarchy/HierarchyPieces'
 import { EquipmentSection, type Column } from '@/features/units/EquipmentSection'
 import { DueBadge, PrecisionDate, Pressure, Serial, SourceStatus, Text } from '@/features/units/assetDisplay'
 import { useUnitEquipment, type HoseRow } from '@/features/units/useUnitWorkspace'
-import { Identifier } from '@/components/data/TechnicalText'
 import { NullValue } from '@/components/data/NullValue'
 
 /**
@@ -82,7 +81,6 @@ export function HoseSection() {
       detail={(r) => (
         <>
           <Fact label="Serial"><Serial value={r.serial_number} status={r.serial_status} /></Fact>
-          <Fact label="Serial (source)">{r.serial_number_raw ? <Identifier value={r.serial_number_raw} /> : <NullValue />}</Fact>
           <Fact label="Description"><Text value={r.description} /></Fact>
           <Fact label="Dispenser"><Text value={r.dispenser_name} /></Fact>
           <Fact label="Working pressure">

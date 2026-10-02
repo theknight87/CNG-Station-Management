@@ -373,9 +373,6 @@ export function WarehouseSrvSection() {
         detail={(r) => (
           <>
             <Fact label="Serial"><Serial value={r.serial_number} status={r.serial_status} /></Fact>
-            <Fact label="Serial (source)">
-              {r.serial_number_raw ? <Identifier value={r.serial_number_raw} /> : <NullValue />}
-            </Fact>
             <Fact label="Part number">{r.part_number ? <Identifier value={r.part_number} /> : <NullValue />}</Fact>
             <Fact label="Manufacturer"><Text value={r.manufacturer} /></Fact>
             <Fact label="Size type"><Text value={r.size_type} /></Fact>
