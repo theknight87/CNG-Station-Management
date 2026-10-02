@@ -265,17 +265,17 @@ describe('the pre-import mapping queue', () => {
     expect(db.rpcCalls[0].args.p_expected_decision_at).toBe('2026-03-04T09:00:00Z')
   })
 
-  it('filters by mapping status, Region and Station, and is not a fixed window', async () => {
+  it('filters by Region and Station (no Mapping status filter — owner request 2026-10-02), and is not a fixed window', async () => {
     render(withRouter(<AdminDataQualitySection />))
     await userEvent.selectOptions(await screen.findByLabelText(/asset type/i), 'gas_detectors')
-    await userEvent.selectOptions(screen.getByLabelText(/mapping status/i), 'needs_station_mapping')
+    expect(screen.queryByLabelText(/mapping status/i)).toBeNull()
     await userEvent.selectOptions(screen.getByLabelText(/region/i), 'East')
     await userEvent.type(screen.getByLabelText(/station search/i), 'abn')
 
     const staged = db.queries.filter((q) => q.table === 'v_admin_staged_mapping_queue')
     const last = staged[staged.length - 1]
     expect(last.ops.join(' ')).toMatch(/eq:target_table/)
-    expect(last.ops.join(' ')).toMatch(/eq:staged_mapping_status/)
+    expect(last.ops.join(' ')).not.toMatch(/eq:staged_mapping_status/)
     expect(last.ops.join(' ')).toMatch(/eq:normalized_region/)
     expect(last.ops.join(' ')).toMatch(/ilike:raw_station/)
     // Paging is bounded per request, not capped: the limit grows on Load more.

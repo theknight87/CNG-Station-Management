@@ -100,7 +100,7 @@ linked from the owner's reply to `warehouse_station_matching.xlsx` (107 suggesti
 `wrv_target_station_region_fk` requires) and `source_raw` keeps the sheet's own Station and Region. Audited; data only, no migration.
 **Owner UI rulings 2026-10-02.** Warehouse availability reads CALIBRATED / UNDER CALIBRATION / NEW / AT STATION /
 IN TRANSIT (one map, `availabilityLabels.ts`, also used by Reports and both CSVs). No page offers a Mapping filter any
-more; the summary tiles on every registry (Installed and Warehouse SRVs, Vessels, Gas Detectors, Hoses, Alerts, Reports)
+more (Admin → Data Quality included — its queue lists every unresolved status); the summary tiles on every registry (Installed and Warehouse SRVs, Vessels, Gas Detectors, Hoses, Alerts, Reports)
 are quick filters: pressing one shows exactly the rows it counts, pressing it again clears it, and tile counts ignore the
 bucket a tile selects. Reports no longer offer Data Quality or Notification Activity (old links redirect to Due &
 Overdue). A tab older than the latest deployment reloads itself once instead of failing (`lib/app/staleChunk.ts`).

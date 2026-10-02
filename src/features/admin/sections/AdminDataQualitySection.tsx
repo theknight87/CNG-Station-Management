@@ -17,21 +17,6 @@ import { useEquipment, useRegions, useStations, useUnits } from '../useMappingOp
 
 const PARENT_KINDS: SrvParentKind[] = ['compressor', 'storage_vessel', 'dispenser']
 
-const SRV_STATUSES = [
-  { value: '', label: 'Every unresolved status' },
-  { value: 'needs_station_mapping', label: 'Needs station mapping' },
-  { value: 'needs_unit_mapping', label: 'Needs unit mapping' },
-  { value: 'needs_equipment_mapping', label: 'Needs equipment mapping' },
-  { value: 'conflict', label: 'Conflict' },
-]
-
-const STAGED_STATUSES = [
-  { value: '', label: 'Every unresolved status' },
-  { value: 'needs_station_mapping', label: 'Needs station mapping' },
-  { value: 'needs_unit_mapping', label: 'Needs unit mapping' },
-  { value: 'conflict', label: 'Conflict' },
-]
-
 /**
  * Data quality: the counts, and the five working queues.
  *
@@ -128,17 +113,7 @@ export function AdminDataQualitySection() {
               ))}
             </select>
           </Field>
-          <Field label="Mapping status" htmlFor="q-status">
-            <select
-              id="q-status" value={filters.mappingStatus}
-              onChange={(e) => set({ mappingStatus: e.target.value })}
-              className="h-7 rounded border bg-background px-1 text-xs"
-            >
-              {(filters.assetType === '' ? SRV_STATUSES : STAGED_STATUSES).map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </Field>
+          {/* Owner request 2026-10-02: no Mapping status filter; the queue lists every unresolved status. */}
           <Field label={filters.assetType === '' ? 'Region' : 'Region (from source)'} htmlFor="q-region">
             <select
               id="q-region" value={filters.region}
