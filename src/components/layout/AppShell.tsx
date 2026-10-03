@@ -115,7 +115,10 @@ export function AppShell({
           ) : (
             <>
               <BrandMark variant="mark" className="h-8 w-auto shrink-0" />
-              <span className="truncate text-sm font-semibold tracking-tight">
+              {/* Wraps to two lines rather than truncating: at the sidebar's
+                * width the full name overflows by a few pixels, and an
+                * ellipsis cut the product's own name. */}
+              <span className="line-clamp-2 text-sm font-semibold leading-tight tracking-tight">
                 CNG Station Management
               </span>
             </>

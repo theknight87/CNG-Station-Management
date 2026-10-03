@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
+import { SlidersHorizontal } from 'lucide-react'
 
 import { EntityName } from '@/components/data/TechnicalText'
 import { InfoTip } from '@/components/ui/InfoTip'
@@ -93,6 +94,7 @@ export function DataToolbar({
   trailing,
   label,
   className,
+  filtersActive,
 }: {
   children?: ReactNode
   trailing?: ReactNode
@@ -100,7 +102,18 @@ export function DataToolbar({
    * page are indistinguishable to anyone navigating by landmark. */
   label: string
   className?: string
+  /** Opts the toolbar into the PHONE layout: below `md` only its first control
+   * (the search box) shows, and the rest sit behind a Filters toggle — at 390px
+   * a full filter row fills the first screen before a single record does. The
+   * flag says whether any filter is applied, so a closed panel still tells the
+   * user the table is narrowed. Omit it and the toolbar never collapses. */
+  filtersActive?: boolean
 }) {
+  const panelId = useId()
+  const [open, setOpen] = useState(false)
+  const collapsible = filtersActive !== undefined
+  const collapsed = collapsible && !open
+
   return (
     <div
       role="search"
@@ -110,8 +123,37 @@ export function DataToolbar({
         className,
       )}
     >
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">{children}</div>
-      {trailing ? <div className="flex shrink-0 items-center gap-2">{trailing}</div> : null}
+      <div
+        id={panelId}
+        className={cn(
+          'flex min-w-0 flex-1 flex-wrap items-center gap-2',
+          // Every control except the first (search) and the toggle itself.
+          // Written out in full: Tailwind only generates classes it finds as literals.
+          collapsible && 'max-md:[&>*:not(:first-child):not([data-filter-toggle])]:order-2',
+          collapsed && 'max-md:[&>*:not(:first-child):not([data-filter-toggle])]:hidden',
+        )}
+      >
+        {children}
+        {collapsible ? (
+          <button
+            type="button"
+            data-filter-toggle=""
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            aria-controls={panelId}
+            className="order-1 inline-flex h-7 shrink-0 items-center gap-1.5 rounded border bg-background px-2 text-sm text-foreground hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
+            {open ? 'Hide filters' : 'Filters'}
+            {filtersActive ? (
+              <span className="rounded bg-brand-strong/10 px-1 text-xs font-medium text-brand-strong">applied</span>
+            ) : null}
+          </button>
+        ) : null}
+      </div>
+      {trailing ? (
+        <div className={cn('flex shrink-0 items-center gap-2', collapsed && 'max-md:hidden')}>{trailing}</div>
+      ) : null}
     </div>
   )
 }

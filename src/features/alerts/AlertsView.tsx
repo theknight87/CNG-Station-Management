@@ -208,7 +208,7 @@ export function AlertsView() {
           </section>
         ) : null}
 
-        <DataToolbar label="Search and filter alerts">
+        <DataToolbar label="Search and filter alerts" filtersActive={hasFilters}>
           <label className="relative flex min-w-0 flex-1 items-center sm:max-w-xs">
             <Search className="pointer-events-none absolute left-2 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
             <span className="sr-only">Search alerts</span>
