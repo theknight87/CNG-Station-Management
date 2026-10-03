@@ -21,12 +21,16 @@ vi.mock('@/features/relief-valves/ReplaceValvePanel', () => ({
 vi.mock('@/features/record-tools/RecordAdminTools', () => ({ RecordAdminTools: () => null }))
 
 const full = { serial_status: 'present', pressure_min: null, set_pressure_raw: null, manufacturer: null, last_calibration_display: null,
-  last_calibration_precision: 'unknown', days_left: null, due_status: 'unknown' }
+  last_calibration_precision: 'unknown', days_left: null, due_status: 'unknown', parent_kind: 'compressor', expected_parent_kind: 'compressor' }
 const rows = [
   { id: 'a', serial_number: 'HIGH', pressure_max: 300, pressure_unit: 'BAR' },
   { id: 'b', serial_number: 'PSI-LOW', pressure_max: 100, pressure_unit: 'PSI' },
   { id: 'c', serial_number: 'NONE', pressure_max: null, pressure_unit: null },
   { id: 'd', serial_number: 'MID', pressure_max: 35, pressure_unit: 'BAR' },
+  // Storage valves follow every stage valve, even at a lower pressure; a storage valve with no
+  // confirmed vessel is grouped by its storage hint.
+  { id: 'e', serial_number: 'STO-HIGH', pressure_max: 300, pressure_unit: 'BAR', parent_kind: 'storage_vessel', expected_parent_kind: 'storage_vessel' },
+  { id: 'f', serial_number: 'STO-LOW', pressure_max: 20, pressure_unit: 'BAR', parent_kind: null, expected_parent_kind: 'storage_vessel' },
 ]
 const client = {
   from: (table: string) => {
@@ -58,11 +62,11 @@ const { useUnitEquipment } = await import('@/features/units/useUnitWorkspace')
 beforeEach(() => { state.admin = true; state.sharedCount = 4 })
 
 describe('Unit window relief valves', () => {
-  it('UPR-1 valves read lowest set pressure first (PSI on the BAR scale), unrecorded pressure last', async () => {
+  it('UPR-1 stage valves first, then storage valves, each lowest set pressure first (PSI on the BAR scale), unrecorded last', async () => {
     const { result } = renderHook(() => useUnitEquipment<{ serial_number: string }>('srvs', 'u-1'))
     await waitFor(() => expect(result.current.state.status).toBe('ready'))
     const s = result.current.state
-    expect(s.status === 'ready' && s.data.map((r) => r.serial_number)).toEqual(['PSI-LOW', 'MID', 'HIGH', 'NONE'])
+    expect(s.status === 'ready' && s.data.map((r) => r.serial_number)).toEqual(['PSI-LOW', 'MID', 'HIGH', 'NONE', 'STO-LOW', 'STO-HIGH'])
   })
 
   it('UPR-2 an admin replaces a valve straight from its row, without opening the valve', async () => {

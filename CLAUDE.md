@@ -124,8 +124,8 @@ is cancelled, never deleted; refused once the replaced item is back in the wareh
 (`v_equipment_issue_log`); undo is also on Log and Emergency rows. Migrations `20261003090000` (deployed) and `20261003090100`
 (the CHECK/index swap; the owner ran it in the SQL editor, recorded as `20261003102939`) — both deployed; suite `equipment_issue_undo`.
 **Unit window SRVs (owner 2026-10-03).** Every relief valve row in the Unit window carries a Replace button (admin) that opens
-`ReplaceValvePanel` straight on its form; Unit SRV lists (`useUnitEquipment('srvs')`) read lowest set pressure first (BAR scale, PSI
-converted, unrecorded last). On the Station row each Unit shows its OWN overdue count and the Station's shared storage (vessels with no
+`ReplaceValvePanel` straight on its form; Unit SRV lists (`useUnitEquipment('srvs')`) read stage (compressor) valves first, then storage valves
+(owner 2026-10-03), each group lowest set pressure first (BAR scale, PSI converted, unrecorded last). On the Station row each Unit shows its OWN overdue count and the Station's shared storage (vessels with no
 Unit + Station-level resolved SRVs) is one line, counted once — `v_unit_summary.overdue` includes the shared part in every Unit, which
 read as double counting. Frontend only; production check: 0 of 328 Units where Unit − shared ≠ own.
 

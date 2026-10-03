@@ -36,3 +36,10 @@ export function pressureBar(v: { pressure_max: number | null; pressure_unit: str
   if (v.pressure_unit === 'PSI') return v.pressure_max * 0.0689476
   return null
 }
+
+/** Stage (compressor) relief valves first, then storage, then dispenser, then any whose position is not
+ *  recorded. Ordering only: the expected-parent hint is read when no parent is confirmed, never stored. */
+const SRV_GROUP_RANK: Record<string, number> = { compressor: 0, storage_vessel: 1, dispenser: 2 }
+export function srvGroupRank(v: { parent_kind: string | null; expected_parent_kind: string | null }): number {
+  return SRV_GROUP_RANK[v.parent_kind ?? v.expected_parent_kind ?? ''] ?? 3
+}
