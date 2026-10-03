@@ -98,7 +98,6 @@ export function HoseSection() {
           <Fact label="Notes"><Text value={r.notes} /></Fact>
         </>
       )}
-      footnote="Pressures are shown in the unit the source proved. Nothing is converted, and no unit is inferred from magnitude."
     />
   )
 }

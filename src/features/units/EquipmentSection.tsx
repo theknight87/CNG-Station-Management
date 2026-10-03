@@ -15,7 +15,6 @@ import {
 } from '@/components/data/DataTable'
 import { EmptyState, ErrorState, LoadingState, NotImplemented } from '@/components/states/AppStates'
 import { Fact, FactGrid } from '@/features/hierarchy/HierarchyPieces'
-import { cn } from '@/lib/utils'
 import type { Loadable } from '@/features/hierarchy/useHierarchy'
 
 /**
@@ -53,7 +52,6 @@ export function EquipmentSection<T>({
   emptyTitle,
   emptyDescription,
   errorTitle,
-  footnote,
   record,
 }: {
   title: string
@@ -66,7 +64,6 @@ export function EquipmentSection<T>({
   emptyTitle: string
   emptyDescription: string
   errorTitle: string
-  footnote?: ReactNode
   /** The editable record behind a row, for admin editing and photos. */
   record?: (row: T) => RecordRef | null
 }) {
@@ -159,7 +156,6 @@ export function EquipmentSection<T>({
           </TableBody>
         </DataTable>
       </TableScroll>
-      {footnote ? <p className={cn('text-sm text-muted-foreground')}>{footnote}</p> : null}
     </div>
   )
 }

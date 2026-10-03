@@ -243,11 +243,11 @@ describe('There is no detector location', () => {
     expect(screen.getByRole('columnheader', { name: /area type/i })).toBeDefined()
   })
 
-  it('says in the footnote that area type is not a position', async () => {
+  it('shows no explanatory footnote under the table (owner 2026-10-03)', async () => {
     replies.detectors = { data: [detector()], error: null, count: 1 }
     renderDetectors()
     await screen.findByText('GD-00001')
-    expect(screen.getByText(/not a physical position/i)).toBeDefined()
+    expect(screen.queryByText(/not a physical position|not columns this schema carries/i)).toBeNull()
   })
 })
 

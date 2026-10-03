@@ -221,7 +221,6 @@ export function SrvSection() {
             <div className="col-span-full"><ReplaceValvePanel valve={r} onDone={reload} /></div>
           </>
         )}
-        footnote="Only valves whose Unit is confirmed are listed. Valves awaiting Station or Unit confirmation, and warehouse stock, are never shown on a Unit."
       />
     </div>
   )

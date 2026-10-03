@@ -97,7 +97,6 @@ export function VesselSection({ kind }: { kind: 'storage_vessel' | 'recovery_tan
           <Fact label="Notes"><Text value={r.notes} /></Fact>
         </>
       )}
-      footnote="Capacity, design pressure and certificate reference are not columns this schema carries, so they are not shown here."
     />
   )
 }

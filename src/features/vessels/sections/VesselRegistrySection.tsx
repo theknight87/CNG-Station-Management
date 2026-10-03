@@ -291,11 +291,6 @@ export function VesselRegistrySection({ assetType }: { assetType: VesselAssetTyp
             {assetType === 'storage_vessel' ? <RelatedSrvs vesselId={r.id} /> : null}
           </>
         )}
-        footnote={
-          assetType === 'storage_vessel'
-            ? 'Capacity, design pressure, manufacture year and certificate reference are not columns this schema carries, so they are not shown. Expand a row to see its confirmed relief valves.'
-            : 'Capacity, design pressure, manufacture year and certificate reference are not columns this schema carries. Recovery Tanks have no relief-valve relationship in this schema, so none is shown.'
-        }
       />
     </div>
   )

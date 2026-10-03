@@ -298,11 +298,6 @@ export function HosesManagementView() {
               <Fact label="Notes"><Text value={r.notes} /></Fact>
             </>
           )}
-          footnote={
-            'The schema records a free-text description, not manufacturer and model, so neither is shown and neither is parsed out of the description. ' +
-            'Pressures carry only the unit the source proved and are never converted. ' +
-            'A duplicate serial is reported beside the identifier and never merged, suffixed or repaired; a missing serial stays empty and is never generated.'
-          }
         />
       </div>
     </>

@@ -59,7 +59,6 @@ export function DispenserSection() {
           <Fact label="Notes"><Text value={r.notes} /></Fact>
         </>
       )}
-      footnote="Hose counts here are what the source workbook reported. They are kept for traceability and never reconciled automatically against the Hoses tab."
     />
   )
 }

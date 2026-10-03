@@ -79,7 +79,6 @@ export function DetectorSection() {
           <Fact label="Notes"><Text value={r.notes} /></Fact>
         </>
       )}
-      footnote="The schema records an area type (open or closed), not a physical position. No detector location is inferred."
     />
   )
 }

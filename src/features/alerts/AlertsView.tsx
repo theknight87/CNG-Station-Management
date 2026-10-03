@@ -363,11 +363,6 @@ export function AlertsView() {
               </div>
             </>
           )}
-          footnote={
-            'The Alert column is the threshold that raised this record; Days left and Status show where the asset stands today, against the Africa/Cairo date. They can differ, and that is expected. ' +
-            'Reading an alert is personal to you; acknowledging is a shared operational act recorded with the server-derived user and time. ' +
-            'A failed delivery never removes or changes an alert.'
-          }
         />
       </div>
     </PageContainer>

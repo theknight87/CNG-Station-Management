@@ -410,7 +410,6 @@ export function WarehouseSrvSection() {
             <Fact label="Notes"><Text value={r.notes} /></Fact>
           </>
         )}
-        footnote="Warehouse stock has no Station, Unit or equipment parent. A destination records where a valve is being sent, not where it is fitted."
       />
     </div>
   )

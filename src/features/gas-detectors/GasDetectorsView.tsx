@@ -311,11 +311,6 @@ export function GasDetectorsView() {
               <Fact label="Notes"><Text value={r.notes} /></Fact>
             </>
           )}
-          footnote={
-            'The schema records an area classification (open or closed) on the area, not a physical position for the detector, so no location is shown. ' +
-            'Calibration certificate, calibration gas, detection range and sensor type are not columns this schema carries. ' +
-            'Rows recorded as not installed are evidence that no detector exists at that location; they carry no serial and no calibration date.'
-          }
         />
       </div>
     </>

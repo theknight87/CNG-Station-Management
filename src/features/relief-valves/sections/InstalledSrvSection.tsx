@@ -302,7 +302,6 @@ export function InstalledSrvSection() {
             <Fact label="Notes"><Text value={r.notes} /></Fact>
           </>
         )}
-        footnote="Mapping is not changed from this screen. Resolving a record is an explicit, audited decision and is deferred — see docs/srv-management.md."
       />
     </div>
   )

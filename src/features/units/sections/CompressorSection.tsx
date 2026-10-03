@@ -80,7 +80,6 @@ export function CompressorSection() {
           <Fact label="Notes"><Text value={r.notes} /></Fact>
         </>
       )}
-      footnote="The compressor record carries running hours and gas sales, not inspection or calibration dates, so no due status is shown."
     />
   )
 }

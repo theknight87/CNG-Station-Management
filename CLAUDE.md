@@ -140,6 +140,8 @@ Last / Next Calibration / Days Left / Next Calibration Month / Notes, banded row
 for exactly the rows the screen's filters select; CSV stays the plain table. Station = the Unit, else the Station; a year-only date is
 its year; Days Left is a live `K−TODAY()` formula for exact next dates only; Notes append the source status. File
 "Stations Safety Relief Valves Data <date>.xlsx" (never the template's file name). `features/export/installedSheet.ts`; frontend only.
+**No table footnotes (owner 2026-10-03).** The explanatory paragraph under every table ("Mapping is not changed from this screen…",
+"…not columns this schema carries", etc.) is gone from all pages, and `RegistryTable` / `EquipmentSection` no longer take a `footnote`.
 
 **Safety Relief Valves (SRVs) are children of their parent equipment**, never independent
 station assets. An SRV may belong to a **Compressor**, a **Storage Vessel**, or a

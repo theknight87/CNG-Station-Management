@@ -70,7 +70,6 @@ export function RegistryTable<T>({
   emptyTitle,
   emptyDescription,
   errorTitle,
-  footnote,
   record,
   extra,
   selection,
@@ -91,7 +90,6 @@ export function RegistryTable<T>({
   emptyTitle: string
   emptyDescription: string
   errorTitle: string
-  footnote?: ReactNode
   /** The editable record behind a row, for admin editing and photos. Omit for read-only registries. */
   record?: (row: T) => RecordRef | null
   /** Extra dialog content (workflow actions, history). `done` closes the dialog and reloads. */
@@ -213,7 +211,6 @@ export function RegistryTable<T>({
       </div>
 
       <PaginationControls label={label} page={page} pageSize={pageSize} total={total} visibleRows={rows.length} onPage={onPage} />
-      {footnote ? <p className="text-sm text-muted-foreground">{footnote}</p> : null}
       <RecordDetailsDialog
         open={selected !== null}
         title={`${label} record`}
