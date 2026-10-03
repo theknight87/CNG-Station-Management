@@ -6,7 +6,6 @@ import { LogOut } from 'lucide-react'
 import '../src/index.css'
 import { AccountControl } from '@/components/layout/AccountControl'
 import {
-  DataQualityPanel,
   DueMatrix,
   RegionOverview,
   SummaryStrip,
@@ -162,7 +161,6 @@ function DashboardFixture() {
       <DueMatrix due={FIXTURE_DUE} />
       <RegionOverview regions={FIXTURE_REGIONS} />
       <div className="grid gap-4 xl:grid-cols-2">
-        <DataQualityPanel mapping={FIXTURE_MAPPING} />
         <WarehousePanel warehouse={{ total: 2188, overdue: 37, approaching_due: 94 }} />
       </div>
     </div>

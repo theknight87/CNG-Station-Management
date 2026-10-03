@@ -1,4 +1,4 @@
-import { Fragment } from 'react'
+import { Fragment, useLayoutEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronRight } from 'lucide-react'
 
@@ -22,6 +22,16 @@ import type { Crumb } from './breadcrumbPaths'
 export type { Crumb }
 
 export function Breadcrumbs({ crumbs }: { crumbs: Crumb[] }) {
+  const navRef = useRef<HTMLElement>(null)
+  // When the trail overflows, start it scrolled to its END so the current page
+  // is the crumb in view, not a clipped ancestor. Only this strip scrolls; the
+  // chrome is left-to-right, so the end is the maximum scrollLeft.
+  const trail = crumbs.map((c) => c.label).join('\u0000')
+  useLayoutEffect(() => {
+    const nav = navRef.current
+    if (nav && nav.scrollWidth > nav.clientWidth) nav.scrollLeft = nav.scrollWidth
+  }, [trail])
+
   if (crumbs.length === 0) return null
 
   return (
@@ -31,6 +41,7 @@ export function Breadcrumbs({ crumbs }: { crumbs: Crumb[] }) {
     // this one strip keeps every name intact and readable; the page body
     // still never scrolls sideways.
     <nav
+      ref={navRef}
       aria-label="Breadcrumb"
       className="scrollbar-none min-w-0 overflow-x-auto"
     >

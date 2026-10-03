@@ -211,7 +211,7 @@ export function GasDetectorsView() {
           </section>
         ) : null}
 
-        <DataToolbar label="Search and filter gas detectors">
+        <DataToolbar label="Search and filter gas detectors" filtersActive={hasFilters}>
           <label className="relative flex min-w-0 flex-1 items-center sm:max-w-xs">
             <Search className="pointer-events-none absolute left-2 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
             <span className="sr-only">Search gas detectors</span>
