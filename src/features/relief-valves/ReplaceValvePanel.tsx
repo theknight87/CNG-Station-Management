@@ -27,9 +27,15 @@ import { STOCK_COLUMNS, matchesSpec, type ReplaceableValve, type StockRow } from
 
 const field = 'h-8 rounded border bg-background px-2 text-sm text-foreground'
 
-export function ReplaceValvePanel({ valve, onDone }: { valve: ReplaceableValve; onDone: () => void }) {
+export function ReplaceValvePanel({ valve, onDone, startOpen = false, onCancel }: {
+  valve: ReplaceableValve
+  onDone: () => void
+  /** Open straight on the form (the Replace button beside a valve in a list), with Cancel going to `onCancel`. */
+  startOpen?: boolean
+  onCancel?: () => void
+}) {
   const isAdmin = useIsAdmin()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(startOpen)
   if (!isAdmin) return null
   if (!open) {
     return (
@@ -40,7 +46,7 @@ export function ReplaceValvePanel({ valve, onDone }: { valve: ReplaceableValve; 
       </div>
     )
   }
-  return <ReplaceForm valve={valve} onDone={onDone} onCancel={() => setOpen(false)} />
+  return <ReplaceForm valve={valve} onDone={onDone} onCancel={onCancel ?? (() => setOpen(false))} />
 }
 
 function ReplaceForm({ valve, onDone, onCancel }: { valve: ReplaceableValve; onDone: () => void; onCancel: () => void }) {

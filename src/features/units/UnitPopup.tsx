@@ -1,5 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { Replace } from 'lucide-react'
 import { ReplaceValvePanel } from '@/features/relief-valves/ReplaceValvePanel'
+import { RowAction, RowActions } from '@/features/relief-valves/SrvAdminActions'
+import { useIsAdmin } from '@/features/relief-valves/useSrvWorkflow'
 import { ScopeExport, UnitTabExport } from '@/features/export/ScopeExport'
 
 import { MakerChip } from '@/components/data/AssetChips'
@@ -143,7 +146,11 @@ function Detail({ row }: { row: Record<string, unknown> }) {
   )
 }
 
-function TabList<T>({ spec, unitId, onOpen }: { spec: TabSpec<T>; unitId: string; onOpen: (r: T) => void }) {
+function TabList<T>({ spec, unitId, onOpen, action }: {
+  spec: TabSpec<T>; unitId: string; onOpen: (r: T) => void
+  /** A control at the end of each row (the SRV tab's Replace); clicking it never opens the row. */
+  action?: { header: string; render: (r: T) => ReactNode }
+}) {
   const { state, reload } = useUnitEquipment<T>(spec.tab, unitId)
   if (state.status === 'loading') return <LoadingState label={`Loading ${spec.label}`} />
   if (state.status === 'unconfigured') return <EmptyState title="Not configured" description="The database is not configured." />
@@ -159,6 +166,7 @@ function TabList<T>({ spec, unitId, onOpen }: { spec: TabSpec<T>; unitId: string
             {spec.columns.map((c) => (
               <th key={c.header} className={cn('whitespace-nowrap px-2 py-1.5 text-left font-semibold', c.right && 'text-right')}>{c.header}</th>
             ))}
+            {action ? <th className="whitespace-nowrap px-2 py-1.5 font-semibold">{action.header}</th> : null}
           </tr>
         </thead>
         <tbody>
@@ -168,6 +176,7 @@ function TabList<T>({ spec, unitId, onOpen }: { spec: TabSpec<T>; unitId: string
               {spec.columns.map((c) => (
                 <td key={c.header} className={cn('whitespace-nowrap px-2 py-1 align-middle', c.right && 'text-right tabular')}>{c.render(r)}</td>
               ))}
+              {action ? <td className="whitespace-nowrap px-2 py-1 align-middle">{action.render(r)}</td> : null}
             </tr>
           ))}
         </tbody>
@@ -230,6 +239,8 @@ export function UnitPopup({ unit, onClose }: { unit: UnitSummary | null; onClose
   const [tab, setTab] = useState<EquipmentTab>('srvs')
   const [item, setItem] = useState<{ spec: TabSpec<unknown>; row: unknown } | null>(null)
   const [nonce, setNonce] = useState(0)
+  const [replacing, setReplacing] = useState<UnitSrvRow | null>(null)
+  const isAdmin = useIsAdmin()
   const counts = useUnitDue(unit?.unit_id, unit?.station_id, nonce)
   const spec = TABS.find((t) => t.tab === tab) ?? TABS[0]
   const record = item ? item.spec.record(item.row) : null
@@ -256,9 +267,27 @@ export function UnitPopup({ unit, onClose }: { unit: UnitSummary | null; onClose
                 <ScopeExport scope={{ kind: 'unit', id: unit.unit_id, name: unit.unit_name }} />
                 <AddUnitAssetButton kind={spec.kind} unitId={unit.unit_id} unitName={unit.unit_name} onAdded={() => setNonce((n) => n + 1)} />
               </div>
-              <TabList key={`${spec.tab}-${nonce}`} spec={spec} unitId={unit.unit_id} onOpen={(row) => setItem({ spec, row })} />
+              <TabList key={`${spec.tab}-${nonce}`} spec={spec} unitId={unit.unit_id} onOpen={(row) => setItem({ spec, row })}
+                       action={spec.kind === 'srv' && isAdmin ? {
+                         // Replace straight from the list (owner request 2026-10-03), without opening the valve first.
+                         header: 'Replace',
+                         render: (r: UnitSrvRow) => (
+                           <RowActions>
+                             <RowAction label={`Replace ${r.serial_number ? `valve ${r.serial_number}` : 'this valve'}`} icon={Replace}
+                                        onClick={() => setReplacing(r)} />
+                           </RowActions>
+                         ),
+                       } : undefined} />
             </div>
           </div>
+        ) : null}
+      </RecordDetailsDialog>
+      <RecordDetailsDialog open={replacing !== null} size="wide"
+                           title={replacing ? `Replace SRV ${replacing.serial_number ?? ''}`.trim() : ''}
+                           description={unit ? `${unit.unit_name} · ${unit.station_name}` : undefined} onClose={() => setReplacing(null)}>
+        {replacing ? (
+          <ReplaceValvePanel valve={replacing} startOpen onCancel={() => setReplacing(null)}
+                             onDone={() => { setReplacing(null); setNonce((n) => n + 1) }} />
         ) : null}
       </RecordDetailsDialog>
       <RecordDetailsDialog open={item !== null} title={item ? item.spec.title(item.row) : ''}

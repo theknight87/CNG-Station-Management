@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { useSupabaseClient } from '@/lib/supabase/client'
 import type { Loadable } from '@/features/hierarchy/useHierarchy'
+import { byValues, pressureBar } from '@/features/relief-valves/srvSort'
 
 /**
  * Equipment data for one Unit.
@@ -302,7 +303,14 @@ export function useUnitEquipment<T>(
       const { data, error } = await request.order(source.order, { nullsFirst: false })
       if (cancelled) return
       if (error) setState({ status: 'error', message: error.message })
-      else setState({ status: 'ready', data: (data ?? []) as unknown as T[] })
+      else {
+        const rows = (data ?? []) as unknown as T[]
+        // Relief valves read lowest set pressure first (owner request 2026-10-03), on one BAR scale; serial breaks ties.
+        if (tab === 'srvs') {
+          (rows as unknown as UnitSrvRow[]).sort(byValues<UnitSrvRow>(pressureBar, (r) => r.serial_number))
+        }
+        setState({ status: 'ready', data: rows })
+      }
     }
 
     void load()
