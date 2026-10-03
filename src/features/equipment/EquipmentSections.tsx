@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { ClipboardList, FlaskConical, Gauge, Plus, Siren, Warehouse } from 'lucide-react'
+import { ClipboardList, FlaskConical, Gauge, Plus, Siren, Undo2, Warehouse } from 'lucide-react'
 import { Outlet } from 'react-router-dom'
 
 import { SearchBox } from '@/components/data/FilterControls'
@@ -14,14 +14,15 @@ import { Button } from '@/components/ui/button'
 import { Fact, FactGrid } from '@/features/hierarchy/HierarchyPieces'
 import { RegionChip } from '@/components/data/AssetChips'
 import { CountStrip, FormMessage, ListStates, SelectableTable, type SelectableColumn } from '@/features/relief-valves/SrvWorkflowPieces'
+import { RowAction, RowActions } from '@/features/relief-valves/SrvAdminActions'
 import { AvailabilityChip } from '@/features/relief-valves/SrvPieces'
 import { useConfirmedAction, useIsAdmin } from '@/features/relief-valves/useSrvWorkflow'
 import { DueBadge } from '@/features/units/assetDisplay'
-import { AddStockDialog, CertifyDialog, IssueDialog, ItemHistory } from './EquipmentDialogs'
+import { AddStockDialog, CertifyDialog, IssueDialog, ItemHistory, UndoIssueDialog, type UndoTarget } from './EquipmentDialogs'
 import { KINDS, STORE_STATES, type EquipmentKind } from './equipmentKinds'
 import {
   EQUIPMENT_LIMIT, useEquipmentCounts, useEquipmentList, useNonce,
-  type EmergencyRow, type JobRow, type LogRow, type StockRow,
+  type EmergencyRow, type IssueRow, type JobRow, type LogRow, type StockRow,
 } from './useEquipmentWorkflow'
 
 /**
@@ -34,7 +35,7 @@ export function EquipmentWorkspace({ kind }: { kind: EquipmentKind }) {
   const tabs: SectionTab[] = [
     { to: `${spec.base}/installed`, icon: Gauge, label: `Installed ${spec.many}`, hint: 'At the stations' },
     { to: `${spec.base}/warehouse`, icon: Warehouse, label: 'Warehouse', hint: `In the store: ${Object.values(spec.stateLabel).join(', ').toLowerCase()}` },
-    { to: `${spec.base}/log`, icon: ClipboardList, label: 'Log', hint: 'Replaced at stations, expected back' },
+    { to: `${spec.base}/log`, icon: ClipboardList, label: 'Log', hint: 'Issued, awaiting return, returned' },
     { to: `${spec.base}/${spec.jobPath}`, icon: FlaskConical, label: spec.jobTab, hint: 'At the 3rd party' },
     { to: `${spec.base}/emergency`, icon: Siren, label: 'Emergency', hint: 'Emergency issues' },
   ]
@@ -175,8 +176,13 @@ export function EquipmentWarehouseSection({ kind }: { kind: EquipmentKind }) {
 }
 
 /* ============================================================== Log */
+// Three movements, as in the SRV Log: Issued (with undo), Awaiting return (at the station), Returned.
 const LOG_STATUSES = ['at_station', 'returned'] as const
+const ISSUE_STATUSES = ['no_replacement', 'replaced_at_station', 'replaced_returned'] as const
 const LOG_LABEL: Record<string, string> = { at_station: 'At station', returned: 'Returned' }
+const ISSUE_LABEL: Record<IssueRow['status'], string> = {
+  no_replacement: 'Nothing replaced', replaced_at_station: 'Replaced item at station', replaced_returned: 'Replaced item returned',
+}
 
 export function EquipmentLogSection({ kind }: { kind: EquipmentKind }) {
   const spec = KINDS[kind]
@@ -184,12 +190,20 @@ export function EquipmentLogSection({ kind }: { kind: EquipmentKind }) {
   const [nonce, reload] = useNonce()
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('at_station')
-  const state = useEquipmentList<LogRow>('log', kind, { search, status }, nonce)
+  const showIssues = status === 'issued'
+  const state = useEquipmentList<LogRow>('log', kind, { search, status: showIssues ? 'at_station' : status }, nonce)
+  const issueState = useEquipmentList<IssueRow>('issues', kind, { search, status: '' }, nonce)
   const counts = useEquipmentCounts('log', kind, LOG_STATUSES, search, nonce)
+  const issueCounts = useEquipmentCounts('issues', kind, ISSUE_STATUSES, search, nonce)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [undo, setUndo] = useState<UndoTarget | null>(null)
+  const [undone, setUndone] = useState<string | null>(null)
   const { act, busy, error, done } = useConfirmedAction(() => { setSelected(new Set()); reload() })
   const rows = state.status === 'ready' ? state.data.rows : []
+  const issues = issueState.status === 'ready' ? issueState.data.rows : []
   const picked = rows.filter((r) => selected.has(r.id) && r.status === 'at_station').map((r) => r.id)
+  const issuedTotal = issueCounts ? ISSUE_STATUSES.reduce<number | null>((n, k) => (n === null || issueCounts[k] === undefined ? null : n + issueCounts[k]), 0) : null
+  const pick = (k: string) => { setStatus(status === k ? '' : k); setSelected(new Set()); setUndone(null) }
 
   const columns: SelectableColumn<LogRow>[] = [
     { key: 'serial', header: 'Serial', render: (r) => <Serial v={r.serial_number} />, sortValue: (r) => r.serial_number },
@@ -197,18 +211,53 @@ export function EquipmentLogSection({ kind }: { kind: EquipmentKind }) {
     { key: 'station', header: 'Station', render: (r) => <span dir="auto">{r.station_name}</span>, sortValue: (r) => r.station_name, wrap: true },
     { key: 'unit', header: 'Unit', render: (r) => (r.unit_name ? <span dir="auto">{r.unit_name}</span> : <NullValue />), sortValue: (r) => r.unit_name },
     { key: 'region', header: 'Region', render: (r) => <RegionChip name={r.region_name} />, sortValue: (r) => r.region_name },
-    { key: 'logged', header: 'Replaced', render: (r) => <DateCell v={r.logged_at} />, sortValue: (r) => r.logged_at },
-    { key: 'status', header: 'Status', render: (r) => <span>{LOG_LABEL[r.status]}{r.is_emergency ? ' · emergency' : ''}</span>, sortValue: (r) => r.status },
+    { key: 'logged', header: 'Since', render: (r) => <DateCell v={r.logged_at} />, sortValue: (r) => r.logged_at },
+    { key: 'status', header: 'Status', render: (r) => (
+      <span>{LOG_LABEL[r.status]}{r.reason === 'issue_undone' ? ' · issue undone' : ''}{r.is_emergency ? ' · emergency' : ''}</span>
+    ), sortValue: (r) => r.status },
     { key: 'returned', header: 'Received', render: (r) => <DateCell v={day(r.returned_at)} />, sortValue: (r) => r.returned_at },
+    ...(isAdmin ? [{ key: 'actions', header: 'Actions', render: (r: LogRow) => (
+      // A replaced item goes back to its position only by undoing its issue, so the issued one does not stay beside it.
+      r.reason === 'replaced_on_issue' && r.status === 'at_station' && !r.issue_cancelled ? (
+        <RowActions>
+          <RowAction label="Back to its station (undo the issue)" icon={Undo2}
+                     onClick={() => setUndo({ issueId: r.issue_id, issued: null, replaced: r.serial_number })} />
+        </RowActions>
+      ) : null) }] : []),
+  ]
+
+  const issueColumns: SelectableColumn<IssueRow>[] = [
+    { key: 'issued', header: 'Issued', render: (r) => <DateCell v={r.issued_at} />, sortValue: (r) => r.issued_at },
+    { key: 'serial', header: 'Serial', render: (r) => <Serial v={r.issued_serial} />, sortValue: (r) => r.issued_serial },
+    { key: 'what', header: kind === 'hose' ? 'Description' : 'Manufacturer / model', render: (r) => <What kind={kind} r={r} />, wrap: true },
+    { key: 'station', header: 'Station', render: (r) => <span dir="auto">{r.station_name}</span>, sortValue: (r) => r.station_name, wrap: true },
+    { key: 'unit', header: 'Unit', render: (r) => (r.unit_name ? <span dir="auto">{r.unit_name}</span> : <NullValue />), sortValue: (r) => r.unit_name },
+    { key: 'region', header: 'Region', render: (r) => <RegionChip name={r.region_name} />, sortValue: (r) => r.region_name },
+    { key: 'replaced', header: 'Replaced', render: (r) => (
+      <span className="flex flex-col items-center gap-0.5">
+        {r.replaced_serial ? <Identifier value={r.replaced_serial} /> : null}
+        <span className="text-xs text-muted-foreground">{ISSUE_LABEL[r.status]}{r.is_emergency ? ' · emergency' : ''}</span>
+      </span>
+    ), sortValue: (r) => r.status },
+    ...(isAdmin ? [{ key: 'actions', header: 'Actions', render: (r: IssueRow) => (
+      r.status !== 'replaced_returned' ? (
+        <RowActions>
+          <RowAction label="Undo this issue" icon={Undo2}
+                     onClick={() => setUndo({ issueId: r.id, issued: r.issued_serial, replaced: r.replaced_serial })} />
+        </RowActions>
+      ) : null) }] : []),
   ]
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      <CountStrip label={`${spec.title} Log counts`} active={status || null} onPick={(k) => setStatus(status === k ? '' : k)}
-                  items={LOG_STATUSES.map((s) => ({ key: s, label: LOG_LABEL[s], value: counts ? counts[s] ?? null : null }))} />
+      <CountStrip label={`${spec.title} Log counts`} active={status || null} onPick={pick}
+                  items={[
+                    { key: 'issued', label: 'Issued', value: issuedTotal },
+                    ...LOG_STATUSES.map((s) => ({ key: s, label: s === 'at_station' ? 'Awaiting return' : LOG_LABEL[s], value: counts ? counts[s] ?? null : null })),
+                  ]} />
       <Toolbar label={`Search the ${spec.one} Log`}>
         <SearchBox id={`${kind}-log-search`} label={`Search the ${spec.one} Log`} value={search} onChange={setSearch} placeholder="Serial, Station, Unit…" />
-        {isAdmin ? (
+        {isAdmin && !showIssues ? (
           <span className="ml-auto">
             <Button size="sm" className="h-7" disabled={picked.length === 0 || busy}
                     onClick={() => void act(`Receive ${picked.length} ${spec.many} back at the warehouse?`, 'cng_equipment_log_receive',
@@ -218,12 +267,21 @@ export function EquipmentLogSection({ kind }: { kind: EquipmentKind }) {
           </span>
         ) : null}
       </Toolbar>
-      <FormMessage error={error} done={done} />
-      <ListStates state={state} label={`the ${spec.one} Log`} reload={reload} empty={rows.length === 0}>
-        <SelectableTable label={`${spec.title} Log`} rows={rows} columns={columns} selected={selected} onSelected={setSelected}
-                         selection={isAdmin} selectable={(r) => r.status === 'at_station'} />
-        <Limit total={state.status === 'ready' ? state.data.total : 0} />
-      </ListStates>
+      <FormMessage error={error} done={undone ?? done} />
+      <UndoIssueDialog kind={kind} target={undo} onClose={() => setUndo(null)} onDone={(m) => { setUndone(m); reload() }} />
+      {showIssues ? (
+        <ListStates state={issueState} label={`${spec.one} issues`} reload={reload} empty={issues.length === 0}>
+          <SelectableTable label={`${spec.title} issues`} rows={issues} columns={issueColumns} selected={new Set()} onSelected={() => {}}
+                           selection={false} selectable={() => false} />
+          <Limit total={issueState.status === 'ready' ? issueState.data.total : 0} />
+        </ListStates>
+      ) : (
+        <ListStates state={state} label={`the ${spec.one} Log`} reload={reload} empty={rows.length === 0}>
+          <SelectableTable label={`${spec.title} Log`} rows={rows} columns={columns} selected={selected} onSelected={setSelected}
+                           selection={isAdmin} selectable={(r) => r.status === 'at_station'} />
+          <Limit total={state.status === 'ready' ? state.data.total : 0} />
+        </ListStates>
+      )}
     </div>
   )
 }
@@ -294,8 +352,11 @@ export function EquipmentJobsSection({ kind }: { kind: EquipmentKind }) {
 /* ============================================================== Emergency */
 export function EquipmentEmergencySection({ kind }: { kind: EquipmentKind }) {
   const spec = KINDS[kind]
+  const isAdmin = useIsAdmin()
   const [search, setSearch] = useState('')
   const [nonce, reload] = useNonce()
+  const [undo, setUndo] = useState<UndoTarget | null>(null)
+  const [undone, setUndone] = useState<string | null>(null)
   const state = useEquipmentList<EmergencyRow>('emergency', kind, { search, status: '' }, nonce)
   const rows = state.status === 'ready' ? state.data.rows : []
   const columns: SelectableColumn<EmergencyRow>[] = [
@@ -308,12 +369,21 @@ export function EquipmentEmergencySection({ kind }: { kind: EquipmentKind }) {
     { key: 'replaced', header: 'Replaced serial', render: (r) => <Serial v={r.replaced_serial} />, sortValue: (r) => r.replaced_serial },
     { key: 'rstatus', header: 'Replaced item', render: (r) => (r.replaced_status ? LOG_LABEL[r.replaced_status] : <NullValue />), sortValue: (r) => r.replaced_status },
     { key: 'notes', header: 'Notes', render: (r) => (r.notes ? <span dir="auto">{r.notes}</span> : <NullValue />), wrap: true },
+    ...(isAdmin ? [{ key: 'actions', header: 'Actions', render: (r: EmergencyRow) => (
+      r.replaced_status !== 'returned' ? (
+        <RowActions>
+          <RowAction label="Undo this issue" icon={Undo2}
+                     onClick={() => setUndo({ issueId: r.id, issued: r.issued_serial, replaced: r.replaced_serial })} />
+        </RowActions>
+      ) : null) }] : []),
   ]
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <Toolbar label={`Search ${spec.one} emergency issues`}>
         <SearchBox id={`${kind}-em-search`} label={`Search ${spec.one} emergency issues`} value={search} onChange={setSearch} placeholder="Serial, code, Station…" />
       </Toolbar>
+      <FormMessage error={null} done={undone} />
+      <UndoIssueDialog kind={kind} target={undo} onClose={() => setUndo(null)} onDone={(m) => { setUndone(m); reload() }} />
       <ListStates state={state} label={`${spec.one} emergency issues`} reload={reload} empty={rows.length === 0}>
         <SelectableTable label={`${spec.title} emergency issues`} rows={rows} columns={columns} selected={new Set()} onSelected={() => {}}
                          selection={false} selectable={() => false} />

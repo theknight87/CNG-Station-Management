@@ -116,7 +116,13 @@ Own tables `equipment_stock`, `equipment_issues`, `equipment_field_log`, `equipm
 (kind `hose`|`gas_detector`; select-only RLS, no browser write grant); every change is an admin-only SECURITY DEFINER
 `cng_equipment_*` function, audited, with PT409 on a stale selection. Issuing inserts the installed hose/detector (Unit from the
 choice or the replaced item, else `needs_unit_mapping` — never inferred) and archives what it replaces. The warehouse starts
-empty; no SRV-style undo-issue. Migrations `20261002120000..120200` (split, no DROPs); suite `equipment_workflow`.
+empty. Migrations `20261002120000..120200` (split, no DROPs); suite `equipment_workflow`.
+**Hose / detector issue undo (owner 2026-10-03).** As for SRVs: `cng_equipment_issue_undo(issue, 'to_stock'|'await_return')` puts the
+replaced item back in its position (its Log entry closed, `archived_at`) and takes the issued one off the station — back to its own
+store record, or into the Log as `issue_undone` until received (then its own store record again, under calibration/testing). The issue
+is cancelled, never deleted; refused once the replaced item is back in the warehouse. The Log tab gains an *Issued* movement
+(`v_equipment_issue_log`); undo is also on Log and Emergency rows. Migrations `20261003090000` (deployed) and `20261003090100`
+(the CHECK/index swap — its DROPs need the owner's approval at deploy, NOT YET DEPLOYED: undo fails until it is); suite `equipment_issue_undo`.
 
 **Safety Relief Valves (SRVs) are children of their parent equipment**, never independent
 station assets. An SRV may belong to a **Compressor**, a **Storage Vessel**, or a

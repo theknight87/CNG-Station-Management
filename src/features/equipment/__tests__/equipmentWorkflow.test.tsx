@@ -198,3 +198,52 @@ describe('Log, 3rd party, Emergency', () => {
     expect(within(table).getByText('burst')).toBeDefined()
   })
 })
+
+describe('Undo an issue (owner request 2026-10-03)', () => {
+  const issue = { id: 'i1', kind: 'hose', issued_at: '2026-10-02T08:00:00Z', is_emergency: false, notes: null, region_name: 'West',
+    station_name: 'الماظة', unit_name: null, stock_id: 'w1', issued_serial: 'H-NEW', issued_code: 'HS 1', manufacturer: null, model: null,
+    description: '1/2" hose', working_pressure_value: null, working_pressure_unit: null, replaced_serial: 'H-OLD',
+    status: 'replaced_at_station', replaced_returned_at: null }
+
+  it('EQW-11 the Log has an Issued movement; undoing with the hose still at the station sends await_return and no actor', async () => {
+    state.rows = [issue]
+    const user = userEvent.setup()
+    render(<EquipmentLogSection kind="hose" />)
+    await user.click(await screen.findByRole('button', { name: /^Issued/ }))
+    const table = await screen.findByRole('table', { name: /Hoses Management issues/i })
+    await user.click(within(table).getByRole('button', { name: 'Undo this issue' }))
+    expect(screen.getByText(/Serial H-OLD goes back to its position/)).toBeDefined()
+    await user.click(screen.getByRole('radio', { name: /Still at the station/ }))
+    await user.click(screen.getByRole('button', { name: 'Undo issue' }))
+    const [, args] = calls.rpc.find(([fn]) => fn === 'cng_equipment_issue_undo')!
+    expect(args).toEqual({ p_issue_id: 'i1', p_issued_action: 'await_return' })
+    noActor(args)
+    expect(await screen.findByText(/the issued hose is in the Log awaiting return/)).toBeDefined()
+  })
+
+  it('EQW-12 a replaced detector at the station goes back only by undoing its issue (warehouse by default)', async () => {
+    state.rows = [{ id: 'l1', kind: 'gas_detector', status: 'at_station', is_emergency: false, region_name: 'Delta', station_name: 'الماظة',
+      unit_name: null, serial_number: 'G-OLD', manufacturer: 'Honeywell', model: 'XNX', description: null, logged_at: '2026-10-01T00:00:00Z',
+      returned_at: null, reason: 'replaced_on_issue', issue_id: 'i9', issue_cancelled: false }]
+    const user = userEvent.setup()
+    render(<EquipmentLogSection kind="gas_detector" />)
+    const table = await screen.findByRole('table', { name: /Gas Detector Management Log/i })
+    await user.click(within(table).getByRole('button', { name: /Back to its station/ }))
+    await user.click(screen.getByRole('button', { name: 'Undo issue' }))
+    expect(calls.rpc.find(([fn]) => fn === 'cng_equipment_issue_undo')![1]).toEqual({ p_issue_id: 'i9', p_issued_action: 'to_stock' })
+  })
+
+  it('EQW-13 a viewer gets no undo control, and an issue whose replaced item is back cannot be undone', async () => {
+    state.role = 'viewer'
+    state.rows = [{ ...issue, id: 'e1', replaced_status: 'at_station' }]
+    const first = render(<EquipmentEmergencySection kind="hose" />)
+    await screen.findByRole('table', { name: /Hoses Management emergency issues/i })
+    expect(screen.queryByRole('button', { name: 'Undo this issue' })).toBeNull()
+    first.unmount()
+    state.role = 'admin'
+    state.rows = [{ ...issue, id: 'e2', replaced_status: 'returned' }, { ...issue, id: 'e3', replaced_status: 'at_station' }]
+    render(<EquipmentEmergencySection kind="hose" />)
+    await screen.findByRole('table', { name: /Hoses Management emergency issues/i })
+    expect(screen.getAllByRole('button', { name: 'Undo this issue' })).toHaveLength(1)
+  })
+})

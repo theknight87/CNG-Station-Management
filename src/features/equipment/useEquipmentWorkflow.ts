@@ -52,6 +52,33 @@ export interface LogRow {
   installed_gas_detector_id: string | null
   logged_at: string
   returned_at: string | null
+  /** Why it is in the Log: replaced by an issue, or the issued item itself after its issue was undone. */
+  reason: 'replaced_on_issue' | 'issue_undone'
+  issue_id: string
+  issue_cancelled: boolean
+}
+
+/** One issue (not undone) and where the item it replaced is — the Log's Issued movement. */
+export interface IssueRow {
+  id: string
+  kind: EquipmentKind
+  issued_at: string
+  is_emergency: boolean
+  notes: string | null
+  region_name: string
+  station_name: string
+  unit_name: string | null
+  stock_id: string
+  issued_serial: string | null
+  issued_code: string | null
+  manufacturer: string | null
+  model: string | null
+  description: string | null
+  working_pressure_value: number | null
+  working_pressure_unit: PressureUnit | null
+  replaced_serial: string | null
+  status: 'no_replacement' | 'replaced_at_station' | 'replaced_returned'
+  replaced_returned_at: string | null
 }
 
 export interface JobRow {
@@ -101,7 +128,7 @@ const LISTS = {
   log: {
     view: 'v_equipment_field_log', order: 'logged_at',
     columns: 'id, kind, status, is_emergency, region_name, station_name, unit_name, serial_number, manufacturer, model, description, ' +
-      'installed_hose_id, installed_gas_detector_id, logged_at, returned_at',
+      'installed_hose_id, installed_gas_detector_id, logged_at, returned_at, reason, issue_id, issue_cancelled',
     search: ['serial_number', 'station_name', 'unit_name', 'manufacturer', 'model', 'description'],
   },
   jobs: {
@@ -109,6 +136,12 @@ const LISTS = {
     columns: 'id, kind, status, stock_id, warehouse_code, serial_number, manufacturer, model, description, sent_at, returned_at, ' +
       'certified_at, certificate_date, certificate_number, next_date',
     search: ['serial_number', 'warehouse_code', 'certificate_number', 'manufacturer', 'model', 'description'],
+  },
+  issues: {
+    view: 'v_equipment_issue_log', order: 'issued_at',
+    columns: 'id, kind, issued_at, is_emergency, notes, region_name, station_name, unit_name, stock_id, issued_serial, issued_code, ' +
+      'manufacturer, model, description, working_pressure_value, working_pressure_unit, replaced_serial, status, replaced_returned_at',
+    search: ['issued_serial', 'issued_code', 'replaced_serial', 'station_name', 'unit_name'],
   },
   emergency: {
     view: 'v_equipment_emergency', order: 'issued_at',
@@ -155,7 +188,7 @@ export function useEquipmentList<T>(list: keyof typeof LISTS, kind: EquipmentKin
 }
 
 /** One head-only count per status for a tab's count strip, under the tab's search (statuses ignore the status filter). */
-export function useEquipmentCounts(list: 'stock' | 'log' | 'jobs', kind: EquipmentKind, statuses: readonly string[], search: string, nonce = 0): Record<string, number> | null {
+export function useEquipmentCounts(list: 'stock' | 'log' | 'jobs' | 'issues', kind: EquipmentKind, statuses: readonly string[], search: string, nonce = 0): Record<string, number> | null {
   const supabase = useSupabaseClient()
   const [counts, setCounts] = useState<Record<string, number> | null>(null)
   const key = JSON.stringify({ statuses, search })

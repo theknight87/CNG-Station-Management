@@ -249,3 +249,58 @@ export function ItemHistory({ kind, id }: { kind: EquipmentKind; id: string }) {
     </section>
   )
 }
+
+export interface UndoTarget { issueId: string; issued: string | null; replaced: string | null }
+
+/**
+ * Admin: undo an issue (owner request 2026-10-03, as the relief valves have it). The replaced item goes back to its
+ * position and the issued item leaves the station — the admin says where it is now. cng_equipment_issue_undo does
+ * both halves in one step, derives the actor and audits; the issue is cancelled, never deleted.
+ */
+export function UndoIssueDialog({ kind, target, onClose, onDone }: {
+  kind: EquipmentKind
+  target: UndoTarget | null
+  onClose: () => void
+  onDone: (message: string) => void
+}) {
+  const spec = KINDS[kind]
+  const [action, setAction] = useState<'to_stock' | 'await_return'>('to_stock')
+  const [error, setError] = useState<string | null>(null)
+  const { run, busy } = useWorkflowAction()
+  async function confirm() {
+    if (!target) return
+    setError(null)
+    const err = await run('cng_equipment_issue_undo', { p_issue_id: target.issueId, p_issued_action: action })
+    if (err) { setError(err); return }
+    const back = target.replaced ? `serial ${target.replaced} is back in its position; ` : ''
+    onDone(action === 'to_stock'
+      ? `Issue undone: ${back}the issued ${spec.one} is back in the warehouse.`
+      : `Issue undone: ${back}the issued ${spec.one} is in the Log awaiting return.`)
+    onClose()
+  }
+  const issued = target?.issued ? `serial ${target.issued}` : `the issued ${spec.one}`
+  return (
+    <RecordDetailsDialog open={target !== null} title="Undo this issue"
+                         description={target?.replaced ? `Serial ${target.replaced} goes back to its position at the station.` : 'The issue is cancelled.'}
+                         onClose={onClose}>
+      <fieldset className="flex flex-col gap-2 text-sm">
+        <legend className="mb-1 font-medium">Where is {issued} now?</legend>
+        <label className={cn('flex items-start gap-2 rounded border p-2', action === 'to_stock' && 'border-brand-strong')}>
+          <input type="radio" name={`${kind}-undo-action`} className="mt-1" checked={action === 'to_stock'} onChange={() => setAction('to_stock')} />
+          <span><span className="font-medium">Back in the warehouse (recommended)</span>
+            <span className="block text-xs text-muted-foreground">It was never fitted, or it is already back: in the store again as it was, same code.</span></span>
+        </label>
+        <label className={cn('flex items-start gap-2 rounded border p-2', action === 'await_return' && 'border-brand-strong')}>
+          <input type="radio" name={`${kind}-undo-action`} className="mt-1" checked={action === 'await_return'} onChange={() => setAction('await_return')} />
+          <span><span className="font-medium">Still at the station</span>
+            <span className="block text-xs text-muted-foreground">It goes to the Log as awaiting return, and is received like any other {spec.one} when it arrives.</span></span>
+        </label>
+      </fieldset>
+      <FormMessage error={error} done={null} />
+      <div className="mt-2 flex justify-end gap-2">
+        <Button size="sm" variant="outline" onClick={onClose}>Cancel</Button>
+        <Button size="sm" disabled={busy} onClick={() => void confirm()}>{busy ? 'Undoing…' : 'Undo issue'}</Button>
+      </div>
+    </RecordDetailsDialog>
+  )
+}
