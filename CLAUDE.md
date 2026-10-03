@@ -128,6 +128,12 @@ is cancelled, never deleted; refused once the replaced item is back in the wareh
 (owner 2026-10-03), each group lowest set pressure first (BAR scale, PSI converted, unrecorded last). On the Station row each Unit shows its OWN overdue count and the Station's shared storage (vessels with no
 Unit + Station-level resolved SRVs) is one line, counted once — `v_unit_summary.overdue` includes the shared part in every Unit, which
 read as double counting. Frontend only; production check: 0 of 328 Units where Unit − shared ≠ own.
+**Warehouse issue sheet (owner 2026-10-03).** SRV Log → Issue → *Issue sheet* (admin) downloads the storekeeper's workbook
+"بيانات صرف صمامات أمان معايرة" for one Region and month: one sheet per Cairo issue day ("East 5-10-2026"); valves issued after
+that day's sheet was exported go in a NEW sheet "East 5-10-2026 (2)", "(3)"…, and sheets already sent are written again unchanged.
+Which issues each sheet carries is stored: `srv_issue_sheets` + `srv_issues.sheet_id`, placed only by the admin-only, audited
+`cng_srv_issue_sheet_assign(region, month)`; rows from `v_srv_issue_sheet` (security_invoker; undone issues excluded). Workbook:
+`features/export/issueSheet.ts`. Migration `20261003130000` (deployed); suite `srv_issue_sheets`.
 
 **Safety Relief Valves (SRVs) are children of their parent equipment**, never independent
 station assets. An SRV may belong to a **Compressor**, a **Storage Vessel**, or a

@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { ArrowRightLeft, Pencil, Trash2, Undo2, X } from 'lucide-react'
+import { ArrowRightLeft, FileSpreadsheet, Pencil, Trash2, Undo2, X } from 'lucide-react'
 
 import { SearchBox } from '@/components/data/FilterControls'
 import { InfoTip } from '@/components/ui/InfoTip'
@@ -11,6 +11,7 @@ import { ExportButtons } from '@/features/export/ExportButtons'
 import { CALIBRATION_COLUMNS, EMERGENCY_COLUMNS, ISSUE_LOG_COLUMNS, ISSUE_STATUS, SRV_LOG_COLUMNS } from '@/features/export/exportColumns'
 import { rowsLoader } from '@/features/export/exportData'
 import { buildCalibrationForm, formIsoDate, loadOriginStations, orderForForm, type CalibrationFormRow } from '@/features/export/calibrationForm'
+import { IssueSheetDialog } from '@/features/relief-valves/IssueSheetDialog'
 import { useSupabaseClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { NullValue } from '@/components/data/NullValue'
@@ -249,6 +250,7 @@ export function SrvLogSection() {
   const [openIssue, setOpenIssue] = useState<IssueLogRow | null>(null)
   const [moving, setMoving] = useState<string | null>(null)
   const [undo, setUndo] = useState<{ issueId: string; issued: string | null; replaced: string | null } | null>(null)
+  const [issueSheet, setIssueSheet] = useState(false)
   const { run, busy } = useWorkflowAction()
   const admin = useConfirmedAction(reload)
   const rows = state.status === 'ready' ? state.data.rows : []
@@ -291,6 +293,12 @@ export function SrvLogSection() {
             {busy ? 'Saving…' : `Arrived at warehouse (${selected.size})`}
           </Button>
         ) : null}
+        {isAdmin && showIssues ? (
+          // The warehouse's own workbook (owner request 2026-10-03): one sheet per issue day, "(2)" for a later export.
+          <Button size="sm" variant="outline" className="h-7" onClick={() => setIssueSheet(true)}>
+            <FileSpreadsheet className="mr-1 h-3.5 w-3.5" aria-hidden="true" />Issue sheet
+          </Button>
+        ) : null}
         {showIssues
           ? <ExportButtons name="srv-issues" load={rowsLoader('SRV Issues', ISSUE_LOG_COLUMNS, issues, issueList.state.status === 'ready' && issueList.state.data.total > issues.length)} />
           : <ExportButtons name="srv-log" load={rowsLoader('SRV Log', SRV_LOG_COLUMNS, rows, state.status === 'ready' && state.data.total > rows.length)} />}
@@ -298,6 +306,8 @@ export function SrvLogSection() {
       <FormMessage error={error ?? admin.error} done={done ?? admin.done} />
       <LogMoveDialog logId={moving} onClose={() => setMoving(null)} onDone={reload} />
       <UndoIssueDialog target={undo} onClose={() => setUndo(null)} onDone={(m) => { setError(null); setDone(m); reloadAll() }} />
+      <IssueSheetDialog open={issueSheet} regionFilter={filters.region} onClose={() => setIssueSheet(false)}
+                        onDone={(m) => { setError(null); setDone(m) }} />
 
       {showIssues ? (
         <ListStates state={issueList.state} label="issues" reload={issueList.reload} empty={issues.length === 0}>
