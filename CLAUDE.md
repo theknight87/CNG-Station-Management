@@ -122,7 +122,7 @@ replaced item back in its position (its Log entry closed, `archived_at`) and tak
 store record, or into the Log as `issue_undone` until received (then its own store record again, under calibration/testing). The issue
 is cancelled, never deleted; refused once the replaced item is back in the warehouse. The Log tab gains an *Issued* movement
 (`v_equipment_issue_log`); undo is also on Log and Emergency rows. Migrations `20261003090000` (deployed) and `20261003090100`
-(the CHECK/index swap — its DROPs need the owner's approval at deploy, NOT YET DEPLOYED: undo fails until it is); suite `equipment_issue_undo`.
+(the CHECK/index swap; the owner ran it in the SQL editor, recorded as `20261003102939`) — both deployed; suite `equipment_issue_undo`.
 
 **Safety Relief Valves (SRVs) are children of their parent equipment**, never independent
 station assets. An SRV may belong to a **Compressor**, a **Storage Vessel**, or a
