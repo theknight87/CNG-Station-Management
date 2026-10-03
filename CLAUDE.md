@@ -134,6 +134,12 @@ that day's sheet was exported go in a NEW sheet "East 5-10-2026 (2)", "(3)"…, 
 Which issues each sheet carries is stored: `srv_issue_sheets` + `srv_issues.sheet_id`, placed only by the admin-only, audited
 `cng_srv_issue_sheet_assign(region, month)`; rows from `v_srv_issue_sheet` (security_invoker; undone issues excluded). Workbook:
 `features/export/issueSheet.ts`. Migration `20261003130000` (deployed); suite `srv_issue_sheets`.
+**Installed SRVs Excel = the owner's station sheet (2026-10-03).** Installed SRVs → Excel writes the template "رصيد المحطات"
+(title "Stations Safety Relief Valves Data", Area / Station / Location / Set Pressure / Manufacturer / Serial / Size Type / IN / OUT /
+Last / Next Calibration / Days Left / Next Calibration Month / Notes, banded rows, the template's manufacturer colours, days < 30 red),
+for exactly the rows the screen's filters select; CSV stays the plain table. Station = the Unit, else the Station; a year-only date is
+its year; Days Left is a live `K−TODAY()` formula for exact next dates only; Notes append the source status. File
+"Stations Safety Relief Valves Data <date>.xlsx" (never the template's file name). `features/export/installedSheet.ts`; frontend only.
 
 **Safety Relief Valves (SRVs) are children of their parent equipment**, never independent
 station assets. An SRV may belong to a **Compressor**, a **Storage Vessel**, or a

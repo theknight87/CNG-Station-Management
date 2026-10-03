@@ -3,6 +3,7 @@ import { ReplaceValvePanel } from '@/features/relief-valves/ReplaceValvePanel'
 import { ExportButtons } from '@/features/export/ExportButtons'
 import { queryLoader } from '@/features/export/exportData'
 import { INSTALLED_SRV_COLUMNS } from '@/features/export/exportColumns'
+import { buildInstalledWorkbook, installedWorkbookName } from '@/features/export/installedSheet'
 import { useSupabaseClient } from '@/lib/supabase/client'
 import { Search, X } from 'lucide-react'
 
@@ -230,7 +231,9 @@ export function InstalledSrvSection() {
           </Button>
         ) : null}
         <span className="ml-auto">
-          <ExportButtons name="installed-srvs" load={queryLoader(supabase, 'Installed SRVs', INSTALLED_SRV_COLUMNS, (c) => installedRequest(c, query))} />
+          {/* Excel is the owner's station sheet "Stations Safety Relief Valves Data" (2026-10-03); CSV stays the plain table. */}
+          <ExportButtons name="installed-srvs" load={queryLoader(supabase, 'Installed SRVs', INSTALLED_SRV_COLUMNS, (c) => installedRequest(c, query))}
+            excel={async (sheets) => ({ blob: await buildInstalledWorkbook(sheets[0].rows as InstalledSrvRow[]), fileName: installedWorkbookName() })} />
         </span>
       </DataToolbar>
 
