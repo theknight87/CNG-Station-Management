@@ -105,6 +105,9 @@ export interface WarehouseSrvRow {
   target_station_name: string | null
   /** The destination exactly as the warehouse sheet names it — shown when no Station is linked. Never a link. */
   target_station_raw: string | null
+  /** The destination Unit, when the destination is a Unit of target_station (owner request 2026-10-04). */
+  target_unit_id: string | null
+  target_unit_name: string | null
   is_unassigned_stock: boolean
   updated_at: string
   warehouse_issue_date: string | null
@@ -142,7 +145,7 @@ const WAREHOUSE_COLUMNS =
   'is_unassigned_stock, updated_at, warehouse_issue_date, last_calibration_date, last_calibration_precision, ' +
   'last_calibration_display, next_calibration_date, next_calibration_precision, ' +
   'next_calibration_display, days_left, due_status, calibration_location, source_status_raw, ' +
-  'needs_review, notes, target_station_raw'
+  'needs_review, notes, target_station_raw, target_unit_id, target_unit_name'
 
 /**
  * Dedicated filters (owner request): each narrows ONE column, independently of the

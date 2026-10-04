@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button'
 import { oneYearAfter, parsePressure } from '@/features/record-tools/recordTools'
 import { FormMessage } from '@/features/relief-valves/SrvWorkflowPieces'
 import { useIsAdmin, useWorkflowAction } from '@/features/relief-valves/useSrvWorkflow'
+import { DestinationInput } from '@/features/relief-valves/DestinationInput'
+import { useDestinationOptions, type Destination } from '@/features/relief-valves/destinationOptions'
 import { ValveTemplatePicker } from '@/features/relief-valves/ValveTemplatePicker'
 import { useValveTemplates, type ValveTemplate } from '@/features/relief-valves/valveTemplates'
 
@@ -17,6 +19,8 @@ import { useValveTemplates, type ValveTemplate } from '@/features/relief-valves/
  * existing database rule, so the base code is enough. Installing a valve at a station stays the issue (صرف) step.
  * Typing the manufacturer and set pressure fills part number, size and base code from valves already recorded with
  * the same two (owner request 2026-10-04): one combination fills untouched fields by itself, several are offered.
+ * A destination (Station or Unit) is optional: one for all the valves, and any serial may carry its own (owner
+ * request 2026-10-04); the database derives the Region and refuses a Unit of another Station.
  */
 
 const field = 'flex flex-col gap-0.5 text-xs text-muted-foreground'
@@ -53,6 +57,10 @@ function AddDialog({ onClose, onAdded }: { onClose: () => void; onAdded: () => v
   const { run, busy } = useWorkflowAction()
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
+  // A destination: chosen, null (none) or undefined (text that matches no Station or Unit — not saved).
+  const destinations = useDestinationOptions()
+  const [allDest, setAllDest] = useState<Destination | null | undefined>(null)
+  const [rowDest, setRowDest] = useState<Record<string, Destination | null | undefined>>({})
 
   const serialList = serials.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean)
   const pressureValue = parsePressure(pressure)
@@ -82,6 +90,10 @@ function AddDialog({ onClose, onAdded }: { onClose: () => void; onAdded: () => v
   async function save() {
     setError(null); setDone(null)
     if (pressureValue === undefined) { setError('Set pressure: write one number, e.g. 275.'); return }
+    if (allDest === undefined || serialList.some((s) => s in rowDest && rowDest[s] === undefined)) {
+      setError('Destination: choose a Station or Unit from the list, or leave it empty.'); return
+    }
+    const ownDest = serialList.some((s) => rowDest[s])
     const err = await run('cng_admin_add_warehouse_srvs', {
       p: {
         availability, serials: serialList, quantity: serialList.length ? null : Number(quantity) || null,
@@ -89,12 +101,14 @@ function AddDialog({ onClose, onAdded }: { onClose: () => void; onAdded: () => v
         // One set pressure, no range; next calibration one year after the last (owner ruling 2026-09-29).
         pressure_min: pressureValue ?? null, pressure_max: pressureValue ?? null, pressure_unit: pressureValue == null ? null : unit,
         warehouse_code: code, last_calibration_date: lastCal || null, next_calibration_date: lastCal ? oneYearAfter(lastCal) : null, notes,
+        station_id: allDest?.station_id ?? null, unit_id: allDest?.unit_id ?? null,
+        ...(ownDest ? { items: serialList.map((s) => ({ serial: s, station_id: rowDest[s]?.station_id ?? null, unit_id: rowDest[s]?.unit_id ?? null })) } : {}),
       },
     })
     if (err) { setError(err); return }
     setDone(`${count} relief valve(s) added to the warehouse.`)
     onAdded()
-    setSerials(''); setQuantity('')
+    setSerials(''); setQuantity(''); setRowDest({})
   }
 
   return (
@@ -171,6 +185,24 @@ function AddDialog({ onClose, onAdded }: { onClose: () => void; onAdded: () => v
           <input inputMode="numeric" className={input} value={quantity} disabled={serialList.length > 0}
                  onChange={(e) => setQuantity(e.target.value.replace(/\D/g, ''))} />
         </label>
+        <div className="flex flex-col gap-1 sm:col-span-2 lg:col-span-4">
+          <span className="text-xs text-muted-foreground">Destination for all these valves — Station or Unit (optional)</span>
+          <DestinationInput options={destinations} value={allDest ?? null} onChange={setAllDest} label="Destination for all" className="max-w-md" />
+        </div>
+        {serialList.length > 0 ? (
+          <div className="flex flex-col gap-1 sm:col-span-2 lg:col-span-4" role="group" aria-label="Destination per serial">
+            <span className="text-xs text-muted-foreground">A Station or Unit for any serial (empty takes the one above)</span>
+            <ul className="flex flex-col gap-1">
+              {serialList.map((s) => (
+                <li key={s} className="grid items-start gap-2 sm:grid-cols-[12rem_minmax(0,28rem)]">
+                  <span className="pt-1.5 font-technical text-sm" dir="ltr">{s}</span>
+                  <DestinationInput options={destinations} value={rowDest[s] ?? null} label={`Destination for ${s}`}
+                                    onChange={(d) => setRowDest((p) => ({ ...p, [s]: d }))} />
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         <div className="sm:col-span-2 lg:col-span-4"><FormMessage error={error} done={done} /></div>
       </div>
     </RecordDetailsDialog>

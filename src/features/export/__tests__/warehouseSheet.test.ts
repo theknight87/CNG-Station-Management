@@ -16,7 +16,8 @@ const valve = (over: Partial<WarehouseSrvRow>): WarehouseSrvRow => ({
   id: 'w', availability_status: null, warehouse_code: null, serial_number: null, serial_number_raw: null, serial_status: null,
   part_number: null, manufacturer: null, size_type: null, inlet_size: null, outlet_size: null, set_pressure_raw: null,
   pressure_min: null, pressure_max: null, pressure_unit: null, target_region_id: null, target_region_name: null,
-  target_station_id: null, target_station_name: null, target_station_raw: null, is_unassigned_stock: false,
+  target_station_id: null, target_station_name: null, target_station_raw: null, target_unit_id: null, target_unit_name: null,
+  is_unassigned_stock: false,
   updated_at: '2026-10-01T00:00:00Z', warehouse_issue_date: null, last_calibration_date: null, last_calibration_precision: 'unknown',
   last_calibration_display: null, next_calibration_date: null, next_calibration_precision: 'unknown', next_calibration_display: null,
   days_left: null, due_status: 'unknown', calibration_location: null, source_status_raw: null, needs_review: false, notes: null,
@@ -80,7 +81,8 @@ describe('warehouse SRVs workbook', () => {
     const c = cells(ws, 8)
     expect(c[13]).toBeNull()
     expect(c[14]).toBeNull()
-    expect(warehouseStation({ is_unassigned_stock: false, target_station_name: null, target_station_raw: null })).toBeNull()
+    expect(warehouseStation({ is_unassigned_stock: false, target_station_name: null, target_station_raw: null, target_unit_name: null })).toBeNull()
+    expect(warehouseStation({ is_unassigned_stock: false, target_station_name: 'شبرا', target_station_raw: null, target_unit_name: 'شبرا 2' })).toBe('شبرا 2')
   })
 
   it('WHS-4 colours: manufacturer and availability as in the template; equal pressures share one colour', async () => {

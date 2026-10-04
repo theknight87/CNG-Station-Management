@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { useSrvDeepLink } from '@/features/relief-valves/srvDeepLink'
 import { ReplaceValvePanel } from '@/features/relief-valves/ReplaceValvePanel'
 import { ExportButtons } from '@/features/export/ExportButtons'
 import { queryLoader } from '@/features/export/exportData'
@@ -125,7 +126,8 @@ function ValveSize({ type, inlet, outlet }: { type: string | null; inlet: string
 }
 
 export function InstalledSrvSection() {
-  const [query, setQuery] = useState<InstalledQuery>(DEFAULT_INSTALLED_QUERY)
+  const link = useSrvDeepLink()
+  const [query, setQuery] = useState<InstalledQuery>(() => ({ ...DEFAULT_INSTALLED_QUERY, search: link.q }))
   const supabase = useSupabaseClient()
   const { state, reload } = useInstalledSrvs(query)
   // The tiles ARE the due / conflict buckets, so their counts ignore the bucket a tile selects (otherwise
@@ -238,6 +240,7 @@ export function InstalledSrvSection() {
       </DataToolbar>
 
       <RegistryTable
+        openKey={link.open}
 
         record={(r) => ({ table: 'installed_relief_valves', id: r.id })}
         extra={(r, done) => (

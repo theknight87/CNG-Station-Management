@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { ArrowRightLeft, FileSpreadsheet, Pencil, Trash2, Undo2, X } from 'lucide-react'
 
 import { SearchBox } from '@/components/data/FilterControls'
+import { useOpenLinked, useSrvDeepLink } from '@/features/relief-valves/srvDeepLink'
 import { InfoTip } from '@/components/ui/InfoTip'
 import { filterControl, filterLabel } from '@/components/data/filterStyles'
 import type { DateOption } from '@/components/data/dateRange'
@@ -234,7 +235,8 @@ function UndoIssueDialog({ target, onClose, onDone }: {
 
 export function SrvLogSection() {
   const isAdmin = useIsAdmin()
-  const [filters, setFilters] = useState<SrvSmartFilters>(EMPTY_SMART_FILTERS)
+  const link = useSrvDeepLink()
+  const [filters, setFilters] = useState<SrvSmartFilters>(() => ({ ...EMPTY_SMART_FILTERS, search: link.q }))
   const [view, setView] = useState<LogView>('open')
   const showIssues = view === 'issue'
   const { state, reload, version } = useWorkflowList<FieldLogRow>('log', {
@@ -255,6 +257,7 @@ export function SrvLogSection() {
   const admin = useConfirmedAction(reload)
   const rows = state.status === 'ready' ? state.data.rows : []
   const issues = issueList.state.status === 'ready' ? issueList.state.data.rows : []
+  useOpenLinked(rows, setOpen)
   const reloadAll = () => { reload(); issueList.reload() }
   const pick = (v: LogView) => { setView(v); setSelected(new Set()) }
 
@@ -451,7 +454,8 @@ function CalibrationCounts({ counts, filtered, status, onPick }: {
 export function SrvCalibrationSection() {
   const isAdmin = useIsAdmin()
   const supabase = useSupabaseClient()
-  const [filters, setFilters] = useState<SrvSmartFilters>(EMPTY_SMART_FILTERS)
+  const link = useSrvDeepLink()
+  const [filters, setFilters] = useState<SrvSmartFilters>(() => ({ ...EMPTY_SMART_FILTERS, search: link.q }))
   const [status, setStatus] = useState<CalView>('open')
   const { state, reload, version } = useWorkflowList<CalibrationRow>('calibration', {
     status: status === 'all' ? undefined : status === 'open' ? ['sent', 'returned_awaiting_certificate'] : [status], filters,
@@ -468,6 +472,7 @@ export function SrvCalibrationSection() {
   const admin = useConfirmedAction(reload)
   const rows = state.status === 'ready' ? state.data.rows : []
   const picked = rows.filter((r) => selected.has(r.id))
+  useOpenLinked(rows, setOpen)
 
   async function act(fn: string, args: Record<string, unknown>, message: string) {
     setError(null); setDone(null)

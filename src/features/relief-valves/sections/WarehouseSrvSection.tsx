@@ -1,4 +1,5 @@
 import { AddWarehouseSrvsButton } from '@/features/relief-valves/AddWarehouseSrvs'
+import { useSrvDeepLink } from '@/features/relief-valves/srvDeepLink'
 import { ExportButtons } from '@/features/export/ExportButtons'
 import { queryLoader } from '@/features/export/exportData'
 import { WAREHOUSE_SRV_COLUMNS } from '@/features/export/exportColumns'
@@ -24,6 +25,7 @@ import {
   type WarehouseQuery, type WarehouseSrvRow, type WarehouseSort,
 } from '@/features/relief-valves/useSrvManagement'
 import { RemoveValveButton } from '@/features/relief-valves/SrvAdminActions'
+import { WarehouseDestinationEditor } from '@/features/relief-valves/WarehouseDestinationEditor'
 import { FormMessage, IssuePanel, ValveHistory } from '@/features/relief-valves/SrvWorkflowPieces'
 import { useIsAdmin, useWorkflowAction, workflowError } from '@/features/relief-valves/useSrvWorkflow'
 import { useSupabaseClient } from '@/lib/supabase/client'
@@ -226,7 +228,7 @@ function columns(reload: () => void): RegistryColumn<WarehouseSrvRow>[] { return
         <span className="whitespace-nowrap text-muted-foreground">Unassigned stock</span>
       ) : (
         <span className="whitespace-nowrap">
-          {r.target_station_name ?? <SourceContext value={r.target_station_raw} note="as in sheet — not linked" />}
+          {r.target_unit_name ?? r.target_station_name ?? <SourceContext value={r.target_station_raw} note="as in sheet — not linked" />}
           {r.target_region_name ? (
             <span className="ml-1.5 text-xs"><RegionChip name={r.target_region_name} /></span>
           ) : null}
@@ -242,7 +244,8 @@ function ValveSize({ type, inlet, outlet }: { type: string | null; inlet: string
 }
 
 export function WarehouseSrvSection() {
-  const [query, setQuery] = useState<WarehouseQuery>(DEFAULT_WAREHOUSE_QUERY)
+  const link = useSrvDeepLink()
+  const [query, setQuery] = useState<WarehouseQuery>(() => ({ ...DEFAULT_WAREHOUSE_QUERY, search: link.q }))
   const { state, reload } = useWarehouseSrvs(query)
   const supabase = useSupabaseClient()
   const isAdmin = useIsAdmin()
@@ -347,6 +350,7 @@ export function WarehouseSrvSection() {
       ) : null}
 
       <RegistryTable
+        openKey={link.open}
 
         record={(r) => ({ table: 'warehouse_relief_valves', id: r.id })}
         label="Warehouse relief valves"
@@ -357,6 +361,7 @@ export function WarehouseSrvSection() {
         extra={(r, done) => (
           <>
             <IssuePanel row={r} onDone={done} />
+            <WarehouseDestinationEditor row={r} onDone={done} />
             <ValveHistory valveId={r.id} />
             <RemoveValveButton table="warehouse_relief_valves" id={r.id} onDone={done} />
           </>
@@ -396,6 +401,7 @@ export function WarehouseSrvSection() {
                 <SourceContext value={r.target_station_raw} note="as in sheet — not linked to a Station" />
               )}
             </Fact>
+            <Fact label="Destination Unit"><Text value={r.target_unit_name} /></Fact>
             <Fact label="Destination Region"><RegionChip name={r.target_region_name} /></Fact>
             <Fact label="Issued from warehouse">
               {r.warehouse_issue_date ? <span className="tabular">{r.warehouse_issue_date}</span> : <NullValue />}

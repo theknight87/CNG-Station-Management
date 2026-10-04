@@ -14,7 +14,7 @@ import type { WarehouseSrvRow } from '@/features/relief-valves/useSrvManagement'
  *   Availability     the store's own wording (owner ruling 2026-10-02, availabilityLabels.ts), coloured as in the template
  *   Dates            an exact date is a real date; a year-only date is written as its year; unknown stays empty
  *   Days Left        live in Excel (Next Calibration Date − TODAY()) for an exact next date only — principle 13
- *   Area / Station   the destination Region and Station; a destination no Station matches is written as the sheet
+ *   Area / Station   the destination Region and Unit (else Station); a destination no Station matches is written as the sheet
  *                    named it; unassigned stock leaves both empty
  *   Notes            the record's notes, then the source status text when the source gave one
  *   Set Pressure     coloured by value so equal pressures read as one group (the template colours them by hand)
@@ -46,8 +46,9 @@ export function pressureFills(labels: (string | null)[]): Map<string, string> {
   return fills
 }
 
-export function warehouseStation(r: Pick<WarehouseSrvRow, 'is_unassigned_stock' | 'target_station_name' | 'target_station_raw'>): string | null {
-  return r.is_unassigned_stock ? null : r.target_station_name ?? r.target_station_raw ?? null
+/** The destination as the store writes it: the Unit when one is chosen, else the Station, else the sheet's own text. */
+export function warehouseStation(r: Pick<WarehouseSrvRow, 'is_unassigned_stock' | 'target_station_name' | 'target_station_raw' | 'target_unit_name'>): string | null {
+  return r.is_unassigned_stock ? null : r.target_unit_name ?? r.target_station_name ?? r.target_station_raw ?? null
 }
 
 export function warehouseNotes(r: Pick<WarehouseSrvRow, 'notes' | 'source_status_raw'>): string | null {

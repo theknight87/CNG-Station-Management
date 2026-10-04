@@ -52,3 +52,19 @@ describe('RegistryTable while the next result loads', () => {
     expect(screen.getByText('Failed')).toBeDefined()
   })
 })
+
+describe('RegistryTable deep link (global SRV search, owner request 2026-10-04)', () => {
+  it('opens the linked row\'s details once that row is on screen, and only once', () => {
+    const ready: Loadable<RegistryPage<Row>> = { status: 'ready', data: { rows: [{ id: '1', serial: 'SN-A' }, { id: '2', serial: 'SN-B' }], total: 2, filtered: true } }
+    render(
+      <RegistryTable<Row>
+        label="Test rows" state={ready} reload={() => {}} columns={columns} rowKey={(r) => r.id}
+        detail={(r) => <span>Detail of {r.serial}</span>}
+        sort="serial" direction="asc" onSort={() => {}} page={0} pageSize={50} onPage={() => {}} onClearFilters={() => {}}
+        emptyTitle="Nothing" emptyDescription="Nothing yet" errorTitle="Failed" openKey="2"
+      />,
+    )
+    expect(screen.getByText('Detail of SN-B')).toBeDefined()
+    expect(screen.queryByText('Detail of SN-A')).toBeNull()
+  })
+})

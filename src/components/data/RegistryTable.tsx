@@ -73,6 +73,7 @@ export function RegistryTable<T>({
   record,
   extra,
   selection,
+  openKey,
 }: {
   label: string
   state: Loadable<RegistryPage<T>>
@@ -96,8 +97,15 @@ export function RegistryTable<T>({
   extra?: (row: T, done: () => void) => ReactNode
   /** Present = a tick-box column for bulk actions. */
   selection?: RegistrySelection<T>
+  /** Open this row's details once it is on screen (a deep link from the global SRV search). */
+  openKey?: string | null
 }) {
   const [selected, setSelected] = useState<T | null>(null)
+  const [autoOpened, setAutoOpened] = useState<string | null>(null)
+  if (openKey && openKey !== autoOpened && state.status === 'ready') {
+    const hit = state.data.rows.find((r) => rowKey(r) === openKey)
+    if (hit) { setAutoOpened(openKey); setSelected(hit) }
+  }
   // The last result shown. While the next one loads (a tile, filter, sort or page change) the table keeps it on
   // screen, dimmed and marked busy, instead of blanking to a loading screen (owner report 2026-10-02).
   const [shown, setShown] = useState<RegistryPage<T> | null>(state.status === 'ready' ? state.data : null)

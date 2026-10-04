@@ -1,8 +1,9 @@
 import { ClipboardList, FlaskConical, Gauge, Siren, Warehouse } from 'lucide-react'
-import { Outlet } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
 
 import { PageContainer, PageHeader } from '@/components/layout/PageContainer'
 import { SectionTabs, type SectionTab } from '@/components/layout/SectionTabs'
+import { SrvGlobalSearch } from '@/features/relief-valves/SrvGlobalSearch'
 
 /**
  * Global SRV Management.
@@ -16,6 +17,9 @@ import { SectionTabs, type SectionTab } from '@/components/layout/SectionTabs'
  * Sections are routes (`/manage/srvs/installed`, `/manage/srvs/warehouse`), so
  * both are deep-linkable and Back works. `/manage/srvs` remains the canonical
  * entry point and lands on Installed.
+ *
+ * One search above the tabs finds a valve in any of them by serial or code (owner request 2026-10-04); a result
+ * links to its tab with `?q=&open=`, and the tab is remounted per link so it starts from that search.
  */
 
 const SECTIONS: SectionTab[] = [
@@ -27,6 +31,7 @@ const SECTIONS: SectionTab[] = [
 ]
 
 export function SrvWorkspace() {
+  const { search } = useLocation()
   return (
     <PageContainer>
       <PageHeader
@@ -34,9 +39,11 @@ export function SrvWorkspace() {
         description="Safety Relief Valves across every Region you are authorized for, and warehouse stock."
       />
 
+      <SrvGlobalSearch />
+
       <SectionTabs label="SRV datasets" tabs={SECTIONS} />
 
-      <Outlet />
+      <Outlet key={search} />
     </PageContainer>
   )
 }

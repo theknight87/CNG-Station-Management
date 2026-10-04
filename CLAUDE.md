@@ -163,6 +163,18 @@ valves with the same manufacturer (case-insensitive), exact set pressure and uni
 outlet / base warehouse code (`sbc 20`, `sbu 20` → `sb 20`). One combination fills the fields the user has not typed; several are offered
 as choices with their counts (`ValveTemplatePicker`), and a choice fills everything it carries. Nothing is invented — every option is a
 combination real records hold. The Unit form writes the calibrated code (`sbc 20`). `features/relief-valves/valveTemplates.ts`; frontend only.
+**Warehouse destination Station / Unit (owner 2026-10-04).** A store valve's destination may be a Station or one of its Units,
+or none: `warehouse_relief_valves.target_unit_id` (composite FK `units(id, station_id)`, never without a Station) and
+`destination_set_at` (set by hand — the sheet's own `source_raw->>'Station'` text, never altered, then stops showing, so clearing
+really clears). "Add relief valves" takes one destination for the batch and, per serial, its own (`items`); details carry
+"Change destination" (`cng_admin_set_warehouse_destination`: admin, audited, PT409). Only canonical names from the list are accepted
+(`DestinationInput`), the Region follows the Station, and when the issue/receive/undo functions move the Station the trigger
+`wrv_unit_follows_station` clears a Unit that no longer applies. Table, details and the store Excel show the Unit when set.
+Migration `20261004100000` (deployed, recorded `20261004102540`); suite `warehouse_destination`.
+**Global SRV search (owner 2026-10-04).** One box above the SRV tabs (`SrvGlobalSearch`) looks a serial or warehouse code up in
+Installed, Warehouse, the SRV Log (awaiting return) and Calibration at once, says where each match is, and links to its tab with
+`?q=<serial>&open=<id>` (`srvDeepLink.ts`): the tab is remounted per link, starts with that search and opens the record's details
+(`RegistryTable openKey`, `useOpenLinked`). Read-only, under the caller's RLS; frontend only.
 **No table footnotes (owner 2026-10-03).** The explanatory paragraph under every table ("Mapping is not changed from this screen…",
 "…not columns this schema carries", etc.) is gone from all pages, and `RegistryTable` / `EquipmentSection` no longer take a `footnote`.
 
