@@ -40,7 +40,9 @@ export function SrvGlobalSearch() {
       void Promise.all([
         supabase.from('v_installed_srv_management').select('id, serial_number, warehouse_code, unit_name, station_display, region_name')
           .or(like).limit(PER_SOURCE),
-        supabase.from('v_warehouse_srv_management').select('id, serial_number, warehouse_code, availability_status')
+        // The Warehouse tab's own list: valves in the store, not at calibration and not the store sheet's sent-to-station rows,
+        // so every hit opens on a row the tab shows.
+        supabase.from('v_srv_warehouse_stock').select('id, serial_number, warehouse_code, availability_status')
           .or(like).limit(PER_SOURCE),
         supabase.from('v_srv_field_log').select('id, serial_number, warehouse_code, station_display, unit_name, region_name')
           .in('status', ['at_station', 'location_unconfirmed']).or(like).limit(PER_SOURCE),

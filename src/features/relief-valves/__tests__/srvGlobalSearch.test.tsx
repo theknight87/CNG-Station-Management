@@ -40,7 +40,7 @@ beforeEach(() => {
   state.asked = []
   state.data = {
     v_installed_srv_management: [{ id: 'i-1', serial_number: 'AB-77', warehouse_code: 'sbc 20', unit_name: 'شبرا 1', station_display: 'شبرا', region_name: 'East' }],
-    v_warehouse_srv_management: [{ id: 'w-1', serial_number: 'AB-7', warehouse_code: 'sbc 20', availability_status: 'available_calibrated' }],
+    v_srv_warehouse_stock: [{ id: 'w-1', serial_number: 'AB-7', warehouse_code: 'sbc 20', availability_status: 'available_calibrated' }],
     v_srv_field_log: [{ id: 'l-1', serial_number: 'XAB-7', warehouse_code: null, station_display: 'الخمائل', unit_name: null, region_name: 'West' }],
     v_srv_calibration: [{ id: 'c-1', serial_number: 'AB-70', warehouse_code: 'sbu 20' }],
   }
@@ -52,7 +52,7 @@ describe('global SRV search', () => {
     await userEvent.type(screen.getByRole('combobox'), 'AB-7')
     const options = await screen.findAllByRole('option')
     expect(options).toHaveLength(4)
-    expect(state.asked.map((a) => a[0]).sort()).toEqual(['v_installed_srv_management', 'v_srv_calibration', 'v_srv_field_log', 'v_warehouse_srv_management'])
+    expect(state.asked.map((a) => a[0]).sort()).toEqual(['v_installed_srv_management', 'v_srv_calibration', 'v_srv_field_log', 'v_srv_warehouse_stock'])
     const log = state.asked.find((a) => a[0] === 'v_srv_field_log')!
     expect(log).toContain('in:status|at_station,location_unconfirmed')
     expect(log).toContain('or:serial_number.ilike.*AB-7*,warehouse_code.ilike.*AB-7*')
