@@ -134,6 +134,9 @@ that day's sheet was exported go in a NEW sheet "East 5-10-2026 (2)", "(3)"…, 
 Which issues each sheet carries is stored: `srv_issue_sheets` + `srv_issues.sheet_id`, placed only by the admin-only, audited
 `cng_srv_issue_sheet_assign(region, month)`; rows from `v_srv_issue_sheet` (security_invoker; undone issues excluded). Workbook:
 `features/export/issueSheet.ts`. Migration `20261003130000` (deployed); suite `srv_issue_sheets`.
+Undone issues (owner 2026-10-04): undone as *still at the station* (`await_return`) the valve left the warehouse, so the issue stays on its
+sheet (or is placed on one) with "ملغي (date)" in a Notes column and the date its own valve came back; undone as *back in the warehouse*
+(`to_stock`) it never left and is on no sheet. Migration `20261004090000` (deployed); suite `srv_issue_sheet_cancelled`.
 **Installed SRVs Excel = the owner's station sheet (2026-10-03).** Installed SRVs → Excel writes the template "رصيد المحطات"
 (title "Stations Safety Relief Valves Data", Area / Station / Location / Set Pressure / Manufacturer / Serial / Size Type / IN / OUT /
 Last / Next Calibration / Days Left / Next Calibration Month / Notes, banded rows, the template's manufacturer colours, days < 30 red),

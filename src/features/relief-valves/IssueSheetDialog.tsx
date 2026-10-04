@@ -129,6 +129,12 @@ function IssueSheetBody({ regionFilter, onClose, onDone }: {
                 {sent.length === 0 ? 'none'
                   : `${sent.length} sheet(s), ${sent.reduce((n, s) => n + s.rows.length, 0)} valve(s) — written again unchanged.`}
               </p>
+              {rows.some((r) => r.is_cancelled) ? (
+                <p>
+                  <span className="font-medium">Undone after leaving the warehouse:</span>{' '}
+                  {rows.filter((r) => r.is_cancelled).length} valve(s) — kept on their sheet, marked ملغي.
+                </p>
+              ) : null}
               <div>
                 <span className="font-medium">New:</span>{' '}
                 {pending.length === 0 ? 'nothing since the last export.' : (

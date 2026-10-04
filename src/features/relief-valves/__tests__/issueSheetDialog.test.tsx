@@ -14,6 +14,7 @@ const base = {
   place_name: 'S 1', location: 'Stage', warehouse_valve_id: 'w', issued_serial: null, issued_code: null, manufacturer: null,
   size_type: null, inlet_size: null, outlet_size: null, set_pressure_raw: null, pressure_min: null, pressure_max: null,
   pressure_unit: null, replaced_installed_valve_id: null, replaced_serial: null, replaced_returned_at: null,
+  is_cancelled: false, cancelled_at: null, cancelled_returned_at: null,
 }
 const state = vi.hoisted(() => ({ rows: [] as IssueSheetRow[], rpc: [] as unknown[], downloads: [] as string[], query: [] as string[] }))
 
@@ -81,6 +82,12 @@ describe('Issue sheet dialog', () => {
     await userEvent.setup().click(screen.getByRole('button', { name: 'Export workbook' }))
     await waitFor(() => expect(state.downloads).toHaveLength(1))
     expect(state.rpc).toEqual([])
+  })
+
+  it('ISD-5 valves undone after leaving the warehouse are said to stay on their sheet, marked cancelled', async () => {
+    state.rows = [...state.rows, { ...state.rows[0], id: 'z', is_cancelled: true, cancelled_at: '2026-10-06T08:00:00Z' }]
+    render(<IssueSheetDialog open regionFilter="r-east" onClose={() => {}} onDone={() => {}} />)
+    expect(await screen.findByText(/1 valve\(s\) — kept on their sheet, marked ملغي/)).toBeDefined()
   })
 
   it('ISD-4 with several Regions in the filter nothing is chosen for the user', async () => {

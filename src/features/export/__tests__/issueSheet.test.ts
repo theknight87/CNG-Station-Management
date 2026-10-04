@@ -17,6 +17,7 @@ const issue = (over: Partial<IssueSheetRow>): IssueSheetRow => ({
   place_name: 'شبرا 1', location: 'Stage', warehouse_valve_id: 'w', issued_serial: null, issued_code: null,
   manufacturer: null, size_type: 'Male', inlet_size: '1/2"', outlet_size: '1"', set_pressure_raw: null, pressure_min: null,
   pressure_max: null, pressure_unit: null, replaced_installed_valve_id: null, replaced_serial: null, replaced_returned_at: null,
+  is_cancelled: false, cancelled_at: null, cancelled_returned_at: null,
   ...over,
 })
 
@@ -93,6 +94,22 @@ describe('warehouse issue workbook', () => {
     const ws = (await readBack(await buildIssueWorkbook('Delta', rows))).worksheets[0]
     expect([2, 3, 5, 6, 7, 8, 9, 10].map((c) => ws.getRow(4).getCell(c).value)).toEqual([null, null, null, null, null, null, null, null])
     expect(ws.getCell('H2').value).toBe('المنطقة : دلتا')
+  })
+
+  it('ISH-7 an issue undone after it left the warehouse stays on its sheet: "ملغي" with the day, and its own return date', async () => {
+    const rows = groupSheets([
+      issue({ id: 'k', sheet_id: 'x', sheet_seq: 1, issued_serial: 'LIVE' }),
+      issue({ id: 'c', sheet_id: 'x', sheet_seq: 1, issued_at: '2026-10-05T08:00:00Z', issued_serial: 'UNDONE', replaced_serial: 'OLD',
+        replaced_returned_at: null, is_cancelled: true, cancelled_at: '2026-10-06T21:30:00Z', cancelled_returned_at: '2026-10-08T09:00:00Z' }),
+    ], 'East')
+    const ws = (await readBack(await buildIssueWorkbook('East', rows))).worksheets[0]
+    expect(ws.getRow(3).getCell(11).value).toBe('ملاحظات')
+    expect(ws.getRow(4).getCell(11).value).toBeNull()
+    // 21:30 UTC on 6 Oct is already 7 Oct in Cairo.
+    expect(ws.getRow(5).getCell(11).value).toBe('ملغي (07/10/2026)')
+    expect(ws.getRow(5).getCell(10).value).toBe('08/10/2026')
+    expect(ws.getRow(5).getCell(11).font?.color?.argb).toBe('FFC00000')
+    expect(ws.getCell('K1').isMerged).toBe(true)
   })
 
   it('ISH-6 month range and file name', () => {

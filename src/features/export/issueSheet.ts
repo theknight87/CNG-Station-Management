@@ -48,13 +48,18 @@ export interface IssueSheetRow {
   replaced_installed_valve_id: string | null
   replaced_serial: string | null
   replaced_returned_at: string | null
+  /** Undone after it left the warehouse ("still at the station"): kept on its sheet, marked cancelled. */
+  is_cancelled: boolean
+  cancelled_at: string | null
+  /** When the undone valve itself came back to the warehouse. */
+  cancelled_returned_at: string | null
 }
 
 export const ISSUE_SHEET_COLUMNS =
   'id, issued_at, issue_day, region_id, region_name, sheet_id, sheet_seq, sheet_exported_at, is_emergency, station_name, ' +
   'unit_name, place_name, location, warehouse_valve_id, issued_serial, issued_code, manufacturer, size_type, inlet_size, ' +
   'outlet_size, set_pressure_raw, pressure_min, pressure_max, pressure_unit, replaced_installed_valve_id, replaced_serial, ' +
-  'replaced_returned_at'
+  'replaced_returned_at, is_cancelled, cancelled_at, cancelled_returned_at'
 
 /** The Region as the owner writes it on the sheet ("المنطقة : شرق"). */
 const REGION_AR: Record<string, string> = {
@@ -139,17 +144,29 @@ export function pendingSheets(rows: IssueSheetRow[], region: string): { day: str
 
 const TITLE = 'بيانات صرف صمامات أمان معايرة'
 const HEADERS = ['', 'الضغط', 'الموقع', 'المحطة', 'المقاس', 'الموديل', 'رقم الصمام في المحطة', 'رقم الصمام المعاير في المخزن',
-  'الكود المخزني', 'تاريخ الرجوع للمخزن']
-const WIDTHS = [3.73, 12.82, 10.63, 14.18, 10.82, 15.36, 15.82, 16.54, 11.91, 12.54]
+  'الكود المخزني', 'تاريخ الرجوع للمخزن', 'ملاحظات']
+const WIDTHS = [3.73, 12.82, 10.63, 14.18, 10.82, 15.36, 15.82, 16.54, 11.91, 12.54, 16]
 const GREY = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFA6A6A6' } } as const
 const THIN = { style: 'thin' } as const
 const BOX = { top: THIN, left: THIN, bottom: THIN, right: THIN }
 const CENTER = { horizontal: 'center', vertical: 'middle', wrapText: true } as const
 
+/** "ملغي (06/10/2026)" for an issue undone after it left the warehouse; nothing otherwise. */
+export function cancelledNote(r: Pick<IssueSheetRow, 'is_cancelled' | 'cancelled_at'>): string | null {
+  if (!r.is_cancelled) return null
+  return r.cancelled_at ? `ملغي (${sheetDate(cancelledDay(r.cancelled_at))})` : 'ملغي'
+}
+/** The Cairo calendar day of a timestamp. */
+function cancelledDay(ts: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo' }).format(new Date(ts))
+}
+
 export function sheetCells(r: IssueSheetRow, n: number): (string | number | null)[] {
+  // A cancelled issue's own valve is what comes back to the warehouse; the replaced valve went back to its position.
+  const back = r.is_cancelled ? r.cancelled_returned_at : r.replaced_returned_at
   return [
     n, formPressure(r), r.location, r.place_name, sheetSize(r), r.manufacturer, r.replaced_serial, r.issued_serial,
-    r.issued_code, r.replaced_returned_at ? sheetDate(r.replaced_returned_at) : null,
+    r.issued_code, back ? sheetDate(back) : null, cancelledNote(r),
   ]
 }
 
@@ -160,11 +177,11 @@ export async function buildIssueWorkbook(region: string, sheets: IssueSheet[]): 
   for (const sheet of sheets) {
     const ws = wb.addWorksheet(sheet.name)
     WIDTHS.forEach((w, i) => { ws.getColumn(i + 1).width = w })
-    ws.mergeCells('A1:J1')
+    ws.mergeCells('A1:K1')
     Object.assign(ws.getCell('A1'), { value: TITLE, font: { bold: true, size: 18 }, alignment: CENTER })
     ws.mergeCells('A2:D2')
     Object.assign(ws.getCell('A2'), { value: `تاريخ الصرف من المخزن : ${sheetDate(sheet.day)}`, font: { size: 11 }, alignment: CENTER })
-    ws.mergeCells('H2:J2')
+    ws.mergeCells('H2:K2')
     Object.assign(ws.getCell('H2'), { value: `المنطقة : ${regionArabic(region)}`, font: { size: 11 }, alignment: CENTER })
     ws.getRow(1).height = 40
     ws.getRow(2).height = 45
@@ -180,11 +197,12 @@ export async function buildIssueWorkbook(region: string, sheets: IssueSheet[]): 
       sheetCells(r, i + 1).forEach((v, n) => {
         Object.assign(row.getCell(n + 1), { value: v === '' ? null : v, font: { size: 11 }, alignment: CENTER, border: BOX })
       })
+      if (r.is_cancelled) row.getCell(11).font = { size: 11, bold: true, color: { argb: 'FFC00000' } }
     })
     ws.pageSetup = {
       paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0, horizontalCentered: true,
       margins: { left: 0.25, right: 0.25, top: 0.5, bottom: 0.5, header: 0, footer: 0 },
-      printArea: `A1:J${3 + Math.max(sheet.rows.length, 1)}`, printTitlesRow: '1:3',
+      printArea: `A1:K${3 + Math.max(sheet.rows.length, 1)}`, printTitlesRow: '1:3',
     }
   }
   const buffer = await wb.xlsx.writeBuffer()
