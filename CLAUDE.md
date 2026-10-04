@@ -154,8 +154,9 @@ copied; a repeated serial and days < 30 red) for exactly the rows the screen's f
 is a live formula for exact next dates only. File "Warehouse Relief Valves Data <date>.xlsx". `features/export/warehouseSheet.ts`.
 **الداخلية storage (owner 2026-10-04).** One shared EKC storage vessel with THREE relief valves: the station sheet listed the same three
 under الداخلية 1 (rows 369–371) and الداخلية 2 (rows 377–379), and ruling 6y put all six at Station level. Rows 377–379 were archived
-(not deleted), audited as `owner_ruling:2026-10-04`. The same doubled shape (identical 3 + 3 storage valves, one vessel) also exists at
-الحي العاشر, دفـــــرة and محور التعمير — reported to the owner, NOT changed.
+(not deleted), audited as `owner_ruling:2026-10-04`. The owner confirmed the same for the three other Stations with the identical
+3 + 3 shape on one vessel, and the second Unit's copies were archived the same way: الحي العاشر (rows 753–755; 761–763 kept),
+دفـــــرة (204–206; 195–197 kept), محور التعمير (2414–2416; 2406–2408 kept). Each of the four now carries 3 live storage SRVs.
 **No table footnotes (owner 2026-10-03).** The explanatory paragraph under every table ("Mapping is not changed from this screen…",
 "…not columns this schema carries", etc.) is gone from all pages, and `RegistryTable` / `EquipmentSection` no longer take a `footnote`.
 
