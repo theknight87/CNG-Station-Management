@@ -75,7 +75,9 @@ function ReplaceForm({ valve, onDone, onCancel }: { valve: ReplaceableValve; onD
       q = valve.pressure_min === null ? q.is('pressure_min', null) : q.eq('pressure_min', valve.pressure_min)
       q = valve.pressure_max === null ? q.is('pressure_max', null) : q.eq('pressure_max', valve.pressure_max)
       q = valve.pressure_unit === null ? q.is('pressure_unit', null) : q.eq('pressure_unit', valve.pressure_unit)
-      const { data, error: e } = await q.order('availability_status').order('warehouse_code', { nullsFirst: false }).order('serial_number').limit(500)
+      // Oldest calibration first (owner 2026-10-04): the valve due soonest goes out first; no recorded date last.
+      const { data, error: e } = await q.order('next_calibration_date', { ascending: true, nullsFirst: false })
+        .order('serial_number').limit(500)
       if (cancelled) return
       if (e) setStock({ status: 'error', message: e.message })
       else setStock({ status: 'ready', rows: (data ?? []) as unknown as StockRow[] })

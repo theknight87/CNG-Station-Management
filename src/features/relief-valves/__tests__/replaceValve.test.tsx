@@ -76,6 +76,16 @@ describe('replace from the valve details', () => {
     await waitFor(() => expect(onDone).toHaveBeenCalled())
   })
 
+  it('REPL-6 matching store valves are listed oldest calibration first, a valve with no date last (owner 2026-10-04)', async () => {
+    const user = userEvent.setup()
+    render(<ReplaceValvePanel valve={valve} onDone={() => {}} />)
+    await user.click(screen.getByRole('button', { name: /replace this valve/i }))
+    await screen.findByRole('group', { name: /matching in the store/i })
+    const orders = calls.query.filter((c) => c.startsWith('v_srv_warehouse_stock.order:'))
+    expect(orders[0]).toBe('v_srv_warehouse_stock.order:"next_calibration_date"|{"ascending":true,"nullsFirst":false}')
+    expect(orders).not.toContain('v_srv_warehouse_stock.order:"availability_status"')
+  })
+
   it('REPL-3 other manufacturers and new valves only when asked', async () => {
     const user = userEvent.setup()
     render(<ReplaceValvePanel valve={valve} onDone={() => {}} />)
