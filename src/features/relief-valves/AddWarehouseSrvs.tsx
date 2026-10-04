@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Plus } from 'lucide-react'
 
 import { RecordDetailsDialog } from '@/components/data/RecordDetailsDialog'
@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button'
 import { oneYearAfter, parsePressure } from '@/features/record-tools/recordTools'
 import { FormMessage } from '@/features/relief-valves/SrvWorkflowPieces'
 import { useIsAdmin, useWorkflowAction } from '@/features/relief-valves/useSrvWorkflow'
+import { ValveTemplatePicker } from '@/features/relief-valves/ValveTemplatePicker'
+import { useValveTemplates, type ValveTemplate } from '@/features/relief-valves/valveTemplates'
 
 /**
  * Admin: add relief valves to the warehouse from scratch — a new purchase, or stock that is already calibrated or
@@ -13,6 +15,8 @@ import { useIsAdmin, useWorkflowAction } from '@/features/relief-valves/useSrvWo
  * no serial yet. It calls cng_admin_add_warehouse_srvs: actor derived server-side, audited, a serial already in stock
  * refused. The warehouse code follows the condition (mb 9 new, mbc 9 calibrated, mbu 9 under calibration) by the
  * existing database rule, so the base code is enough. Installing a valve at a station stays the issue (صرف) step.
+ * Typing the manufacturer and set pressure fills part number, size and base code from valves already recorded with
+ * the same two (owner request 2026-10-04): one combination fills untouched fields by itself, several are offered.
  */
 
 const field = 'flex flex-col gap-0.5 text-xs text-muted-foreground'
@@ -53,6 +57,27 @@ function AddDialog({ onClose, onAdded }: { onClose: () => void; onAdded: () => v
   const serialList = serials.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean)
   const pressureValue = parsePressure(pressure)
   const count = serialList.length || Number(quantity) || 0
+
+  // Fields the user typed are never overwritten by the automatic fill; a chosen version fills everything it carries.
+  const touched = useRef(new Set<string>())
+  const [filled, setFilled] = useState<ValveTemplate | null>(null)
+  const typed = (k: string, set: (v: string) => void) => (v: string) => { touched.current.add(k); set(v) }
+  function fill(t: ValveTemplate, force: boolean) {
+    const put = (k: string, v: string | null, set: (v: string) => void) => {
+      if (v !== null && (force || !touched.current.has(k))) set(v)
+    }
+    put('part_number', t.part_number, setPartNumber)
+    put('size_type', t.size_type && ['male', 'female', 'flange'].includes(t.size_type.toLowerCase())
+      ? t.size_type[0].toUpperCase() + t.size_type.slice(1).toLowerCase() : null, setSizeType)
+    put('inlet', t.inlet_size, setInlet)
+    put('outlet', t.outlet_size, setOutlet)
+    put('code', t.base_code, setCode)
+    setFilled(t)
+  }
+  const templates = useValveTemplates(manufacturer, pressureValue, unit, (list) => {
+    setFilled(null)
+    if (list.length === 1) fill(list[0], false)
+  })
 
   async function save() {
     setError(null); setDone(null)
@@ -96,26 +121,6 @@ function AddDialog({ onClose, onAdded }: { onClose: () => void; onAdded: () => v
               .map((m) => <option key={m} value={m} />)}
           </datalist>
         </label>
-        <label className={field}>Part number
-          <input className={input} value={partNumber} onChange={(e) => setPartNumber(e.target.value)} />
-        </label>
-        <label className={field}>Warehouse code (base, e.g. mb 9)
-          <input className={input} value={code} onChange={(e) => setCode(e.target.value)} />
-        </label>
-        <label className={field}>Size type
-          <select className={input} value={sizeType} onChange={(e) => setSizeType(e.target.value)}>
-            <option value="Male">Male (M)</option>
-            <option value="Female">Female (F)</option>
-            <option value="Flange">Flange</option>
-            <option value="">Not recorded</option>
-          </select>
-        </label>
-        <label className={field}>Inlet
-          <input className={input} value={inlet} placeholder={'1/2"'} onChange={(e) => setInlet(e.target.value)} />
-        </label>
-        <label className={field}>Outlet
-          <input className={input} value={outlet} placeholder={'3/4"'} onChange={(e) => setOutlet(e.target.value)} />
-        </label>
         <div className="flex gap-2">
           <label className={`${field} flex-1`}>Set pressure
             <input inputMode="decimal" className={`${input} text-right tabular`} value={pressure} placeholder="275"
@@ -130,6 +135,29 @@ function AddDialog({ onClose, onAdded }: { onClose: () => void; onAdded: () => v
         </div>
         <label className={field}>Last calibration
           <input type="date" className={input} value={lastCal} onChange={(e) => setLastCal(e.target.value)} />
+        </label>
+        <div className="sm:col-span-2 lg:col-span-4">
+          <ValveTemplatePicker {...templates} filled={filled} onPick={(t) => fill(t, true)} />
+        </div>
+        <label className={field}>Part number
+          <input className={input} value={partNumber} onChange={(e) => typed('part_number', setPartNumber)(e.target.value)} />
+        </label>
+        <label className={field}>Warehouse code (base, e.g. mb 9)
+          <input className={input} value={code} onChange={(e) => typed('code', setCode)(e.target.value)} />
+        </label>
+        <label className={field}>Size type
+          <select className={input} value={sizeType} onChange={(e) => typed('size_type', setSizeType)(e.target.value)}>
+            <option value="Male">Male (M)</option>
+            <option value="Female">Female (F)</option>
+            <option value="Flange">Flange</option>
+            <option value="">Not recorded</option>
+          </select>
+        </label>
+        <label className={field}>Inlet
+          <input className={input} value={inlet} placeholder={'1/2"'} onChange={(e) => typed('inlet', setInlet)(e.target.value)} />
+        </label>
+        <label className={field}>Outlet
+          <input className={input} value={outlet} placeholder={'3/4"'} onChange={(e) => typed('outlet', setOutlet)(e.target.value)} />
         </label>
         <p className="self-end pb-2 text-xs text-muted-foreground">Next calibration: one year after the last, set automatically.</p>
         <label className={`${field} sm:col-span-2`}>Notes

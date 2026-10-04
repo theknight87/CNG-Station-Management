@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useRef, useState } from 'react'
 import { Plus } from 'lucide-react'
 
 import { oneYearAfter, parsePressure } from '@/features/record-tools/recordTools'
@@ -6,6 +6,8 @@ import { RecordDetailsDialog } from '@/components/data/RecordDetailsDialog'
 import { Button } from '@/components/ui/button'
 import { FormMessage } from '@/features/relief-valves/SrvWorkflowPieces'
 import { useIsAdmin, useWorkflowAction } from '@/features/relief-valves/useSrvWorkflow'
+import { ValveTemplatePicker } from '@/features/relief-valves/ValveTemplatePicker'
+import { calibratedCode, useValveTemplates, type ValveTemplate } from '@/features/relief-valves/valveTemplates'
 
 /**
  * Admin: add a piece of equipment to a Unit from its popup (owner request 2026-09-28, suggestion 3).
@@ -29,10 +31,12 @@ const FIELDS: Record<AssetKind, { title: string; fields: Field[]; note?: string 
   srv: {
     title: 'relief valve',
     note: 'Installed on this Unit. Which compressor, vessel or dispenser it sits on is left for mapping — never guessed. Next calibration is set to one year after the last.',
+    // Manufacturer and set pressure first: they fill the rest from valves already recorded (owner request 2026-10-04).
     fields: [
-      { key: 'serial_number', label: 'Serial' }, { key: 'manufacturer', label: 'Manufacturer' }, { key: 'part_number', label: 'Part number' },
-      { key: 'size_type', label: 'Size type', type: 'size' }, { key: 'inlet_size', label: 'Inlet' }, { key: 'outlet_size', label: 'Outlet' },
-      { key: 'pressure', label: 'Set pressure', type: 'number' }, { key: 'pressure_unit', label: 'Unit', type: 'unit' },
+      { key: 'manufacturer', label: 'Manufacturer' }, { key: 'pressure', label: 'Set pressure', type: 'number' },
+      { key: 'pressure_unit', label: 'Unit', type: 'unit' }, { key: 'serial_number', label: 'Serial' },
+      { key: 'part_number', label: 'Part number' }, { key: 'size_type', label: 'Size type', type: 'size' },
+      { key: 'inlet_size', label: 'Inlet' }, { key: 'outlet_size', label: 'Outlet' },
       { key: 'warehouse_code', label: 'Warehouse code' }, ...ANNUAL_DATES, { key: 'notes', label: 'Notes' },
     ],
   },
@@ -85,6 +89,31 @@ function AddDialog({ kind, unitId, unitName, onClose, onAdded }: {
   const [error, setError] = useState<string | null>(null)
   const set = (k: string, v: string) => setValues((p) => ({ ...p, [k]: v }))
 
+  // A relief valve fills part number, size and code from valves of the same manufacturer and set pressure; fields the
+  // user typed are never overwritten by the automatic fill, a chosen version fills everything it carries.
+  const touched = useRef(new Set<string>())
+  const [filled, setFilled] = useState<ValveTemplate | null>(null)
+  function fill(t: ValveTemplate, force: boolean) {
+    const size = t.size_type && ['male', 'female', 'flange'].includes(t.size_type.toLowerCase())
+      ? t.size_type[0].toUpperCase() + t.size_type.slice(1).toLowerCase() : null
+    const next: Record<string, string | null> = {
+      part_number: t.part_number, size_type: size, inlet_size: t.inlet_size, outlet_size: t.outlet_size,
+      // An installed valve is a calibrated one, so its code carries the C (owner code rule).
+      warehouse_code: calibratedCode(t.base_code),
+    }
+    setValues((p) => {
+      const out = { ...p }
+      for (const [k, v] of Object.entries(next)) if (v !== null && (force || !touched.current.has(k))) out[k] = v
+      return out
+    })
+    setFilled(t)
+  }
+  const templates = useValveTemplates(kind === 'srv' ? values.manufacturer ?? '' : '', parsePressure(values.pressure ?? ''),
+    values.pressure_unit ?? 'BAR', (list) => {
+      setFilled(null)
+      if (list.length === 1) fill(list[0], false)
+    })
+
   async function save() {
     setError(null)
     const p: Record<string, unknown> = { ...values }
@@ -116,24 +145,31 @@ function AddDialog({ kind, unitId, unitName, onClose, onAdded }: {
         {spec.note ? <p className="text-xs text-muted-foreground">{spec.note}</p> : null}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {spec.fields.map((f) => (
-            <label key={f.key} className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+            <Fragment key={f.key}>
+            <label className="flex flex-col gap-0.5 text-xs text-muted-foreground">
               {f.label}
               {f.type === 'unit' ? (
                 <select className={input} value={values[f.key]} onChange={(e) => set(f.key, e.target.value)}>
                   <option value="BAR">BAR</option><option value="PSI">PSI</option>
                 </select>
               ) : f.type === 'size' ? (
-                <select className={input} value={values[f.key]} onChange={(e) => set(f.key, e.target.value)}>
+                <select className={input} value={values[f.key]} onChange={(e) => { touched.current.add(f.key); set(f.key, e.target.value) }}>
                   <option value="Male">Male (M)</option><option value="Female">Female (F)</option>
                   <option value="Flange">Flange</option><option value="">Not recorded</option>
                 </select>
               ) : (
                 <input dir="auto" className={input} value={values[f.key]}
                        type={f.type === 'date' ? 'date' : 'text'} inputMode={f.type === 'number' || f.type === 'range' ? 'decimal' : undefined}
-                       onChange={(e) => set(f.key, f.type === 'number' ? e.target.value.replace(/[^\d.]/g, '')
-                         : f.type === 'range' ? e.target.value.replace(/[^\d.\-– ]/g, '') : e.target.value)} />
+                       onChange={(e) => { touched.current.add(f.key); set(f.key, f.type === 'number' ? e.target.value.replace(/[^\d.]/g, '')
+                         : f.type === 'range' ? e.target.value.replace(/[^\d.\-– ]/g, '') : e.target.value) }} />
               )}
             </label>
+            {kind === 'srv' && f.key === 'pressure_unit' ? (
+              <div className="sm:col-span-2 lg:col-span-3">
+                <ValveTemplatePicker {...templates} filled={filled} onPick={(t) => fill(t, true)} />
+              </div>
+            ) : null}
+            </Fragment>
           ))}
         </div>
         <FormMessage error={error} done={null} />

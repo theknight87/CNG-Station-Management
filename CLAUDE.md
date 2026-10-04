@@ -157,6 +157,12 @@ under الداخلية 1 (rows 369–371) and الداخلية 2 (rows 377–379
 (not deleted), audited as `owner_ruling:2026-10-04`. The owner confirmed the same for the three other Stations with the identical
 3 + 3 shape on one vessel, and the second Unit's copies were archived the same way: الحي العاشر (rows 753–755; 761–763 kept),
 دفـــــرة (204–206; 195–197 kept), محور التعمير (2414–2416; 2406–2408 kept). Each of the four now carries 3 live storage SRVs.
+**New valve auto-fill (owner 2026-10-04).** Both add-relief-valve forms (Warehouse "Add relief valves" and the Unit window's "Add
+relief valve") ask for manufacturer and set pressure first; once both are typed, `useValveTemplates` reads the warehouse and installed
+valves with the same manufacturer (case-insensitive), exact set pressure and unit, and groups their part number / size type / inlet /
+outlet / base warehouse code (`sbc 20`, `sbu 20` → `sb 20`). One combination fills the fields the user has not typed; several are offered
+as choices with their counts (`ValveTemplatePicker`), and a choice fills everything it carries. Nothing is invented — every option is a
+combination real records hold. The Unit form writes the calibrated code (`sbc 20`). `features/relief-valves/valveTemplates.ts`; frontend only.
 **No table footnotes (owner 2026-10-03).** The explanatory paragraph under every table ("Mapping is not changed from this screen…",
 "…not columns this schema carries", etc.) is gone from all pages, and `RegistryTable` / `EquipmentSection` no longer take a `footnote`.
 
