@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * or per serial when adding, and changed later from the valve's details. Only names from the list are accepted.
  */
 
-const state = vi.hoisted(() => ({ calls: [] as { fn: string; args: Record<string, unknown> }[] }))
+const state = vi.hoisted(() => ({ calls: [] as { fn: string; args: Record<string, unknown> }[], where: [] as unknown[] }))
 const tables: Record<string, unknown[]> = {
   regions: [{ id: 'r-e', name: 'East' }],
   stations: [{ id: 's-1', station_name: 'شبرا', region_id: 'r-e' }, { id: 's-2', station_name: 'الخمائل', region_id: 'r-e' }],
@@ -19,7 +19,12 @@ function query(table: string) {
   q.then = (ok: (v: unknown) => unknown) => Promise.resolve({ data: tables[table] ?? [], error: null }).then(ok)
   return q
 }
-vi.mock('@/lib/supabase/client', () => ({ useSupabaseClient: () => ({ from: query }) }))
+async function rpc(fn: string, args: { p_serials: string[] }) {
+  if (fn !== 'cng_srv_serial_whereabouts') return { data: null, error: null }
+  return { data: (state.where as { serial: string }[]).filter((w) => args.p_serials.includes(w.serial)), error: null }
+}
+const client = { from: query, rpc }
+vi.mock('@/lib/supabase/client', () => ({ useSupabaseClient: () => client }))
 vi.mock('@/features/relief-valves/useSrvWorkflow', () => ({
   useIsAdmin: () => true,
   useWorkflowAction: () => ({ busy: false, run: async (fn: string, args: Record<string, unknown>) => { state.calls.push({ fn, args }); return null } }),
@@ -28,11 +33,12 @@ vi.mock('@/features/relief-valves/useSrvWorkflow', () => ({
 const { AddWarehouseSrvsButton } = await import('@/features/relief-valves/AddWarehouseSrvs')
 const { WarehouseDestinationEditor } = await import('@/features/relief-valves/WarehouseDestinationEditor')
 
-beforeEach(() => { state.calls = [] })
+beforeEach(() => { state.calls = []; state.where = [] })
 
 async function openAdd() {
   render(<AddWarehouseSrvsButton onAdded={() => {}} />)
   await userEvent.click(screen.getByRole('button', { name: /add relief valves/i }))
+  await userEvent.selectOptions(screen.getByLabelText(/^condition/i), 'available_calibrated')
 }
 
 describe('warehouse destination', () => {
@@ -66,6 +72,34 @@ describe('warehouse destination', () => {
     expect(screen.getAllByText(/choose a station or unit from the list/i).length).toBeGreaterThan(0)
     await userEvent.click(screen.getByRole('button', { name: /add 1 valve/i }))
     expect(state.calls).toEqual([])
+  })
+
+  it('WDF-5 the condition starts unchosen and nothing can be added until it is chosen', async () => {
+    render(<AddWarehouseSrvsButton onAdded={() => {}} />)
+    await userEvent.click(screen.getByRole('button', { name: /add relief valves/i }))
+    expect((screen.getByLabelText(/^condition/i) as HTMLSelectElement).value).toBe('')
+    await userEvent.type(screen.getByLabelText(/^serials/i), 'D-1')
+    expect((screen.getByRole('button', { name: /add 1 valve/i }) as HTMLButtonElement).disabled).toBe(true)
+    await userEvent.selectOptions(screen.getByLabelText(/^condition/i), 'available_new')
+    await userEvent.click(screen.getByRole('button', { name: /add 1 valve/i }))
+    await waitFor(() => expect(state.calls).toHaveLength(1))
+    expect(state.calls[0].args.p).toMatchObject({ availability: 'available_new' })
+  })
+
+  it('WDF-6 a serial already in the system says where it is and cannot be added; an old store-sheet record only warns', async () => {
+    state.where = [
+      { serial: 'E-1', kind: 'installed', blocking: true, place: 'installed at شبرا 1 · East', record_id: 'i-1' },
+      { serial: 'E-2', kind: 'sheet_sent', blocking: false, place: 'store sheet: AT STATION — الخمائل', record_id: 'w-9' },
+    ]
+    await openAdd()
+    await userEvent.type(screen.getByLabelText(/^serials/i), 'E-1{enter}E-2')
+    expect(await screen.findByText('Already recorded — installed at شبرا 1 · East')).toBeDefined()
+    expect(screen.getByText(/store sheet: AT STATION — الخمائل — that old record will be closed/)).toBeDefined()
+    const add = screen.getByRole('button', { name: /add 2 valves/i }) as HTMLButtonElement
+    expect(add.disabled).toBe(true)
+    await userEvent.clear(screen.getByLabelText(/^serials/i))
+    await userEvent.type(screen.getByLabelText(/^serials/i), 'E-2')
+    await waitFor(() => expect((screen.getByRole('button', { name: /add 1 valve/i }) as HTMLButtonElement).disabled).toBe(false))
   })
 
   it('WDF-4 changing an existing valve\'s destination sends the valve, its version and the chosen Unit; clearing sends none', async () => {

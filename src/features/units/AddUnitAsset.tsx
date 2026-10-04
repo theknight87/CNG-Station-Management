@@ -6,6 +6,8 @@ import { RecordDetailsDialog } from '@/components/data/RecordDetailsDialog'
 import { Button } from '@/components/ui/button'
 import { FormMessage } from '@/features/relief-valves/SrvWorkflowPieces'
 import { useIsAdmin, useWorkflowAction } from '@/features/relief-valves/useSrvWorkflow'
+import { SerialWhereaboutsNote } from '@/features/relief-valves/SerialWhereaboutsNote'
+import { serialKey, useSerialWhereabouts } from '@/features/relief-valves/serialWhereabouts'
 import { ValveTemplatePicker } from '@/features/relief-valves/ValveTemplatePicker'
 import { calibratedCode, useValveTemplates, type ValveTemplate } from '@/features/relief-valves/valveTemplates'
 
@@ -114,8 +116,13 @@ function AddDialog({ kind, unitId, unitName, onClose, onAdded }: {
       if (list.length === 1) fill(list[0], false)
     })
 
+  // A relief valve's serial already somewhere in the system is shown, and refused (owner request 2026-10-04).
+  const where = useSerialWhereabouts(kind === 'srv' ? [values.serial_number ?? ''] : [])
+  const serialPlaces = kind === 'srv' ? where.found.get(serialKey(values.serial_number ?? '')) : undefined
+
   async function save() {
     setError(null)
+    if (where.blocked.length) { setError(`Already recorded in the system: ${where.blocked.join(', ')}.`); return }
     const p: Record<string, unknown> = { ...values }
     if ('pressure' in values) {
       // One set pressure, no range (owner ruling 2026-09-29).
@@ -139,7 +146,7 @@ function AddDialog({ kind, unitId, unitName, onClose, onAdded }: {
     <RecordDetailsDialog open title={`Add ${spec.title}`} description={`To ${unitName}. Anything left empty stays empty.`} onClose={onClose}
                          actions={<>
                            <Button size="sm" variant="outline" onClick={onClose}>Cancel</Button>
-                           <Button size="sm" disabled={busy} onClick={() => void save()}>{busy ? 'Saving…' : `Add ${spec.title}`}</Button>
+                           <Button size="sm" disabled={busy || where.blocked.length > 0} onClick={() => void save()}>{busy ? 'Saving…' : `Add ${spec.title}`}</Button>
                          </>}>
       <div className="flex flex-col gap-3">
         {spec.note ? <p className="text-xs text-muted-foreground">{spec.note}</p> : null}
@@ -163,6 +170,7 @@ function AddDialog({ kind, unitId, unitName, onClose, onAdded }: {
                        onChange={(e) => { touched.current.add(f.key); set(f.key, f.type === 'number' ? e.target.value.replace(/[^\d.]/g, '')
                          : f.type === 'range' ? e.target.value.replace(/[^\d.\-– ]/g, '') : e.target.value) }} />
               )}
+              {kind === 'srv' && f.key === 'serial_number' ? <SerialWhereaboutsNote places={serialPlaces} /> : null}
             </label>
             {kind === 'srv' && f.key === 'pressure_unit' ? (
               <div className="sm:col-span-2 lg:col-span-3">

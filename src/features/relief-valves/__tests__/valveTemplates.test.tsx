@@ -23,6 +23,7 @@ const client = {
     }
     return q
   },
+  rpc: async () => ({ data: [], error: null }),
 }
 vi.mock('@/lib/supabase/client', () => ({ useSupabaseClient: () => client }))
 vi.mock('@/features/relief-valves/useSrvWorkflow', () => ({

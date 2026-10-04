@@ -7,6 +7,8 @@ import { oneYearAfter, parsePressure } from '@/features/record-tools/recordTools
 import { FormMessage } from '@/features/relief-valves/SrvWorkflowPieces'
 import { useIsAdmin, useWorkflowAction } from '@/features/relief-valves/useSrvWorkflow'
 import { DestinationInput } from '@/features/relief-valves/DestinationInput'
+import { SerialWhereaboutsNote } from '@/features/relief-valves/SerialWhereaboutsNote'
+import { serialKey, useSerialWhereabouts } from '@/features/relief-valves/serialWhereabouts'
 import { useDestinationOptions, type Destination } from '@/features/relief-valves/destinationOptions'
 import { ValveTemplatePicker } from '@/features/relief-valves/ValveTemplatePicker'
 import { useValveTemplates, type ValveTemplate } from '@/features/relief-valves/valveTemplates'
@@ -21,6 +23,9 @@ import { useValveTemplates, type ValveTemplate } from '@/features/relief-valves/
  * the same two (owner request 2026-10-04): one combination fills untouched fields by itself, several are offered.
  * A destination (Station or Unit) is optional: one for all the valves, and any serial may carry its own (owner
  * request 2026-10-04); the database derives the Region and refuses a Unit of another Station.
+ * The condition starts unchosen and must be picked (owner request 2026-10-04). Each typed serial shows where it already
+ * is in the system; one installed, in the store, at calibration or awaiting return cannot be added (the database
+ * refuses it too), while a store-sheet row that only says it was sent to a station is closed when the valve is added.
  */
 
 const field = 'flex flex-col gap-0.5 text-xs text-muted-foreground'
@@ -41,7 +46,7 @@ export function AddWarehouseSrvsButton({ onAdded }: { onAdded: () => void }) {
 }
 
 function AddDialog({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
-  const [availability, setAvailability] = useState('available_new')
+  const [availability, setAvailability] = useState('')
   const [serials, setSerials] = useState('')
   const [quantity, setQuantity] = useState('')
   const [manufacturer, setManufacturer] = useState('')
@@ -65,6 +70,7 @@ function AddDialog({ onClose, onAdded }: { onClose: () => void; onAdded: () => v
   const serialList = serials.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean)
   const pressureValue = parsePressure(pressure)
   const count = serialList.length || Number(quantity) || 0
+  const where = useSerialWhereabouts(serialList)
 
   // Fields the user typed are never overwritten by the automatic fill; a chosen version fills everything it carries.
   const touched = useRef(new Set<string>())
@@ -89,6 +95,8 @@ function AddDialog({ onClose, onAdded }: { onClose: () => void; onAdded: () => v
 
   async function save() {
     setError(null); setDone(null)
+    if (!availability) { setError('Condition: choose New, Calibrated or Under calibration.'); return }
+    if (where.blocked.length) { setError(`Already recorded in the system: ${where.blocked.join(', ')} — see where beside each serial.`); return }
     if (pressureValue === undefined) { setError('Set pressure: write one number, e.g. 275.'); return }
     if (allDest === undefined || serialList.some((s) => s in rowDest && rowDest[s] === undefined)) {
       setError('Destination: choose a Station or Unit from the list, or leave it empty.'); return
@@ -116,13 +124,14 @@ function AddDialog({ onClose, onAdded }: { onClose: () => void; onAdded: () => v
                          description="Everything you type is stored as typed; anything left empty stays empty." onClose={onClose}
                          actions={<>
                            <Button size="sm" variant="outline" onClick={onClose}>Close</Button>
-                           <Button size="sm" disabled={busy || count < 1} onClick={() => void save()}>
+                           <Button size="sm" disabled={busy || count < 1 || !availability || where.blocked.length > 0} onClick={() => void save()}>
                              {busy ? 'Saving…' : `Add ${count || ''} valve${count === 1 ? '' : 's'}`}
                            </Button>
                          </>}>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <label className={field}>Condition
-          <select className={input} value={availability} onChange={(e) => setAvailability(e.target.value)}>
+          <select className={input} value={availability} aria-invalid={!availability} onChange={(e) => setAvailability(e.target.value)}>
+            <option value="" disabled>Choose the condition…</option>
             <option value="available_new">New (purchased)</option>
             <option value="available_calibrated">Calibrated</option>
             <option value="available_in_store_uc">Under calibration (UC)</option>
@@ -191,11 +200,14 @@ function AddDialog({ onClose, onAdded }: { onClose: () => void; onAdded: () => v
         </div>
         {serialList.length > 0 ? (
           <div className="flex flex-col gap-1 sm:col-span-2 lg:col-span-4" role="group" aria-label="Destination per serial">
-            <span className="text-xs text-muted-foreground">A Station or Unit for any serial (empty takes the one above)</span>
+            <span className="text-xs text-muted-foreground">Where each serial is now, and a Station or Unit for any serial (empty takes the one above)</span>
             <ul className="flex flex-col gap-1">
               {serialList.map((s) => (
                 <li key={s} className="grid items-start gap-2 sm:grid-cols-[12rem_minmax(0,28rem)]">
-                  <span className="pt-1.5 font-technical text-sm" dir="ltr">{s}</span>
+                  <div className="flex flex-col gap-0.5 pt-1.5">
+                    <span className="font-technical text-sm" dir="ltr">{s}</span>
+                    <SerialWhereaboutsNote places={where.found.get(serialKey(s))} closes />
+                  </div>
                   <DestinationInput options={destinations} value={rowDest[s] ?? null} label={`Destination for ${s}`}
                                     onChange={(d) => setRowDest((p) => ({ ...p, [s]: d }))} />
                 </li>
