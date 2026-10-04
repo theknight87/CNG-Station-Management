@@ -171,6 +171,10 @@ really clears). "Add relief valves" takes one destination for the batch and, per
 (`DestinationInput`), the Region follows the Station, and when the issue/receive/undo functions move the Station the trigger
 `wrv_unit_follows_station` clears a Unit that no longer applies. Table, details and the store Excel show the Unit when set.
 Migration `20261004100000` (deployed, recorded `20261004102540`); suite `warehouse_destination`.
+**Defect found by the owner the same day**: the Warehouse tab reads `v_srv_warehouse_stock` (built on the view above), which did not
+get the two Unit columns, so the tab failed with *column v_srv_warehouse_stock.target_unit_id does not exist*. Fixed by migration
+`20261004110000` (the view restated with the columns appended; deployed, recorded `20261004104549`; WD-11). The gate's contract
+check now also compares the Installed and Warehouse list columns (`srvColumns.ts`) with their views — proved to fail on the old view.
 **Global SRV search (owner 2026-10-04).** One box above the SRV tabs (`SrvGlobalSearch`) looks a serial or warehouse code up in
 Installed, Warehouse, the SRV Log (awaiting return) and Calibration at once, says where each match is, and links to its tab with
 `?q=<serial>&open=<id>` (`srvDeepLink.ts`): the tab is remounted per link, starts with that search and opens the record's details

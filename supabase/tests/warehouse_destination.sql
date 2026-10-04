@@ -104,4 +104,10 @@ SELECT pg_temp.ck('WD-10 the view shows the Unit, still runs with the caller''s 
   AND (SELECT 'security_invoker=true' = ANY (reloptions) FROM pg_class WHERE relname = 'v_warehouse_srv_management')
   AND NOT has_function_privilege('authenticated', 'cng_wrv_resolve_destination(uuid, uuid)', 'EXECUTE'));
 
+-- Owner report 2026-10-04: the store list reads v_srv_warehouse_stock, which lacked the Unit columns.
+SELECT pg_temp.ck('WD-11 the store list view carries the destination Unit too, and runs with the caller''s rights',
+  (SELECT count(*) FROM information_schema.columns WHERE table_name = 'v_srv_warehouse_stock'
+     AND column_name IN ('target_unit_id', 'target_unit_name')) = 2
+  AND (SELECT 'security_invoker=true' = ANY (reloptions) FROM pg_class WHERE relname = 'v_srv_warehouse_stock'));
+
 ROLLBACK;

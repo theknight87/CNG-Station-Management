@@ -21,6 +21,7 @@
 import { execFileSync } from 'node:child_process'
 import { REPORT_SPECS, selectColumnsFor } from '../src/features/reports/reportSpecs.ts'
 import { SCOPE_FILTER_COLUMNS, SCOPE_OVERVIEWS, SCOPE_SOURCES } from '../src/features/export/scopeSources.ts'
+import { SRV_LIST_SOURCES } from '../src/features/relief-valves/srvColumns.ts'
 
 const db = process.argv[2]
 if (!db) {
@@ -28,7 +29,7 @@ if (!db) {
   process.exit(2)
 }
 
-const viewNames = [...new Set([...REPORT_SPECS.map((s) => s.view), ...SCOPE_SOURCES.map((s) => s.source), ...SCOPE_OVERVIEWS.map((s) => s.source)])]
+const viewNames = [...new Set([...REPORT_SPECS.map((s) => s.view), ...SCOPE_SOURCES.map((s) => s.source), ...SCOPE_OVERVIEWS.map((s) => s.source), ...SRV_LIST_SOURCES.map((s) => s.view)])]
 const sql = `
 SELECT table_name, column_name
 FROM information_schema.columns
@@ -98,6 +99,10 @@ const scopeChecks = [
   ...SCOPE_SOURCES.map((s) => ({ name: `export ${s.key}`, source: s.source,
     columns: [[s.orderBy, 'order'], ...s.filters.map((c) => [c, 'filter']), ...SCOPE_FILTER_COLUMNS.map((c) => [c, 'scope'])] })),
   ...SCOPE_OVERVIEWS.map((s) => ({ name: `export overview ${s.source}`, source: s.source, columns: s.columns.map((c) => [c, 'scope/order']) })),
+  // The SRV registry lists (owner report 2026-10-04: v_srv_warehouse_stock lacked target_unit_id and the Warehouse
+  // tab failed in production) — every column each list selects must exist in the view it reads.
+  ...SRV_LIST_SOURCES.map((s) => ({ name: `list ${s.name}`, source: s.view,
+    columns: s.columns.split(',').map((c) => [c.trim(), 'select']) })),
 ]
 for (const check of scopeChecks) {
   const have = actual.get(check.source)
