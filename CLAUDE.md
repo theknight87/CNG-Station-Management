@@ -179,6 +179,7 @@ check now also compares the Installed and Warehouse list columns (`srvColumns.ts
 Installed, Warehouse, the SRV Log (awaiting return) and Calibration at once, says where each match is, and links to its tab with
 `?q=<serial>&open=<id>` (`srvDeepLink.ts`): the tab is remounted per link, starts with that search and opens the record's details
 (`RegistryTable openKey`, `useOpenLinked`). Read-only, under the caller's RLS; frontend only.
+**Mercer 5500 PSI flange 1" x 1-1/4" P/N (owner 2026-10-04).** Every live valve of that kind now carries part number `91-17D611919AS`: 81 warehouse (previously five spellings, incl. `91-62d61p5941` / `91-62c61p5641`) and 80 installed (previously NULL). 161 `record_updated` audit rows, actor_label `owner_ruling:2026-10-04`, each with the old P/N; `source_raw` untouched. The 1" x 1" valves (`91-62c61p5641`) were not changed. Data only, no migration.
 **No table footnotes (owner 2026-10-03).** The explanatory paragraph under every table ("Mapping is not changed from this screen…",
 "…not columns this schema carries", etc.) is gone from all pages, and `RegistryTable` / `EquipmentSection` no longer take a `footnote`.
 
