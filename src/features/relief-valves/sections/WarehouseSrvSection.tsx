@@ -2,6 +2,7 @@ import { AddWarehouseSrvsButton } from '@/features/relief-valves/AddWarehouseSrv
 import { ExportButtons } from '@/features/export/ExportButtons'
 import { queryLoader } from '@/features/export/exportData'
 import { WAREHOUSE_SRV_COLUMNS } from '@/features/export/exportColumns'
+import { buildWarehouseWorkbook, warehouseWorkbookName } from '@/features/export/warehouseSheet'
 import { AvailabilityChip, ManufacturerChip, RegionChip, SourceContext } from '@/features/relief-valves/SrvPieces'
 import { useCallback, useState } from 'react'
 import { Plus, Search, Trash2, Truck, Wrench, X } from 'lucide-react'
@@ -336,7 +337,8 @@ export function WarehouseSrvSection() {
           </Button>
         ) : null}
         <span className="ml-auto flex flex-wrap items-center gap-2">
-          <ExportButtons name="warehouse-srvs" load={queryLoader(supabase, 'Warehouse SRVs', WAREHOUSE_SRV_COLUMNS, (c) => warehouseRequest(c, query))} />
+          <ExportButtons name="warehouse-srvs" load={queryLoader(supabase, 'Warehouse SRVs', WAREHOUSE_SRV_COLUMNS, (c) => warehouseRequest(c, query))}
+            excel={async (sheets) => ({ blob: await buildWarehouseWorkbook(sheets[0].rows as WarehouseSrvRow[]), fileName: warehouseWorkbookName() })} />
           <AddWarehouseSrvsButton onAdded={reload} />
         </span>
       </DataToolbar>

@@ -137,14 +137,25 @@ Which issues each sheet carries is stored: `srv_issue_sheets` + `srv_issues.shee
 `cng_srv_issue_sheet_assign(region, month)`; rows from `v_srv_issue_sheet` (security_invoker; undone issues excluded). Workbook:
 `features/export/issueSheet.ts`. Migration `20261003130000` (deployed); suite `srv_issue_sheets`.
 Undone issues (owner 2026-10-04): undone as *still at the station* (`await_return`) the valve left the warehouse, so the issue stays on its
-sheet (or is placed on one) with "ملغي (date)" in a Notes column and the date its own valve came back; undone as *back in the warehouse*
-(`to_stock`) it never left and is on no sheet. Migration `20261004090000` (deployed); suite `srv_issue_sheet_cancelled`.
+sheet (or is placed on one) marked "ملغي" in red in the return-date column ("ملغي - 08/10/2026" once its own valve is back — the owner
+removed the Notes column, so the sheet has ten columns A–J); undone as *back in the warehouse* (`to_stock`) it never left and is on no
+sheet. Migration `20261004090000` (deployed); suite `srv_issue_sheet_cancelled`.
 **Installed SRVs Excel = the owner's station sheet (2026-10-03).** Installed SRVs → Excel writes the template "رصيد المحطات"
 (title "Stations Safety Relief Valves Data", Area / Station / Location / Set Pressure / Manufacturer / Serial / Size Type / IN / OUT /
 Last / Next Calibration / Days Left / Next Calibration Month / Notes, banded rows, the template's manufacturer colours, days < 30 red),
 for exactly the rows the screen's filters select; CSV stays the plain table. Station = the Unit, else the Station; a year-only date is
 its year; Days Left is a live `K−TODAY()` formula for exact next dates only; Notes append the source status. File
 "Stations Safety Relief Valves Data <date>.xlsx" (never the template's file name). `features/export/installedSheet.ts`; frontend only.
+**Warehouse SRVs Excel = the owner's store sheet (2026-10-04).** Warehouse SRVs → Excel writes the template "رصيد المخزن"
+(title "Warehouse Relief Valves Data" C1:O3; seventeen columns Set Pressure … Notes as an Excel table, TableStyleMedium6; the template's
+manufacturer and availability colours; equal set pressures share one colour — the template paints them by hand, so no rule could be
+copied; a repeated serial and days < 30 red) for exactly the rows the screen's filters select. Availability uses the store wording
+(`availabilityLabels.ts`); Area/Station are the destination (the sheet's own name when unlinked, empty for unassigned stock); Days Left
+is a live formula for exact next dates only. File "Warehouse Relief Valves Data <date>.xlsx". `features/export/warehouseSheet.ts`.
+**الداخلية storage (owner 2026-10-04).** One shared EKC storage vessel with THREE relief valves: the station sheet listed the same three
+under الداخلية 1 (rows 369–371) and الداخلية 2 (rows 377–379), and ruling 6y put all six at Station level. Rows 377–379 were archived
+(not deleted), audited as `owner_ruling:2026-10-04`. The same doubled shape (identical 3 + 3 storage valves, one vessel) also exists at
+الحي العاشر, دفـــــرة and محور التعمير — reported to the owner, NOT changed.
 **No table footnotes (owner 2026-10-03).** The explanatory paragraph under every table ("Mapping is not changed from this screen…",
 "…not columns this schema carries", etc.) is gone from all pages, and `RegistryTable` / `EquipmentSection` no longer take a `footnote`.
 

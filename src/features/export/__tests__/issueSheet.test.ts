@@ -96,20 +96,25 @@ describe('warehouse issue workbook', () => {
     expect(ws.getCell('H2').value).toBe('المنطقة : دلتا')
   })
 
-  it('ISH-7 an issue undone after it left the warehouse stays on its sheet: "ملغي" with the day, and its own return date', async () => {
+  it('ISH-7 an issue undone after it left the warehouse stays on its sheet, "ملغي" in red in the return column; no Notes column', async () => {
     const rows = groupSheets([
       issue({ id: 'k', sheet_id: 'x', sheet_seq: 1, issued_serial: 'LIVE' }),
       issue({ id: 'c', sheet_id: 'x', sheet_seq: 1, issued_at: '2026-10-05T08:00:00Z', issued_serial: 'UNDONE', replaced_serial: 'OLD',
         replaced_returned_at: null, is_cancelled: true, cancelled_at: '2026-10-06T21:30:00Z', cancelled_returned_at: '2026-10-08T09:00:00Z' }),
+      issue({ id: 'w', sheet_id: 'x', sheet_seq: 1, issued_at: '2026-10-05T09:00:00Z', issued_serial: 'WAIT', is_cancelled: true,
+        cancelled_at: '2026-10-06T08:00:00Z', replaced_returned_at: '2026-10-07T09:00:00Z' }),
     ], 'East')
     const ws = (await readBack(await buildIssueWorkbook('East', rows))).worksheets[0]
-    expect(ws.getRow(3).getCell(11).value).toBe('ملاحظات')
-    expect(ws.getRow(4).getCell(11).value).toBeNull()
-    // 21:30 UTC on 6 Oct is already 7 Oct in Cairo.
-    expect(ws.getRow(5).getCell(11).value).toBe('ملغي (07/10/2026)')
-    expect(ws.getRow(5).getCell(10).value).toBe('08/10/2026')
-    expect(ws.getRow(5).getCell(11).font?.color?.argb).toBe('FFC00000')
-    expect(ws.getCell('K1').isMerged).toBe(true)
+    expect(ws.getRow(3).getCell(11).value).toBeNull()
+    expect(ws.getRow(3).getCell(10).value).toBe('تاريخ الرجوع للمخزن')
+    expect(ws.getRow(4).getCell(10).value).toBeNull()
+    expect(ws.getRow(5).getCell(10).value).toBe('ملغي - 08/10/2026')
+    expect(ws.getRow(5).getCell(10).font?.color?.argb).toBe('FFC00000')
+    // Not back yet: "ملغي" alone (the replaced valve's return date belongs to a cancelled issue no more).
+    expect(ws.getRow(6).getCell(10).value).toBe('ملغي')
+    expect(ws.getRow(5).getCell(11).value).toBeNull()
+    expect(ws.getCell('J1').isMerged).toBe(true)
+    expect(ws.getCell('K1').isMerged).toBe(false)
   })
 
   it('ISH-6 month range and file name', () => {

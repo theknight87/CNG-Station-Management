@@ -132,7 +132,7 @@ function IssueSheetBody({ regionFilter, onClose, onDone }: {
               {rows.some((r) => r.is_cancelled) ? (
                 <p>
                   <span className="font-medium">Undone after leaving the warehouse:</span>{' '}
-                  {rows.filter((r) => r.is_cancelled).length} valve(s) — kept on their sheet, marked ملغي.
+                  {rows.filter((r) => r.is_cancelled).length} valve(s) — kept on their sheet, marked ملغي in the return column.
                 </p>
               ) : null}
               <div>
