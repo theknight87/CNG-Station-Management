@@ -10,6 +10,9 @@ import { useSupabaseClient } from '@/lib/supabase/client'
  * fields and one-or-two-record oddities are not offered as versions (owner 2026-10-05; see groupTemplates).
  */
 
+/** The relief-valve manufacturers recorded in the system, offered as a list in both add forms (owner request 2026-10-05). */
+export const VALVE_MANUFACTURERS = ['Anderson', 'Aspro', 'COI', 'DK-LOK', 'EKC', 'Farinola', 'Mercer', 'TAKEI', 'Taylor', 'Technical', 'Tyco Anderson']
+
 export interface ValveTemplate {
   part_number: string | null
   size_type: string | null

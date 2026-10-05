@@ -11,7 +11,7 @@ import { SerialWhereaboutsNote } from '@/features/relief-valves/SerialWhereabout
 import { serialKey, useSerialWhereabouts } from '@/features/relief-valves/serialWhereabouts'
 import { useDestinationOptions, type Destination } from '@/features/relief-valves/destinationOptions'
 import { ValveTemplatePicker } from '@/features/relief-valves/ValveTemplatePicker'
-import { useValveTemplates, type ValveTemplate } from '@/features/relief-valves/valveTemplates'
+import { useValveTemplates, type ValveTemplate, VALVE_MANUFACTURERS } from '@/features/relief-valves/valveTemplates'
 
 /**
  * Admin: add relief valves to the warehouse from scratch — a new purchase, or stock that is already calibrated or
@@ -140,8 +140,7 @@ function AddDialog({ onClose, onAdded }: { onClose: () => void; onAdded: () => v
         <label className={field}>Manufacturer
           <input className={input} value={manufacturer} list="add-srv-makers" onChange={(e) => setManufacturer(e.target.value)} />
           <datalist id="add-srv-makers">
-            {['Anderson', 'Aspro', 'COI', 'DK-LOK', 'EKC', 'Farinola', 'Mercer', 'TAKEI', 'Taylor', 'Technical', 'Tyco Anderson']
-              .map((m) => <option key={m} value={m} />)}
+            {VALVE_MANUFACTURERS.map((m) => <option key={m} value={m} />)}
           </datalist>
         </label>
         <div className="flex gap-2">
