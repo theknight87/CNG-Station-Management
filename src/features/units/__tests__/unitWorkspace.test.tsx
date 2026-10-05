@@ -38,6 +38,7 @@ const calls = vi.hoisted(() => ({ list: [] as string[] }))
 
 vi.mock('@/lib/supabase/client', () => {
   const client = {
+    rpc: () => Promise.resolve({ data: [], error: null }),
     from(table: string) {
       const filters: Record<string, string> = {}
       const chain: Record<string, unknown> = {
@@ -48,7 +49,10 @@ vi.mock('@/lib/supabase/client', () => {
           return chain
         },
         order: () => chain,
-        maybeSingle: () => Promise.resolve(replies.unit),
+        // The shared installed-SRV details panel reads its one row by id (owner request 2026-10-05).
+        maybeSingle: () => Promise.resolve(table === 'v_installed_srv_management'
+          ? { data: (replies.srvs.data as { id: string }[]).find((r) => r.id === filters.id) ?? null, error: null }
+          : replies.unit),
         then: (resolve: (v: unknown) => unknown) => {
           const key =
             table === 'compressors' ? 'compressors'

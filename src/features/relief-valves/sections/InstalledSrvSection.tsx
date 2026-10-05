@@ -1,6 +1,5 @@
 import { useCallback, useState } from 'react'
 import { useSrvDeepLink } from '@/features/relief-valves/srvDeepLink'
-import { ReplaceValvePanel } from '@/features/relief-valves/ReplaceValvePanel'
 import { ExportButtons } from '@/features/export/ExportButtons'
 import { queryLoader } from '@/features/export/exportData'
 import { INSTALLED_SRV_COLUMNS } from '@/features/export/exportColumns'
@@ -8,16 +7,13 @@ import { buildInstalledWorkbook, installedWorkbookName } from '@/features/export
 import { useSupabaseClient } from '@/lib/supabase/client'
 import { Search, X } from 'lucide-react'
 
-import { Identifier } from '@/components/data/TechnicalText'
-import { RemoveValveButton } from '@/features/relief-valves/SrvAdminActions'
 import { NullValue } from '@/components/data/NullValue'
 import { DataToolbar } from '@/components/layout/PageContainer'
 import { Button } from '@/components/ui/button'
-import { Fact } from '@/features/hierarchy/HierarchyPieces'
 import { useRegions } from '@/features/hierarchy/useHierarchy'
-import { DueBadge, PrecisionDate, PressureRange, Serial, Text } from '@/features/units/assetDisplay'
-import { ValveHistory } from '@/features/relief-valves/SrvWorkflowPieces'
-import { ManufacturerChip, RegionChip, SmartFilterBar, Metric, ParentCell } from '@/features/relief-valves/SrvPieces'
+import { DueBadge, PrecisionDate, PressureRange, Serial } from '@/features/units/assetDisplay'
+import { InstalledSrvActions, InstalledSrvFacts, ValveSize } from '@/features/relief-valves/InstalledSrvDetails'
+import { ManufacturerChip, RegionChip, SmartFilterBar, Metric } from '@/features/relief-valves/SrvPieces'
 import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
 import { MultiSelectFilter } from '@/components/data/MultiSelectFilter'
 import { DUE_ALIASES, DUE_OPTIONS } from '@/components/data/multiFilter'
@@ -99,31 +95,6 @@ const COLUMNS: RegistryColumn<InstalledSrvRow>[] = [
   },
   { key: 'due', header: 'Status', sort: 'due', render: (r) => <DueBadge status={r.due_status} /> },
 ]
-
-/** Details panel only. A recorded code, or the code of the single warehouse record with the same serial, labelled as such. */
-function WarehouseCode({ row }: { row: InstalledSrvRow }) {
-  if (!row.warehouse_code) return <NullValue />
-  // Owner rule: an installed valve carries the code it LEFT the warehouse with — new (mb 9) or calibrated (mbc 9).
-  // An under-calibration code (mbu 9) cannot belong to a valve on a station, so a serial match to one is not shown.
-  if (/^[a-z]{2}u\s*\d/i.test(row.warehouse_code.trim())) {
-    return <span className="text-xs text-muted-foreground">Not shown — the serial matches a warehouse record under calibration ({row.warehouse_code})</span>
-  }
-  return (
-    <span className="inline-flex items-center gap-1 whitespace-nowrap">
-      <Identifier value={row.warehouse_code} />
-      {row.warehouse_code_source === 'serial_match' ? (
-        <span className="cell-note text-[0.7rem] text-muted-foreground" title="Found by matching the serial to exactly one warehouse record">by serial</span>
-      ) : null}
-    </span>
-  )
-}
-
-function ValveSize({ type, inlet, outlet }: { type: string | null; inlet: string | null; outlet: string | null }) {
-  const t = type?.toLowerCase()
-  const prefix = t === 'male' ? 'M' : t === 'female' ? 'F' : t === 'flange' ? 'Flange' : type
-  const value = [prefix, inlet].filter(Boolean).join(' ') + (outlet ? ` X ${outlet}` : '')
-  return value.trim() ? <span className="whitespace-nowrap font-technical">{value}</span> : <NullValue />
-}
 
 export function InstalledSrvSection() {
   const link = useSrvDeepLink()
@@ -243,13 +214,7 @@ export function InstalledSrvSection() {
         openKey={link.open}
 
         record={(r) => ({ table: 'installed_relief_valves', id: r.id })}
-        extra={(r, done) => (
-          <>
-            <ReplaceValvePanel valve={r} onDone={done} />
-            <ValveHistory valveId={r.id} />
-            <RemoveValveButton table="installed_relief_valves" id={r.id} onDone={done} />
-          </>
-        )}
+        extra={(r, done) => <InstalledSrvActions row={r} onDone={done} />}
         label="Installed relief valves"
         state={state}
         reload={reload}
@@ -265,46 +230,7 @@ export function InstalledSrvSection() {
         emptyTitle="No installed relief valves recorded yet"
         emptyDescription="Installed valves appear here once the source workbooks have been imported. Nothing has been imported yet."
         errorTitle="Could not load installed relief valves"
-        detail={(r) => (
-          <>
-            <Fact label="Serial"><Serial value={r.serial_number} status={r.serial_status} /></Fact>
-            <Fact label="Part number">{r.part_number ? <Identifier value={r.part_number} /> : <NullValue />}</Fact>
-            <Fact label="Warehouse code"><WarehouseCode row={r} /></Fact>
-            <Fact label="Tag number">{r.tag_number ? <Identifier value={r.tag_number} /> : <NullValue />}</Fact>
-            <Fact label="Manufacturer"><Text value={r.manufacturer} /></Fact>
-            <Fact label="Size type"><Text value={r.size_type} /></Fact>
-            <Fact label="Inlet size">{r.inlet_size ? <Identifier value={r.inlet_size} /> : <NullValue />}</Fact>
-            <Fact label="Outlet size">{r.outlet_size ? <Identifier value={r.outlet_size} /> : <NullValue />}</Fact>
-            <Fact label="Set pressure">
-              <PressureRange min={r.pressure_min} max={r.pressure_max} unit={r.pressure_unit} raw={r.set_pressure_raw} />
-            </Fact>
-            <Fact label="Region">
-              {r.mapping_status === 'needs_station_mapping' ? (
-                <span className="text-muted-foreground">Not confirmed</span>
-              ) : (
-                <RegionChip name={r.region_name} />
-              )}
-            </Fact>
-            <Fact label="Station">
-              {r.mapping_status === 'needs_station_mapping' ? (
-                <span className="text-muted-foreground">Not confirmed</span>
-              ) : (
-                <Text value={r.station_name} />
-              )}
-            </Fact>
-            <Fact label="Unit"><Text value={r.unit_name} /></Fact>
-            <Fact label="Equipment parent"><ParentCell row={r} /></Fact>
-            <Fact label="Last calibration">
-              <PrecisionDate display={r.last_calibration_display} precision={r.last_calibration_precision} />
-            </Fact>
-            <Fact label="Next calibration">
-              <PrecisionDate display={r.next_calibration_display} precision={r.next_calibration_precision} />
-            </Fact>
-            <Fact label="Days left">{r.days_left === null ? <NullValue /> : r.days_left.toLocaleString()}</Fact>
-            <Fact label="Status"><DueBadge status={r.due_status} /></Fact>
-            <Fact label="Notes"><Text value={r.notes} /></Fact>
-          </>
-        )}
+        detail={(r) => <InstalledSrvFacts row={r} />}
       />
     </div>
   )

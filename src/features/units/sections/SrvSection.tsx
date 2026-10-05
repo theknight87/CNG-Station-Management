@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react'
-import { ReplaceValvePanel } from '@/features/relief-valves/ReplaceValvePanel'
+import { InstalledSrvDetails } from '@/features/relief-valves/InstalledSrvDetails'
 import { useParams } from 'react-router-dom'
 
-import { Fact } from '@/features/hierarchy/HierarchyPieces'
 import { EquipmentSection, type Column } from '@/features/units/EquipmentSection'
 import { DueBadge, PrecisionDate, PressureRange, Serial, SourceStatus, Text } from '@/features/units/assetDisplay'
 import { useUnitEquipment, type UnitSrvRow } from '@/features/units/useUnitWorkspace'
@@ -177,8 +176,6 @@ export function SrvSection() {
       </DataToolbar>
 
       <EquipmentSection
-
-        record={(r) => ({ table: 'installed_relief_valves', id: r.id })}
         title="Relief Valves"
         state={filteredState}
         reload={reload}
@@ -195,32 +192,9 @@ export function SrvSection() {
             : 'Only valves whose Unit is confirmed appear here. Valves still awaiting Station or Unit confirmation are held in Admin → Data Quality and are never attributed to a Unit.'
         }
         errorTitle="Could not load Relief Valves"
-        detail={(r) => (
-          <>
-            <Fact label="Serial"><Serial value={r.serial_number} status={r.serial_status} /></Fact>
-            <Fact label="Part number">{r.part_number ? <Identifier value={r.part_number} /> : <NullValue />}</Fact>
-            <Fact label="Tag number">{r.tag_number ? <Identifier value={r.tag_number} /> : <NullValue />}</Fact>
-            <Fact label="Manufacturer"><Text value={r.manufacturer} /></Fact>
-            <Fact label="Size type"><Text value={r.size_type} /></Fact>
-            <Fact label="Inlet size">{r.inlet_size ? <Identifier value={r.inlet_size} /> : <NullValue />}</Fact>
-            <Fact label="Outlet size">{r.outlet_size ? <Identifier value={r.outlet_size} /> : <NullValue />}</Fact>
-            <Fact label="Set pressure">
-              <PressureRange min={r.pressure_min} max={r.pressure_max} unit={r.pressure_unit} raw={r.set_pressure_raw} />
-            </Fact>
-            <Fact label="Set pressure (source)"><Text value={r.set_pressure_raw} /></Fact>
-            <Fact label="Equipment parent"><ParentCell row={r} /></Fact>
-            <Fact label="Last calibration">
-              <PrecisionDate display={r.last_calibration_display} precision={r.last_calibration_precision} />
-            </Fact>
-            <Fact label="Next calibration">
-              <PrecisionDate display={r.next_calibration_display} precision={r.next_calibration_precision} />
-            </Fact>
-            <Fact label="Days left">{r.days_left === null ? <NullValue /> : r.days_left.toLocaleString()}</Fact>
-            <Fact label="Status"><DueBadge status={r.due_status} /></Fact>
-            <Fact label="Notes"><Text value={r.notes} /></Fact>
-            <div className="col-span-full"><ReplaceValvePanel valve={r} onDone={reload} /></div>
-          </>
-        )}
+        // The same panel as Installed SRVs and the Unit window (owner request 2026-10-05): same facts, replace,
+        // history, delete, edit and photos — so the record's own admin tools are not added a second time here.
+        detail={(r) => <div className="col-span-full"><InstalledSrvDetails id={r.id} onChanged={reload} /></div>}
       />
     </div>
   )

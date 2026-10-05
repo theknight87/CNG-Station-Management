@@ -1,8 +1,10 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Replace } from 'lucide-react'
+import { Replace, Trash2 } from 'lucide-react'
 import { ReplaceValvePanel } from '@/features/relief-valves/ReplaceValvePanel'
+import { InstalledSrvDetails } from '@/features/relief-valves/InstalledSrvDetails'
+import { FormMessage } from '@/features/relief-valves/SrvWorkflowPieces'
 import { RowAction, RowActions } from '@/features/relief-valves/SrvAdminActions'
-import { useIsAdmin } from '@/features/relief-valves/useSrvWorkflow'
+import { useConfirmedAction, useIsAdmin } from '@/features/relief-valves/useSrvWorkflow'
 import { ScopeExport, UnitTabExport } from '@/features/export/ScopeExport'
 
 import { MakerChip } from '@/components/data/AssetChips'
@@ -241,6 +243,7 @@ export function UnitPopup({ unit, onClose }: { unit: UnitSummary | null; onClose
   const [nonce, setNonce] = useState(0)
   const [replacing, setReplacing] = useState<UnitSrvRow | null>(null)
   const isAdmin = useIsAdmin()
+  const remove = useConfirmedAction(() => setNonce((n) => n + 1))
   const counts = useUnitDue(unit?.unit_id, unit?.station_id, nonce)
   const spec = TABS.find((t) => t.tab === tab) ?? TABS[0]
   const record = item ? item.spec.record(item.row) : null
@@ -262,6 +265,7 @@ export function UnitPopup({ unit, onClose }: { unit: UnitSummary | null; onClose
               ))}
             </div>
             <div role="tabpanel" aria-label={spec.label} className="flex flex-col gap-2">
+              {spec.kind === 'srv' ? <FormMessage error={remove.error} done={remove.done} /> : null}
               <div className="flex flex-wrap items-center justify-end gap-2">
                 <UnitTabExport tab={spec.tab} unitId={unit.unit_id} unitName={unit.unit_name} />
                 <ScopeExport scope={{ kind: 'unit', id: unit.unit_id, name: unit.unit_name }} />
@@ -269,12 +273,18 @@ export function UnitPopup({ unit, onClose }: { unit: UnitSummary | null; onClose
               </div>
               <TabList key={`${spec.tab}-${nonce}`} spec={spec} unitId={unit.unit_id} onOpen={(row) => setItem({ spec, row })}
                        action={spec.kind === 'srv' && isAdmin ? {
-                         // Replace straight from the list (owner request 2026-10-03), without opening the valve first.
-                         header: 'Replace',
+                         // Replace straight from the list (owner request 2026-10-03), and delete (archive) too (2026-10-05),
+                         // without opening the valve first — the same actions its details panel offers.
+                         header: 'Actions',
                          render: (r: UnitSrvRow) => (
                            <RowActions>
                              <RowAction label={`Replace ${r.serial_number ? `valve ${r.serial_number}` : 'this valve'}`} icon={Replace}
                                         onClick={() => setReplacing(r)} />
+                             <RowAction label={`Delete ${r.serial_number ? `valve ${r.serial_number}` : 'this valve'}`} icon={Trash2} danger
+                                        disabled={remove.busy}
+                                        onClick={() => void remove.act(
+                                          `Delete relief valve ${r.serial_number ?? '(no serial)'} from ${r.station_level ? 'this Station' : 'this Unit'}? It is archived (kept in the audit history), not destroyed.`,
+                                          'cng_admin_archive_srv', { p_table: 'installed_relief_valves', p_id: r.id }, 'Relief valve deleted.')} />
                            </RowActions>
                          ),
                        } : undefined} />
@@ -294,11 +304,15 @@ export function UnitPopup({ unit, onClose }: { unit: UnitSummary | null; onClose
                            description={unit ? `${unit.unit_name} · ${unit.station_name}` : undefined} onClose={() => setItem(null)}>
         {item ? (
           <div className="flex flex-col gap-3">
-            <Detail row={item.row as Record<string, unknown>} />
             {item.spec.kind === 'srv' ? (
-              <ReplaceValvePanel valve={item.row as UnitSrvRow} onDone={() => { setItem(null); setNonce((n) => n + 1) }} />
-            ) : null}
-            {record ? <RecordAdminTools record={record} /> : null}
+              // The same panel as Installed SRVs (owner request 2026-10-05): same facts, replace, history, delete, edit.
+              <InstalledSrvDetails id={(item.row as UnitSrvRow).id} onChanged={() => setNonce((n) => n + 1)} onGone={() => setItem(null)} />
+            ) : (
+              <>
+                <Detail row={item.row as Record<string, unknown>} />
+                {record ? <RecordAdminTools record={record} /> : null}
+              </>
+            )}
           </div>
         ) : null}
       </RecordDetailsDialog>
