@@ -145,8 +145,8 @@ export const DEFAULT_HOSE_QUERY: HoseQuery = {
 const SORT_COLUMNS: Record<HoseSort, string[]> = {
   next_due: ['next_test_date'],
   last_test: ['last_test_date'],
-  // Owner default (as SRV): Region, then Station, then working pressure smallest first.
-  region: ['region_name', 'station_name', 'working_pressure_value'],
+  // Owner default (as SRV): Region, then Station, then each Unit together, working pressure smallest first.
+  region: ['region_name', 'station_name', 'unit_name', 'working_pressure_value'],
   working_pressure: ['working_pressure_value'],
   station: ['station_name', 'unit_name'],
   unit: ['unit_name'],

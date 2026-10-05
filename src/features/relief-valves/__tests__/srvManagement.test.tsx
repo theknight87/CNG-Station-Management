@@ -725,13 +725,14 @@ describe('Installed SRVs — owner layout and filtered summary (2026-09-28)', ()
     replies.summary = { data: { total: 2683, overdue: 341, attention: 540, needs_station_mapping: 0, needs_unit_mapping: 92, needs_equipment_mapping: 0, conflict: 0 }, error: null }
   })
 
-  it('default order: Region, then Station, then set pressure smallest first (BAR/PSI on one scale)', async () => {
+  it('default order: Region, Station, then each Unit together, set pressure smallest first (BAR/PSI on one scale)', async () => {
     render(<MemoryRouter><InstalledSrvSection /></MemoryRouter>)
     await screen.findByRole('table')
     const orders = calls.list.filter((c) => c.startsWith('v_installed_srv_management.order:'))
-    expect(orders.slice(0, 3)).toEqual([
+    expect(orders.slice(0, 4)).toEqual([
       'v_installed_srv_management.order:region_name:asc',
       'v_installed_srv_management.order:station_name:asc',
+      'v_installed_srv_management.order:unit_name:asc',
       'v_installed_srv_management.order:pressure_sort_bar:asc',
     ])
   })

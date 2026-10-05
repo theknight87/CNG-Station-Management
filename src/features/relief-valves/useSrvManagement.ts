@@ -244,8 +244,9 @@ export const DEFAULT_INSTALLED_QUERY: InstalledQuery = {
  * stub (not the app) came from forgetting that.
  */
 const INSTALLED_SORT: Record<InstalledSort, string[]> = {
-  // Owner default: Region, then Station, then set pressure smallest first (BAR and PSI on one scale).
-  region: ['region_name', 'station_name', 'pressure_sort_bar', 'id'],
+  // Owner default: Region, then Station, then each Unit's valves together (the Station's shared storage after its Units,
+  // owner 2026-10-05), each group set pressure smallest first (BAR and PSI on one scale).
+  region: ['region_name', 'station_name', 'unit_name', 'pressure_sort_bar', 'id'],
   pressure: ['pressure_sort_bar', 'id'],
   manufacturer: ['manufacturer', 'id'],
   size: ['size_type', 'inlet_size', 'outlet_size', 'id'],

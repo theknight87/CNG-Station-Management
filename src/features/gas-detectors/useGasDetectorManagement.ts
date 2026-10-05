@@ -165,7 +165,8 @@ export const DEFAULT_DETECTOR_QUERY: DetectorQuery = {
 const SORT_COLUMNS: Record<DetectorSort, string[]> = {
   next_due: ['next_calibration_date'],
   last_calibration: ['last_calibration_date'],
-  region: ['region_name', 'station_name'],
+  // Each Unit's detectors together under its Station (owner 2026-10-05).
+  region: ['region_name', 'station_name', 'unit_name'],
   station: ['station_name', 'unit_name'],
   unit: ['unit_name'],
   serial: ['serial_number'],
