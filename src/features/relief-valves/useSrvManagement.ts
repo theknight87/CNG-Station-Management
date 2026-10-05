@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { INSTALLED_COLUMNS, WAREHOUSE_COLUMNS } from '@/features/relief-valves/srvColumns'
+import { INSTALLED_COLUMNS, WAREHOUSE_COLUMNS, WAREHOUSE_DEFAULT_ORDER } from '@/features/relief-valves/srvColumns'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { useSupabaseClient } from '@/lib/supabase/client'
@@ -370,10 +370,8 @@ export const DEFAULT_WAREHOUSE_QUERY: WarehouseQuery = {
 }
 
 const WAREHOUSE_SORT: Record<WarehouseSort, string[]> = {
-  // Owner default (2026-09-29): set pressure smallest first; within it each size together, smallest first; within
-  // one pressure and size calibrated first (oldest calibration first), then new, then under calibration.
-  pressure: ['pressure_sort_bar', 'inlet_sort_in', 'outlet_sort_in', 'inlet_size', 'outlet_size', 'size_type',
-    'availability_rank', 'last_calibration_date', 'warehouse_code', 'id'],
+  // Owner default: manufacturer family, then set pressure, size and condition (srvColumns.ts).
+  pressure: [...WAREHOUSE_DEFAULT_ORDER],
   size: ['inlet_sort_in', 'outlet_sort_in', 'size_type', 'inlet_size', 'outlet_size', 'id'],
   warehouse_code: ['warehouse_code', 'id'],
   last_calibration: ['last_calibration_date', 'id'],

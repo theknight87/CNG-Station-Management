@@ -22,8 +22,19 @@ export const WAREHOUSE_COLUMNS =
   'next_calibration_display, days_left, due_status, calibration_location, source_status_raw, ' +
   'needs_review, notes, target_station_raw, target_unit_id, target_unit_name'
 
-/** Each list and the view it reads. */
+/**
+ * The Warehouse list's default order. Owner rulings: each manufacturer together, Mercer and Anderson as one family
+ * (2026-10-05); within it set pressure smallest first; then each size together, smallest first; within one pressure and
+ * size calibrated first (oldest calibration first), then new, then under calibration (2026-09-29).
+ */
+export const WAREHOUSE_DEFAULT_ORDER: readonly string[] = [
+  'manufacturer_group', 'pressure_sort_bar', 'inlet_sort_in', 'outlet_sort_in', 'inlet_size', 'outlet_size', 'size_type',
+  'availability_rank', 'last_calibration_date', 'warehouse_code', 'id',
+]
+
+/** Each list and the view it reads (the default order too, so the contract check catches an order column the view lacks). */
 export const SRV_LIST_SOURCES = [
   { name: 'Installed SRVs', view: 'v_installed_srv_management', columns: INSTALLED_COLUMNS },
   { name: 'Warehouse SRVs', view: 'v_srv_warehouse_stock', columns: WAREHOUSE_COLUMNS },
+  { name: 'Warehouse SRVs (default order)', view: 'v_srv_warehouse_stock', columns: WAREHOUSE_DEFAULT_ORDER.join(', ') },
 ] as const
