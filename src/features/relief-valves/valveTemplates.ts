@@ -6,7 +6,8 @@ import { useSupabaseClient } from '@/lib/supabase/client'
  * Fill a new relief valve from the valves already recorded with the same manufacturer and set pressure (owner request
  * 2026-10-04): part number, size type, inlet, outlet and warehouse code are what valves of one type and pressure share.
  * Nothing is invented — every option is a combination real records carry, with how many carry it. One combination is
- * filled in by itself (only into fields the user has not typed); several are offered for the user to choose.
+ * filled in by itself (only into fields the user has not typed); several are offered for the user to choose. Blank
+ * fields and one-or-two-record oddities are not offered as versions (owner 2026-10-05; see groupTemplates).
  */
 
 export interface ValveTemplate {
@@ -46,7 +47,23 @@ export function calibratedCode(base: string | null): string | null {
   return m[1] + (m[1] === m[1].toLowerCase() ? 'c' : 'C') + m[2]
 }
 
-/** The distinct combinations the records carry, most common first; a record with none of the five values is skipped. */
+/** A record (or combination) as its five comparable values: case is not a difference for size type and code. */
+function parts(t: Omit<ValveTemplate, 'count'>): (string | null)[] {
+  return [t.part_number, t.size_type?.toLowerCase() ?? null, t.inlet_size, t.outlet_size, t.base_code?.toLowerCase() ?? null]
+}
+
+/** How many of `rare` or fewer records make a combination a typing mistake when a commoner one exists (owner 2026-10-05). */
+export const RARE_VARIANT = 2
+
+/**
+ * The combinations the records carry, most common first (owner rulings 2026-10-04 / 2026-10-05):
+ *  - a record with none of the five values is skipped;
+ *  - a missing value is not a different version: a combination that only leaves blank what a fuller one records is
+ *    counted with the commonest fuller one (e.g. installed valves recorded without a part number);
+ *  - one or two records that differ from a commoner combination are a mistake, not a version, and are not offered —
+ *    unless every combination is that rare, in which case all are shown.
+ * Nothing is invented: every value offered is one real records carry.
+ */
 export function groupTemplates(rows: TemplateSource[]): ValveTemplate[] {
   const by = new Map<string, ValveTemplate>()
   for (const r of rows) {
@@ -55,12 +72,29 @@ export function groupTemplates(rows: TemplateSource[]): ValveTemplate[] {
       outlet_size: clean(r.outlet_size), base_code: baseCode(r.warehouse_code),
     }
     if (Object.values(t).every((v) => v === null)) continue
-    const key = JSON.stringify([t.part_number, t.size_type?.toLowerCase(), t.inlet_size, t.outlet_size, t.base_code?.toLowerCase()])
+    const key = JSON.stringify(parts(t))
     const seen = by.get(key)
     if (seen) seen.count += 1
     else by.set(key, { ...t, count: 1 })
   }
-  return [...by.values()].sort((a, b) => b.count - a.count || JSON.stringify(a).localeCompare(JSON.stringify(b)))
+  const known = (t: ValveTemplate) => parts(t).filter((v) => v !== null).length
+  // Least specific first, so each folds into the commonest combination that records everything it records and more.
+  const combos = [...by.values()].sort((a, b) => known(a) - known(b))
+  const merged = new Set<ValveTemplate>()
+  for (const c of combos) {
+    const mine = parts(c)
+    let best: ValveTemplate | null = null
+    for (const o of combos) {
+      if (o === c || merged.has(o) || known(o) <= known(c)) continue
+      const theirs = parts(o)
+      if (mine.every((v, i) => v === null || v === theirs[i]) && (!best || o.count > best.count)) best = o
+    }
+    if (best) { best.count += c.count; merged.add(c) }
+  }
+  const kept = combos.filter((c) => !merged.has(c))
+  const top = Math.max(0, ...kept.map((c) => c.count))
+  const offered = top > RARE_VARIANT ? kept.filter((c) => c.count > RARE_VARIANT) : kept
+  return offered.sort((a, b) => b.count - a.count || JSON.stringify(a).localeCompare(JSON.stringify(b)))
 }
 
 /** "SS-4R3A · Male 1/2" X 3/4" · sb 20" */

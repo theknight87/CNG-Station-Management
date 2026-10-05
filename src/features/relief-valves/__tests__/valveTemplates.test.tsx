@@ -61,8 +61,25 @@ describe('valve templates', () => {
       row('P1', 'Male', '1/2"', '1"', 'sbc 20'), row('P1', 'male', '1/2"', '1"', 'sbu 20'), row('P1', 'Male', '1/2"', '1"', 'sb 20'),
       row('P2', 'Flange', '1"', '1-1/4"', 'sbc 94'), row(null, null, null, null, null),
     ])
-    expect(t.map((x) => [x.part_number, x.base_code, x.count])).toEqual([['P1', 'sb 20', 3], ['P2', 'sb 94', 1]])
+    // The single P2 record is a one-off beside three P1s, so it is not offered (owner 2026-10-05).
+    expect(t.map((x) => [x.part_number, x.base_code, x.count])).toEqual([['P1', 'sb 20', 3]])
     expect(templateLabel(t[0])).toBe('P/N P1 · Male 1/2" X 1" · sb 20')
+  })
+
+  it('VT-8 majority wins: a blank field folds into the fuller version, and one or two odd records are not offered', () => {
+    const t = groupTemplates([
+      ...Array(44).fill(row('v64-mf-16n-4-c', 'Male', '1"', '1"', 'qbc 49')),
+      ...Array(66).fill(row(null, 'Male', '1"', '1"', null)),
+      ...Array(27).fill(row(null, 'Male', '1"', '1"', 'qbu 49')),
+      row('v64-mf-16n-8-c', 'Male', '1"', '1"', 'qb 49'), row('v64-mf-16n-8-c', 'Male', '1"', '1"', 'qb 49'),
+      row(null, 'Male', '1/2"', '1"', 'qb 49'),
+    ])
+    expect(t.map((x) => [x.part_number, x.inlet_size, x.base_code, x.count])).toEqual([['v64-mf-16n-4-c', '1"', 'qb 49', 137]])
+    // Two real versions with three or more records each are both still offered.
+    const two = groupTemplates([...Array(5).fill(row('A', 'Male', '1"', '1"', 'x 1')), ...Array(3).fill(row('B', 'Male', '1/2"', '1"', 'x 1'))])
+    expect(two.map((x) => [x.part_number, x.count])).toEqual([['A', 5], ['B', 3]])
+    // With only a couple of records each, nothing is called a mistake: all are shown.
+    expect(groupTemplates([row('A', null, null, null, null), row('B', null, null, null, null)])).toHaveLength(2)
   })
 
   it('VT-3 one version: typing manufacturer and set pressure fills part number, size and base code by itself', async () => {
