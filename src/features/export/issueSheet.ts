@@ -53,13 +53,16 @@ export interface IssueSheetRow {
   cancelled_at: string | null
   /** When the undone valve itself came back to the warehouse. */
   cancelled_returned_at: string | null
+  /** Not fitted here and moved straight on to another Station (owner 2026-10-06): the place it went to. */
+  transferred_to: string | null
+  transferred_at: string | null
 }
 
 export const ISSUE_SHEET_COLUMNS =
   'id, issued_at, issue_day, region_id, region_name, sheet_id, sheet_seq, sheet_exported_at, is_emergency, station_name, ' +
   'unit_name, place_name, location, warehouse_valve_id, issued_serial, issued_code, manufacturer, size_type, inlet_size, ' +
   'outlet_size, set_pressure_raw, pressure_min, pressure_max, pressure_unit, replaced_installed_valve_id, replaced_serial, ' +
-  'replaced_returned_at, is_cancelled, cancelled_at, cancelled_returned_at'
+  'replaced_returned_at, is_cancelled, cancelled_at, cancelled_returned_at, transferred_to, transferred_at'
 
 /** The Region as the owner writes it on the sheet ("المنطقة : شرق"). */
 const REGION_AR: Record<string, string> = {
@@ -154,8 +157,12 @@ const CENTER = { horizontal: 'center', vertical: 'middle', wrapText: true } as c
 /**
  * The return-date cell. An issue undone after it left the warehouse (owner 2026-10-04: no Notes column) reads "ملغي",
  * then "ملغي - 08/10/2026" once its own valve is back; the replaced valve of a cancelled issue went back to its position.
+ * A valve moved straight on to another Station (owner 2026-10-06) left the warehouse once, for this row: "محول إلى <place>".
  */
-export function returnCell(r: Pick<IssueSheetRow, 'is_cancelled' | 'cancelled_returned_at' | 'replaced_returned_at'>): string | null {
+export function returnCell(
+  r: Pick<IssueSheetRow, 'is_cancelled' | 'cancelled_returned_at' | 'replaced_returned_at'> & Partial<Pick<IssueSheetRow, 'transferred_to'>>,
+): string | null {
+  if (r.transferred_to) return `محول إلى ${r.transferred_to}`
   if (r.is_cancelled) return r.cancelled_returned_at ? `ملغي - ${sheetDate(r.cancelled_returned_at)}` : 'ملغي'
   return r.replaced_returned_at ? sheetDate(r.replaced_returned_at) : null
 }
@@ -194,7 +201,7 @@ export async function buildIssueWorkbook(region: string, sheets: IssueSheet[]): 
       sheetCells(r, i + 1).forEach((v, n) => {
         Object.assign(row.getCell(n + 1), { value: v === '' ? null : v, font: { size: 11 }, alignment: CENTER, border: BOX })
       })
-      if (r.is_cancelled) row.getCell(10).font = { size: 11, bold: true, color: { argb: 'FFC00000' } }
+      if (r.is_cancelled || r.transferred_to) row.getCell(10).font = { size: 11, bold: true, color: { argb: 'FFC00000' } }
     })
     ws.pageSetup = {
       paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0, horizontalCentered: true,

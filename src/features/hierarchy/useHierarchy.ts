@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useSupabaseClient } from '@/lib/supabase/client'
 import { foldName } from './foldName'
-import { applyMulti } from '@/components/data/multiFilter'
+import { applyMulti, applyMultiArray } from '@/components/data/multiFilter'
 
 /**
  * Hierarchy browsing data: Regions, Stations, and the Units inside a Station.
@@ -30,7 +30,7 @@ import { applyMulti } from '@/components/data/multiFilter'
 const STATION_COLUMNS =
   'station_id, station_name, normalized_name, region_id, region_code, region_name, region_sort_order, ' +
   'bay_status, bay_status_raw, notes, needs_review, review_reason, units, assets, overdue, ' +
-  'approaching_due, unresolved_mapping'
+  'approaching_due, unresolved_mapping, compressor_models'
 
 const UNIT_COLUMNS =
   'unit_id, unit_name, normalized_name, station_id, station_name, region_id, region_code, region_name, ' +
@@ -56,6 +56,8 @@ export interface StationSummary {
   overdue: number
   approaching_due: number
   unresolved_mapping: number
+  /** Distinct models of the Station's compressors, upper-cased (case is the only fold); empty when none is recorded. */
+  compressor_models: string[]
 }
 
 export interface UnitSummary {
@@ -118,6 +120,8 @@ export interface StationQuery {
   regionId: string | null
   /** 'attention' keeps only stations with something overdue or unresolved. */
   attention: 'all' | 'overdue' | 'unresolved'
+  /** Compressor type, multi-choice ('' all, 'A|B' only these, '!A|B' all except); values are upper-cased models. */
+  compressor: string
   sort: StationSort
   direction: 'asc' | 'desc'
   page: number
@@ -128,6 +132,7 @@ export const DEFAULT_STATION_QUERY: StationQuery = {
   search: '',
   regionId: null,
   attention: 'all',
+  compressor: '',
   sort: 'name',
   direction: 'asc',
   page: 0,
@@ -229,6 +234,7 @@ export function useStations(query: StationQuery, options: UseStationsOptions = {
         b = applyMulti(b, 'region_id', q.regionId)
         if (q.attention === 'overdue') b = b.gt('overdue', 0)
         if (q.attention === 'unresolved') b = b.gt('unresolved_mapping', 0)
+        b = applyMultiArray(b, 'compressor_models', q.compressor)
         if (term) {
           // Match the raw name OR the folded one, so `الماظه` finds `الماظة`
           // and `shobra` finds `Shobra`. PostgREST needs the wildcards inline.
@@ -259,7 +265,7 @@ export function useStations(query: StationQuery, options: UseStationsOptions = {
       // different answers and must never be rendered the same way. Only ask
       // the second question when the first could be misleading.
       let filtered = false
-      if (total === 0 && (term || q.regionId || q.attention !== 'all')) {
+      if (total === 0 && (term || q.regionId || q.attention !== 'all' || q.compressor)) {
         const { count: unfiltered } = await supabase!
           .from('v_station_summary')
           .select('station_id', { count: 'exact', head: true })
@@ -386,4 +392,33 @@ export function useRangeLabel(page: number, pageSize: number, rows: number, tota
     const first = page * pageSize + 1
     return `${first.toLocaleString()}–${(first + rows - 1).toLocaleString()} of ${total.toLocaleString()}`
   }, [page, pageSize, rows, total])
+}
+
+/**
+ * The compressor types a Station filter can offer: every recorded model the caller can read (RLS), trimmed and
+ * upper-cased like `v_station_summary.compressor_models`, with how many Stations carry it.
+ */
+export function useCompressorModels(): { value: string; label: string }[] {
+  const supabase = useSupabaseClient()
+  const [options, setOptions] = useState<{ value: string; label: string }[]>([])
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      if (!supabase) return
+      const { data, error } = await supabase.from('compressors').select('model, station_id, archived_at')
+      if (cancelled || error) return
+      const stations = new Map<string, Set<string>>()
+      for (const r of (data ?? []) as { model: string | null; station_id: string | null; archived_at: string | null }[]) {
+        const key = r.model?.trim().toUpperCase()
+        if (!key || r.archived_at) continue
+        if (!stations.has(key)) stations.set(key, new Set())
+        if (r.station_id) stations.get(key)!.add(r.station_id)
+      }
+      setOptions([...stations.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([value, ids]) => ({ value, label: `${value} (${ids.size})` })))
+    })()
+    return () => { cancelled = true }
+  }, [supabase])
+  return options
 }

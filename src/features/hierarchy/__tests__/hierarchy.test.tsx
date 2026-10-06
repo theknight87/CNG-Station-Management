@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
@@ -46,6 +46,10 @@ vi.mock('@/lib/supabase/client', () => {
       const settle = () => {
         if (table === 'v_dashboard_region_summary') return replies.regions
         if (table === 'v_unit_summary') return replies.units
+        if (table === 'compressors') return { data: [
+          { model: 'safe', station_id: 's-1', archived_at: null }, { model: ' SAFE ', station_id: 's-2', archived_at: null },
+          { model: 'Kwangshin', station_id: 's-1', archived_at: null }, { model: 'OLD', station_id: 's-3', archived_at: '2026-01-01' },
+          { model: null, station_id: 's-4', archived_at: null }], error: null }
         if (head) return replies.stationsUnfilteredCount
         return replies.stations
       }
@@ -65,6 +69,14 @@ vi.mock('@/lib/supabase/client', () => {
         },
         or: (expr: string) => {
           record(`or:${expr}`)
+          return chain
+        },
+        filter: (col: string, op: string, value: string) => {
+          record(`filter:${col}.${op}.${value}`)
+          return chain
+        },
+        not: (col: string, op: string, value: string) => {
+          record(`not:${col}.${op}.${value}`)
           return chain
         },
         order: (col: string) => {
@@ -121,6 +133,7 @@ function station(over: Partial<Record<string, unknown>> = {}) {
     overdue: 3,
     approaching_due: 5,
     unresolved_mapping: 0,
+    compressor_models: ['SAFE'],
     ...over,
   }
 }
@@ -257,6 +270,28 @@ describe('Stations browser', () => {
     expect(await screen.findByText(/not recorded/i)).toBeDefined()
     expect(screen.queryByText('N/A')).toBeNull()
     expect(screen.queryByText('Unknown')).toBeNull()
+  })
+
+  it('shows each Station\'s compressor types, and a Station with none recorded as "not recorded"', async () => {
+    replies.stations = { data: [station({ bay_status: 'OPEN', compressor_models: ['KWANGSHIN', 'SAFE'] }),
+      station({ station_id: 's-2', station_name: 'شبرا', bay_status: 'OPEN', compressor_models: [] })], error: null, count: 2 }
+    wrap(<StationsView />)
+    expect(await screen.findByText('KWANGSHIN, SAFE')).toBeDefined()
+    expect(screen.getAllByText(/not recorded/i)).toHaveLength(1)
+  })
+
+  it('filters by compressor type in the database (owner request 2026-10-06): case-only spellings are one choice', async () => {
+    replies.stations = { data: [station()], error: null, count: 1 }
+    const user = userEvent.setup()
+    wrap(<StationsView />)
+    await screen.findByText('الماظة')
+    expect(calls.list.some((c) => c.includes('compressor_models'))).toBe(false)
+    await user.click(screen.getByRole('button', { name: /compressor/i }))
+    const pop = await screen.findByRole('dialog', { name: 'Compressor filter' })
+    // "safe" and " SAFE " are one choice on two Stations; an archived compressor and a blank model offer nothing.
+    expect(within(pop).getAllByRole('checkbox').map((c) => c.closest('label')!.textContent)).toEqual(['KWANGSHIN (1)', 'SAFE (2)'])
+    await user.click(within(pop).getByRole('checkbox', { name: 'SAFE (2)' }))
+    await waitFor(() => expect(calls.list).toContain('v_station_summary.filter:compressor_models.ov.{"SAFE"}'))
   })
 })
 

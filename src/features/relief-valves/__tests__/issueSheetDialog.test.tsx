@@ -14,7 +14,7 @@ const base = {
   place_name: 'S 1', location: 'Stage', warehouse_valve_id: 'w', issued_serial: null, issued_code: null, manufacturer: null,
   size_type: null, inlet_size: null, outlet_size: null, set_pressure_raw: null, pressure_min: null, pressure_max: null,
   pressure_unit: null, replaced_installed_valve_id: null, replaced_serial: null, replaced_returned_at: null,
-  is_cancelled: false, cancelled_at: null, cancelled_returned_at: null,
+  is_cancelled: false, cancelled_at: null, cancelled_returned_at: null, transferred_to: null, transferred_at: null,
 }
 const state = vi.hoisted(() => ({ rows: [] as IssueSheetRow[], rpc: [] as unknown[], downloads: [] as string[], query: [] as string[] }))
 

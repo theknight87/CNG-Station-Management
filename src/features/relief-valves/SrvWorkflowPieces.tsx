@@ -80,16 +80,13 @@ export function IssuePanel({ row, onDone, startOpen = false, onCancel }: {
   onCancel?: () => void
 }) {
   const isAdmin = useIsAdmin()
-  const stations = useStations()
   const [stationId, setStationId] = useState<string | null>(null)
-  const units = useUnits(stationId)
   const [unitId, setUnitId] = useState<string | null>(null)
   const [replace, setReplace] = useState<string>('')
   const [emergency, setEmergency] = useState(false)
   const [notes, setNotes] = useState('')
   const [open, setOpen] = useState(startOpen)
   const [error, setError] = useState<string | null>(null)
-  const candidates = useReplacementCandidates(unitId, row.id)
   const { run, busy } = useWorkflowAction()
 
   if (!isAdmin) return null
@@ -125,53 +122,8 @@ export function IssuePanel({ row, onDone, startOpen = false, onCancel }: {
   return (
     <section aria-label="Issue from warehouse" className="mt-3 flex flex-col gap-2 border-t pt-2">
       <h3 className="text-sm font-semibold">Issue from warehouse</h3>
-      <div className="flex flex-wrap gap-2">
-        <label className="flex flex-col gap-0.5 text-xs text-muted-foreground">
-          Station
-          <select className={cn(field, 'min-w-48')} dir="auto" value={stationId ?? ''}
-                  onChange={(e) => { setStationId(e.target.value || null); setUnitId(null); setReplace('') }}>
-            <option value="">Choose a Station…</option>
-            {stations.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-          </select>
-        </label>
-        <label className="flex flex-col gap-0.5 text-xs text-muted-foreground">
-          Unit
-          <select className={cn(field, 'min-w-40')} dir="auto" value={unitId ?? ''} disabled={!stationId}
-                  onChange={(e) => { setUnitId(e.target.value || null); setReplace('') }}>
-            <option value="">Choose a Unit…</option>
-            {units.map((u) => <option key={u.id} value={u.id}>{u.label}</option>)}
-          </select>
-        </label>
-      </div>
-      <p className="text-xs text-muted-foreground">The Region is the Station&apos;s Region.</p>
-
-      {unitId ? (
-        <fieldset className="flex flex-col gap-1">
-          <legend className="text-xs text-muted-foreground">Valve it replaces (same set pressure, at this Station)</legend>
-          {candidates.status === 'loading' ? <LoadingState label="Loading valves at the Station" /> : null}
-          {candidates.status === 'error' ? <p className="text-sm text-destructive">{candidates.message}</p> : null}
-          <label className="flex items-center gap-2 text-sm">
-            <input type="radio" name="replace" value="" checked={replace === ''} onChange={() => setReplace('')} />
-            Do not replace a valve (add it only)
-          </label>
-          {candidates.status === 'ready'
-            ? candidates.data.map((c) => (
-                <label key={c.id} className="flex flex-wrap items-center gap-2 text-sm">
-                  <input type="radio" name="replace" value={c.id} checked={replace === c.id} onChange={() => setReplace(c.id)} />
-                  <span className="font-technical">{c.serial_number ?? 'no serial'}</span>
-                  <Pressure v={c} />
-                  <ValveSize v={c} />
-                  {c.warehouse_code ? <Code value={c.warehouse_code} /> : null}
-                  {c.location_raw ? <span className="text-xs text-muted-foreground">{c.location_raw}</span> : null}
-                  {!c.station_confirmed ? <span className="text-xs text-muted-foreground">(Station from source name)</span> : null}
-                </label>
-              ))
-            : null}
-          {candidates.status === 'ready' && candidates.data.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No valve with the same set pressure is recorded at this Station.</p>
-          ) : null}
-        </fieldset>
-      ) : null}
+      <IssueDestinationFields warehouseValveId={row.id} stationId={stationId} unitId={unitId} replace={replace}
+                              onStation={setStationId} onUnit={setUnitId} onReplace={setReplace} />
 
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={emergency} onChange={(e) => setEmergency(e.target.checked)} />
@@ -189,6 +141,78 @@ export function IssuePanel({ row, onDone, startOpen = false, onCancel }: {
         <Button size="sm" variant="ghost" onClick={() => (onCancel ? onCancel() : setOpen(false))} disabled={busy}>Cancel</Button>
       </div>
     </section>
+  )
+}
+
+/**
+ * Where a valve goes: Station, then Unit, then (optional) the valve at that Station with the same set pressure that it
+ * replaces. Shared by issuing from the warehouse and by moving an issued valve on to another Station.
+ */
+export function IssueDestinationFields({ warehouseValveId, stationId, unitId, replace, onStation, onUnit, onReplace, excludeUnitId }: {
+  warehouseValveId: string
+  stationId: string | null
+  unitId: string | null
+  replace: string
+  onStation: (id: string | null) => void
+  onUnit: (id: string | null) => void
+  onReplace: (id: string) => void
+  /** The Unit the valve is at now (a move must go somewhere else). */
+  excludeUnitId?: string | null
+}) {
+  const stations = useStations()
+  const units = useUnits(stationId)
+  const candidates = useReplacementCandidates(unitId, warehouseValveId)
+  return (
+    <>
+      <div className="flex flex-wrap gap-2">
+        <label className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+          Station
+          <select className={cn(field, 'min-w-48')} dir="auto" value={stationId ?? ''}
+                  onChange={(e) => { onStation(e.target.value || null); onUnit(null); onReplace('') }}>
+            <option value="">Choose a Station…</option>
+            {stations.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+          </select>
+        </label>
+        <label className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+          Unit
+          <select className={cn(field, 'min-w-40')} dir="auto" value={unitId ?? ''} disabled={!stationId}
+                  onChange={(e) => { onUnit(e.target.value || null); onReplace('') }}>
+            <option value="">Choose a Unit…</option>
+            {units.filter((u) => u.id !== excludeUnitId).map((u) => <option key={u.id} value={u.id}>{u.label}</option>)}
+          </select>
+        </label>
+      </div>
+      <p className="text-xs text-muted-foreground">The Region is the Station&apos;s Region.</p>
+
+      {unitId ? (
+        <fieldset className="flex flex-col gap-1">
+          <legend className="text-xs text-muted-foreground">Valve it replaces (same set pressure, at this Station)</legend>
+          {candidates.status === 'loading' ? <LoadingState label="Loading valves at the Station" /> : null}
+          {candidates.status === 'error' ? <p className="text-sm text-destructive">{candidates.message}</p> : null}
+          <label className="flex items-center gap-2 text-sm">
+            <input type="radio" name="replace" value="" checked={replace === ''} onChange={() => onReplace('')} />
+            Do not replace a valve (add it only)
+          </label>
+          {candidates.status === 'ready'
+            ? candidates.data.map((c) => (
+                <label key={c.id} className="flex flex-wrap items-center gap-2 text-sm">
+                  <input type="radio" name="replace" value={c.id} checked={replace === c.id} onChange={() => onReplace(c.id)} />
+                  <span className="font-technical">{c.serial_number ?? 'no serial'}</span>
+                  <Pressure v={c} />
+                  <ValveSize v={c} />
+                  {c.warehouse_code ? <Code value={c.warehouse_code} /> : null}
+                  {c.location_raw ? <span className="text-xs text-muted-foreground">{c.location_raw}</span> : null}
+                  {!c.station_confirmed ? <span className="text-xs text-muted-foreground">(Station from source name)</span> : null}
+                </label>
+              ))
+            : null}
+          {candidates.status === 'ready' && candidates.data.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No valve with the same set pressure is recorded at this Station.</p>
+          ) : null}
+        </fieldset>
+      ) : null}
+
+    </>
   )
 }
 

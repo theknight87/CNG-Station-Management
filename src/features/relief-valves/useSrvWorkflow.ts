@@ -71,6 +71,7 @@ export interface IssueLogRow extends Omit<ValveFields, 'warehouse_code'> {
   region_id: string
   region_name: string
   station_name: string
+  unit_id: string
   unit_name: string
   warehouse_valve_id: string
   issued_serial: string | null
@@ -155,7 +156,7 @@ const SPECS = {
   },
   issues: {
     view: 'v_srv_issue_log',
-    columns: 'id, status, issued_at, is_emergency, notes, region_id, region_name, station_name, unit_name, warehouse_valve_id, ' +
+    columns: 'id, status, issued_at, is_emergency, notes, region_id, region_name, station_name, unit_id, unit_name, warehouse_valve_id, ' +
       'issued_serial, issued_code, replaced_installed_valve_id, replaced_serial, replaced_code, replaced_returned_at, ' +
       'serial_number, manufacturer, part_number, size_type, inlet_size, outlet_size, set_pressure_raw, pressure_min, pressure_max, pressure_unit',
     order: 'issued_at', station: 'station_name', region: 'region_id',

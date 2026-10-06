@@ -187,6 +187,30 @@ describe('Admin delete / edit (owner request 2026-09-28)', () => {
     expect(calls.rpc.find(([fn]) => fn === 'cng_srv_issue_undo')![1]).toEqual({ p_issue_id: 'is1', p_issued_action: 'to_stock' })
   })
 
+  it('WF-6d an issued valve not fitted moves straight to another station: Station, Unit, the valve it replaces there (owner 2026-10-06)', async () => {
+    state.rows = [{ ...valve, id: 'is2', status: 'awaiting_replaced', issued_at: '2026-10-05T08:00:00Z', is_emergency: false, notes: null,
+      region_id: 'r', region_name: 'Alex', station_name: 'دمنهور اللمسي', unit_id: 'unit-a', unit_name: 'دمنهور اللمسي', warehouse_valve_id: 'w2',
+      issued_serial: '300100', issued_code: 'sbc 9', replaced_installed_valve_id: 'iv2', replaced_serial: '200200', replaced_code: null,
+      replaced_returned_at: null }]
+    const user = userEvent.setup()
+    render(<SrvLogSection />)
+    await user.selectOptions(await screen.findByLabelText('Movement'), 'issue')
+    const table = await screen.findByRole('table', { name: 'SRV Issues' })
+    await user.click(within(table).getByRole('button', { name: 'Move to another station' }))
+    const dialog = await screen.findByRole('dialog', { name: /move to another station/i })
+    expect(within(dialog).getByText(/200200 stays in its position at دمنهور اللمسي/)).toBeDefined()
+    // Nothing is sent before a Unit is chosen.
+    expect((within(dialog).getByRole('button', { name: 'Move valve' }) as HTMLButtonElement).disabled).toBe(true)
+    await user.selectOptions(within(dialog).getByLabelText('Station'), 's1')
+    await user.selectOptions(within(dialog).getByLabelText('Unit'), 'unit-1')
+    await user.click(await within(dialog).findByRole('radio', { name: /OLD-9/ }))
+    await user.click(within(dialog).getByRole('button', { name: 'Move valve' }))
+    expect(calls.rpc.find(([fn]) => fn === 'cng_srv_issue_transfer')![1]).toEqual({
+      p_issue_id: 'is2', p_unit_id: 'unit-1', p_replace_installed_valve_id: 'old-1', p_notes: null,
+    })
+    expect(calls.rpc.some(([fn]) => fn === 'cng_srv_issue_undo' || fn === 'cng_srv_issue')).toBe(false)
+  })
+
   it('WF-7 SRV Log: a cancelled confirmation sends nothing', async () => {
     state.rows = [log]
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)

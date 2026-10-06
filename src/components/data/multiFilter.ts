@@ -68,6 +68,24 @@ export function applyMulti<B extends Filterable>(b: B, column: string, raw: stri
   return b.or(`${column}.is.null,${column}.not.in.(${values.map(quote).join(',')})`)
 }
 
+/** A PostgreSQL array literal, every element quoted, so a value with a space, comma or brace stays one element. */
+function arrayLiteral(values: string[]): string {
+  return `{${values.map(quote).join(',')}}`
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type ArrayFilterable = { filter: (col: string, op: string, value: any) => any; not: (col: string, op: string, value: any) => any }
+
+/**
+ * A multi-choice on an ARRAY column (a Station's compressor models): kept when the array holds any chosen value; with
+ * "all except", kept when it holds none of them — an empty array (nothing recorded) is kept.
+ */
+export function applyMultiArray<B extends ArrayFilterable>(b: B, column: string, raw: string | null | undefined): B {
+  const { values, exclude } = parseMulti(raw)
+  if (values.length === 0) return b
+  return exclude ? b.not(column, 'ov', arrayLiteral(values)) : b.filter(column, 'ov', arrayLiteral(values))
+}
+
 /** The same test in the browser, for screens that filter rows they already hold. */
 export function matchesMulti(value: string | null | undefined, raw: string | null | undefined, aliases: MultiAliases = {}): boolean {
   const { values, exclude } = parseMulti(raw, aliases)

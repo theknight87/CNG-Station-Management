@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { ArrowRightLeft, FileSpreadsheet, Pencil, Trash2, Undo2, X } from 'lucide-react'
+import { ArrowRightLeft, FileSpreadsheet, MapPinned, Pencil, Trash2, Undo2, X } from 'lucide-react'
 
 import { SearchBox } from '@/components/data/FilterControls'
 import { useOpenLinked, useSrvDeepLink } from '@/features/relief-valves/srvDeepLink'
@@ -22,7 +22,7 @@ import type { Loadable } from '@/features/hierarchy/useHierarchy'
 import { ManufacturerChip, RegionChip, SmartFilterBar, ToneChip } from '@/features/relief-valves/SrvPieces'
 import { byValues, pressureBar, type ToneName } from '@/features/relief-valves/srvSort'
 import {
-  Code, CountStrip, FormMessage, ListStates, Pressure, SelectableTable, ValveHistory, ValveSize,
+  Code, CountStrip, FormMessage, IssueDestinationFields, ListStates, Pressure, SelectableTable, ValveHistory, ValveSize,
 } from '@/features/relief-valves/SrvWorkflowPieces'
 import {
   CalibrationEditDialog, LogMoveDialog, RowAction, RowActions,
@@ -233,6 +233,69 @@ function UndoIssueDialog({ target, onClose, onDone }: {
   )
 }
 
+/**
+ * Move an issued valve straight on to another Station (owner request 2026-10-06): it was issued here, but the valve it
+ * was to replace is still valid, so that one stays in its position and the issued valve is fitted elsewhere — without
+ * going back to the warehouse. On the issue sheet it stays on the day it left the warehouse, marked where it went.
+ */
+function TransferIssueDialog({ target, onClose, onDone }: {
+  target: IssueLogRow | null
+  onClose: () => void
+  onDone: (message: string) => void
+}) {
+  const [stationId, setStationId] = useState<string | null>(null)
+  const [unitId, setUnitId] = useState<string | null>(null)
+  const [replace, setReplace] = useState('')
+  const [notes, setNotes] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const { run, busy } = useWorkflowAction()
+  function close() {
+    setStationId(null); setUnitId(null); setReplace(''); setNotes(''); setError(null)
+    onClose()
+  }
+  async function confirm() {
+    if (!target || !unitId) return
+    setError(null)
+    const err = await run('cng_srv_issue_transfer', {
+      p_issue_id: target.id, p_unit_id: unitId, p_replace_installed_valve_id: replace || null, p_notes: notes.trim() || null,
+    })
+    if (err) { setError(err); return }
+    onDone(`Serial ${target.issued_serial ?? ''} moved from ${target.station_name}`
+      + (target.replaced_serial ? `; ${target.replaced_serial} stays in its position there.` : '.'))
+    close()
+  }
+  return (
+    <RecordDetailsDialog open={target !== null} title="Move to another station"
+                         description={target ? `Serial ${target.issued_serial ?? '(none)'} was issued to ${target.station_name} / ${target.unit_name}.` : ''}
+                         onClose={close}>
+      {target ? (
+        <div className="flex flex-col gap-2 text-sm">
+          <p className="text-muted-foreground">
+            {target.replaced_serial
+              ? `It was not fitted: ${target.replaced_serial} stays in its position at ${target.station_name}. `
+              : `It was not fitted at ${target.station_name}. `}
+            The valve goes straight to the place chosen below, without returning to the warehouse.
+          </p>
+          <IssueDestinationFields warehouseValveId={target.warehouse_valve_id} stationId={stationId} unitId={unitId}
+                                  replace={replace} onStation={(id) => { setStationId(id); setUnitId(null); setReplace('') }}
+                                  onUnit={(id) => { setUnitId(id); setReplace('') }} onReplace={setReplace}
+                                  excludeUnitId={target.unit_id} />
+          <label className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+            Notes
+            <input className="h-8 rounded border bg-background px-2 text-sm text-foreground" dir="auto" value={notes}
+                   onChange={(e) => setNotes(e.target.value)} />
+          </label>
+          <FormMessage error={error} done={null} />
+          <div className="mt-1 flex justify-end gap-2">
+            <Button size="sm" variant="outline" onClick={close}>Cancel</Button>
+            <Button size="sm" disabled={!unitId || busy} onClick={() => void confirm()}>{busy ? 'Moving…' : 'Move valve'}</Button>
+          </div>
+        </div>
+      ) : null}
+    </RecordDetailsDialog>
+  )
+}
+
 export function SrvLogSection() {
   const isAdmin = useIsAdmin()
   const link = useSrvDeepLink()
@@ -252,6 +315,7 @@ export function SrvLogSection() {
   const [openIssue, setOpenIssue] = useState<IssueLogRow | null>(null)
   const [moving, setMoving] = useState<string | null>(null)
   const [undo, setUndo] = useState<{ issueId: string; issued: string | null; replaced: string | null } | null>(null)
+  const [transfer, setTransfer] = useState<IssueLogRow | null>(null)
   const [issueSheet, setIssueSheet] = useState(false)
   const { run, busy } = useWorkflowAction()
   const admin = useConfirmedAction(reload)
@@ -309,6 +373,7 @@ export function SrvLogSection() {
       <FormMessage error={error ?? admin.error} done={done ?? admin.done} />
       <LogMoveDialog logId={moving} onClose={() => setMoving(null)} onDone={reload} />
       <UndoIssueDialog target={undo} onClose={() => setUndo(null)} onDone={(m) => { setError(null); setDone(m); reloadAll() }} />
+      <TransferIssueDialog target={transfer} onClose={() => setTransfer(null)} onDone={(m) => { setError(null); setDone(m); reloadAll() }} />
       <IssueSheetDialog open={issueSheet} regionFilter={filters.region} onClose={() => setIssueSheet(false)}
                         onDone={(m) => { setError(null); setDone(m) }} />
 
@@ -346,6 +411,9 @@ export function SrvLogSection() {
                   {r.status !== 'replaced_returned' ? (
                     <RowAction label="Undo replacement" icon={Undo2}
                       onClick={() => setUndo({ issueId: r.id, issued: r.issued_serial, replaced: r.replaced_serial })} />
+                  ) : <span aria-hidden="true" className="w-7 shrink-0" />}
+                  {r.status !== 'replaced_returned' ? (
+                    <RowAction label="Move to another station" icon={MapPinned} onClick={() => setTransfer(r)} />
                   ) : <span aria-hidden="true" className="w-7 shrink-0" />}
                 </RowActions>) }] : []),
             ]}

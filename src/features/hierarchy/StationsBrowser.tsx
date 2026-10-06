@@ -25,6 +25,7 @@ import { AttentionBadge, Count } from '@/features/hierarchy/HierarchyPieces'
 import {
   DEFAULT_STATION_QUERY,
   pageCount,
+  useCompressorModels,
   useRangeLabel,
   useRegions,
   useStations,
@@ -77,6 +78,7 @@ export function StationsBrowser({
 
   const { state, reload } = useStations(effective)
   const regions = useRegions()
+  const compressorModels = useCompressorModels()
 
   // Any change to the result set returns to page 1. Staying on page 5 of a
   // newly-filtered list shows an empty table that looks like "no results".
@@ -99,7 +101,7 @@ export function StationsBrowser({
   const sortFor = (key: StationSort) => (effective.sort === key ? effective.direction : null)
 
   const hasFilters = Boolean(
-    effective.search.trim() || effective.attention !== 'all' || (!lockedRegionId && effective.regionId),
+    effective.search.trim() || effective.attention !== 'all' || effective.compressor || (!lockedRegionId && effective.regionId),
   )
   const clearFilters = useCallback(
     () =>
@@ -154,6 +156,10 @@ export function StationsBrowser({
           <MultiSelectFilter id="stations-region" label="Region" value={query.regionId} onChange={(v) => update({ regionId: v || null })}
                              options={regions.state.status === 'ready' ? regions.state.data.map((r) => ({ value: r.region_id, label: r.region_name })) : []} />
         )}
+
+        {/* Owner request 2026-10-06: Stations by compressor type. Spellings differing only in case are one choice. */}
+        <MultiSelectFilter id="stations-compressor" label="Compressor" value={query.compressor}
+                           onChange={(v) => update({ compressor: v })} options={compressorModels} />
 
         <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span>Show</span>
@@ -230,6 +236,7 @@ export function StationsBrowser({
                   >
                     Unresolved
                   </SortableHeader>
+                  <SortableHeader>Compressor</SortableHeader>
                   <SortableHeader>Bay status</SortableHeader>
                   <SortableHeader>Attention</SortableHeader>
                 </TableRow>
@@ -267,6 +274,11 @@ export function StationsBrowser({
                     <TableCell align="right" numeric>
                       <Count value={station.unresolved_mapping} tone="unmapped" />
                     </TableCell>
+                    <TableCell>
+                      {station.compressor_models?.length
+                        ? <span className="text-xs">{station.compressor_models.join(', ')}</span>
+                        : <ValueOrNull value={null} />}
+                    </TableCell>
                     {/* A NULL bay status is shown as "not recorded", never as
                       * "N/A", "Unknown", "-" or 0 (§11.5). */}
                     <TableCell><ValueOrNull value={station.bay_status} /></TableCell>
@@ -276,7 +288,7 @@ export function StationsBrowser({
                   </TableRow>
                   {expanded.has(station.station_id) ? (
                     <tr className="border-t bg-muted/20">
-                      <td colSpan={9} className="px-3 py-2">
+                      <td colSpan={10} className="px-3 py-2">
                         <StationUnits stationId={station.station_id} stationName={station.station_name} onOpen={setOpenUnit} onRemoved={reload} />
                       </td>
                     </tr>

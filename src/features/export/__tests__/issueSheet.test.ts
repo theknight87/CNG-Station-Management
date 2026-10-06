@@ -17,7 +17,7 @@ const issue = (over: Partial<IssueSheetRow>): IssueSheetRow => ({
   place_name: 'شبرا 1', location: 'Stage', warehouse_valve_id: 'w', issued_serial: null, issued_code: null,
   manufacturer: null, size_type: 'Male', inlet_size: '1/2"', outlet_size: '1"', set_pressure_raw: null, pressure_min: null,
   pressure_max: null, pressure_unit: null, replaced_installed_valve_id: null, replaced_serial: null, replaced_returned_at: null,
-  is_cancelled: false, cancelled_at: null, cancelled_returned_at: null,
+  is_cancelled: false, cancelled_at: null, cancelled_returned_at: null, transferred_to: null, transferred_at: null,
   ...over,
 })
 
@@ -115,6 +115,17 @@ describe('warehouse issue workbook', () => {
     expect(ws.getRow(5).getCell(11).value).toBeNull()
     expect(ws.getCell('J1').isMerged).toBe(true)
     expect(ws.getCell('K1').isMerged).toBe(false)
+  })
+
+  it('ISH-8 a valve moved on to another Station stays on the sheet it left the warehouse on: "محول إلى <place>" in red', async () => {
+    const rows = groupSheets([
+      issue({ id: 't', sheet_id: 'x', sheet_seq: 1, issued_serial: 'MOVED', replaced_serial: 'OLD', replaced_returned_at: null,
+        transferred_to: 'دمنهور الموقف', transferred_at: '2026-10-06T10:00:00Z' }),
+    ], 'Alex')
+    const ws = (await readBack(await buildIssueWorkbook('Alex', rows))).worksheets[0]
+    expect(ws.getRow(4).getCell(8).value).toBe('MOVED')
+    expect(ws.getRow(4).getCell(10).value).toBe('محول إلى دمنهور الموقف')
+    expect(ws.getRow(4).getCell(10).font?.color?.argb).toBe('FFC00000')
   })
 
   it('ISH-6 month range and file name', () => {

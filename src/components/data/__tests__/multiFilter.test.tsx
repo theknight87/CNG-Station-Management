@@ -4,7 +4,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { MultiSelectFilter } from '@/components/data/MultiSelectFilter'
-import { applyMulti, DUE_ALIASES, encodeMulti, hasMulti, matchesMulti, parseMulti } from '@/components/data/multiFilter'
+import { applyMulti, applyMultiArray, DUE_ALIASES, encodeMulti, hasMulti, matchesMulti, parseMulti } from '@/components/data/multiFilter'
 
 function builder() {
   const calls: [string, ...unknown[]][] = []
@@ -109,5 +109,27 @@ describe('MultiSelectFilter', () => {
     expect(screen.getByRole('dialog')).toBeDefined()
     await userEvent.keyboard('{Escape}')
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+})
+
+describe('applyMultiArray (Stations by compressor type, owner request 2026-10-06)', () => {
+  const builder = () => {
+    const calls: string[] = []
+    const b = {
+      filter: (c: string, op: string, v: string) => { calls.push(`filter ${c} ${op} ${v}`); return b },
+      not: (c: string, op: string, v: string) => { calls.push(`not ${c} ${op} ${v}`); return b },
+    }
+    return { b, calls }
+  }
+  it('MF-A1 nothing chosen sends nothing; "only these" overlaps; "all except" is NOT overlaps (an empty array is kept)', () => {
+    const none = builder(); applyMultiArray(none.b, 'compressor_models', ''); expect(none.calls).toEqual([])
+    const only = builder(); applyMultiArray(only.b, 'compressor_models', 'SAFE|GRAF MOTOR')
+    expect(only.calls).toEqual(['filter compressor_models ov {"SAFE","GRAF MOTOR"}'])
+    const except = builder(); applyMultiArray(except.b, 'compressor_models', '!KWANGSHIN')
+    expect(except.calls).toEqual(['not compressor_models ov {"KWANGSHIN"}'])
+  })
+  it('MF-A2 a value with a comma or a quote stays one array element', () => {
+    const t = builder(); applyMultiArray(t.b, 'compressor_models', 'A,B|SAY "HI"')
+    expect(t.calls).toEqual(['filter compressor_models ov {"A,B","SAY \\"HI\\""}'])
   })
 })
