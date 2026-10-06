@@ -96,8 +96,9 @@ SELECT pg_temp.ck('TR-5 the Issue movement shows B only; history and audit recor
   AND EXISTS (SELECT 1 FROM srv_history WHERE warehouse_valve_id = '7d400000-0000-0000-0000-000000000001' AND event = 'transferred')
   AND EXISTS (SELECT 1 FROM audit_logs WHERE entity_id = (SELECT v FROM ids WHERE k = 'ib') AND actor_label = 'srv_issue_transfer'
                 AND actor_id = '7d000000-0000-0000-0000-00000000000a'));
-SELECT pg_temp.ck('TR-6 issue sheet: one row (the warehouse exit to A) saying where it went; the move to B has no row',
-  (SELECT transferred_to = 'TTR BBB' AND NOT is_cancelled FROM v_srv_issue_sheet WHERE id = (SELECT v FROM ids WHERE k = 'ia'))
+SELECT pg_temp.ck('TR-6 issue sheet: one row, as if issued straight to B (owner 2026-10-06) — B''s place, the valve it replaced at B; the move has no row',
+  (SELECT place_name = 'TTR BBB' AND station_name = 'TTR BBB' AND replaced_serial = 'TTR-B-OLD' AND issued_serial = 'TTR-NEW'
+          AND NOT is_cancelled AND replaced_returned_at IS NULL FROM v_srv_issue_sheet WHERE id = (SELECT v FROM ids WHERE k = 'ia'))
   AND NOT EXISTS (SELECT 1 FROM v_srv_issue_sheet WHERE id = (SELECT v FROM ids WHERE k = 'ib')));
 INSERT INTO r VALUES ('assign', pg_temp.try_as('tr_admin', format('SELECT cng_srv_issue_sheet_assign((SELECT id FROM regions WHERE name = %L), %L)',
   'Delta', to_char(now() AT TIME ZONE 'Africa/Cairo', 'YYYY-MM-01'))));
@@ -116,6 +117,9 @@ SELECT pg_temp.ck('TR-9 the move can be undone like any issue: B-OLD back, NEW a
   AND (SELECT array_agg(serial_number) FROM live WHERE station_id = '7d100000-0000-0000-0000-000000000002') = ARRAY['TTR-B-OLD']
   AND EXISTS (SELECT 1 FROM v_srv_field_log WHERE warehouse_valve_id = '7d400000-0000-0000-0000-000000000001' AND reason = 'issue_undone'
                 AND station_id = '7d100000-0000-0000-0000-000000000002'));
+
+SELECT pg_temp.ck('TR-12 once the move is undone (still at B), the sheet row reads cancelled, still at B',
+  (SELECT is_cancelled AND place_name = 'TTR BBB' FROM v_srv_issue_sheet WHERE id = (SELECT v FROM ids WHERE k = 'ia')));
 
 -- NEW2 issued to A in place of A-OLD2; A-OLD2 is received back; the move is refused (A-OLD2 cannot stay at A).
 INSERT INTO ids VALUES ('ia2', pg_temp.issue('7d400000-0000-0000-0000-000000000002', '7d200000-0000-0000-0000-000000000001', '7d300000-0000-0000-0000-000000000003'));

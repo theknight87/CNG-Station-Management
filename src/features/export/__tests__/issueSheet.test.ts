@@ -117,15 +117,17 @@ describe('warehouse issue workbook', () => {
     expect(ws.getCell('K1').isMerged).toBe(false)
   })
 
-  it('ISH-8 a valve moved on to another Station stays on the sheet it left the warehouse on: "محول إلى <place>" in red', async () => {
+  it('ISH-8 a valve moved on to another Station reads as issued straight there: no "محول إلى" note (owner 2026-10-06)', async () => {
+    // The view gives the final Station, position and the valve it replaced there; the row writes them as any issue.
     const rows = groupSheets([
-      issue({ id: 't', sheet_id: 'x', sheet_seq: 1, issued_serial: 'MOVED', replaced_serial: 'OLD', replaced_returned_at: null,
-        transferred_to: 'دمنهور الموقف', transferred_at: '2026-10-06T10:00:00Z' }),
-    ], 'Alex')
-    const ws = (await readBack(await buildIssueWorkbook('Alex', rows))).worksheets[0]
-    expect(ws.getRow(4).getCell(8).value).toBe('MOVED')
-    expect(ws.getRow(4).getCell(10).value).toBe('محول إلى دمنهور الموقف')
-    expect(ws.getRow(4).getCell(10).font?.color?.argb).toBe('FFC00000')
+      issue({ id: 't', sheet_id: 'x', sheet_seq: 1, issued_serial: '21-00483', place_name: 'شطا', replaced_serial: '22-00091',
+        replaced_returned_at: null, transferred_to: 'شطا', transferred_at: '2026-10-06T10:00:00Z' }),
+    ], 'Canal')
+    const ws = (await readBack(await buildIssueWorkbook('Canal', rows))).worksheets[0]
+    expect(ws.getRow(4).getCell(4).value).toBe('شطا')
+    expect(ws.getRow(4).getCell(7).value).toBe('22-00091')
+    expect(ws.getRow(4).getCell(8).value).toBe('21-00483')
+    expect(ws.getRow(4).getCell(10).value).toBeNull()
   })
 
   it('ISH-6 month range and file name', () => {

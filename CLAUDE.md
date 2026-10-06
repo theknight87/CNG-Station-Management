@@ -191,8 +191,10 @@ was to replace is still valid) goes straight on to Station B: SRV Log → Issue 
 `cng_srv_issue_transfer(issue, unit, replace?, emergency, notes)` — at A exactly the undo (the replaced valve back in its
 position, its Log entry closed, the issue cancelled as `transferred`, never deleted); at B a new issue of the SAME store
 valve (`srv_issues.transferred_from_issue_id`), same replacement rules as `cng_srv_issue`, the store record following it with
-its original issue date. The issue sheet keeps the one warehouse exit (to A) and writes "محول إلى <B>" in red in its
-return-date column; the move itself is on no sheet. Refused like the undo once the replaced valve is back in the warehouse.
+its original issue date. The issue sheet keeps the one warehouse exit (its day and Region) and reads it as issued straight
+to where the valve ended up (owner ruling the same day: no "محول إلى" note) — Station, Stage/Storage, replaced valve and its
+return date come from the last issue of the move chain (`v_srv_issue_sheet`, migration `20261006110000`, deployed, recorded
+`20261006141023`, view md5 identical); the move itself is on no sheet. Refused like the undo once the replaced valve is back in the warehouse.
 Admin only, SECURITY DEFINER, audited (`srv_issue_transfer`). Migration `20261006090000` (deployed, recorded `20261006131413`; function body md5 identical); suite `srv_issue_transfer`.
 **Stations by compressor type (owner 2026-10-06).** `v_station_summary.compressor_models` (appended; distinct models of the
 Station's live compressors, trimmed and upper-cased — case is the only fold, different words stay apart; `{}` when none) drives a
