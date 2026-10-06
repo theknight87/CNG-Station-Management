@@ -199,7 +199,11 @@ Admin only, SECURITY DEFINER, audited (`srv_issue_transfer`). Migration `2026100
 **Stations by compressor type (owner 2026-10-06).** `v_station_summary.compressor_models` (appended; distinct models of the
 Station's live compressors, trimmed and upper-cased — case is the only fold, different words stay apart; `{}` when none) drives a
 multi-choice *Compressor* filter on the Stations page (`applyMultiArray`: only these = overlaps, all except = not overlaps, a
-Station with none recorded kept) and a Compressor column. Migration `20261006100000` (deployed, recorded `20261006131224`; view md5 identical); suite `station_compressor_models`.
+Station with none recorded kept) and a Compressor column. Migration `20261006100000` (deployed, recorded `20261006131224`; view md5 identical); suite `station_compressor_models`. **Compressor families (owner ruling the same day):** the filter offers
+one choice per family — `cng_compressor_family(model)`: FORNOVO* → FORNOVO, GRAF* → GRAF, CUBO/CUBOGAS → CUBO, GALILEO/GALLILEO →
+GALILEO, anything else upper-cased — via `v_station_summary.compressor_families` (appended), options counted from the same view;
+the recorded models are unchanged and the Compressor column still lists them. Migration `20261006120000` (deployed, recorded
+`20261006143254`; view and function md5 identical); production: 10 families.
 **No table footnotes (owner 2026-10-03).** The explanatory paragraph under every table ("Mapping is not changed from this screen…",
 "…not columns this schema carries", etc.) is gone from all pages, and `RegistryTable` / `EquipmentSection` no longer take a `footnote`.
 

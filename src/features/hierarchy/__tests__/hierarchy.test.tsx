@@ -46,10 +46,6 @@ vi.mock('@/lib/supabase/client', () => {
       const settle = () => {
         if (table === 'v_dashboard_region_summary') return replies.regions
         if (table === 'v_unit_summary') return replies.units
-        if (table === 'compressors') return { data: [
-          { model: 'safe', station_id: 's-1', archived_at: null }, { model: ' SAFE ', station_id: 's-2', archived_at: null },
-          { model: 'Kwangshin', station_id: 's-1', archived_at: null }, { model: 'OLD', station_id: 's-3', archived_at: '2026-01-01' },
-          { model: null, station_id: 's-4', archived_at: null }], error: null }
         if (head) return replies.stationsUnfilteredCount
         return replies.stations
       }
@@ -134,6 +130,7 @@ function station(over: Partial<Record<string, unknown>> = {}) {
     approaching_due: 5,
     unresolved_mapping: 0,
     compressor_models: ['SAFE'],
+    compressor_families: ['SAFE'],
     ...over,
   }
 }
@@ -280,18 +277,24 @@ describe('Stations browser', () => {
     expect(screen.getAllByText(/not recorded/i)).toHaveLength(1)
   })
 
-  it('filters by compressor type in the database (owner request 2026-10-06): case-only spellings are one choice', async () => {
-    replies.stations = { data: [station()], error: null, count: 1 }
+  it('filters by compressor FAMILY in the database (owner ruling 2026-10-06); options and counts come from the same view', async () => {
+    // Every Station row carries its families; the options count Stations per family.
+    replies.stations = { data: [
+      station({ compressor_models: ['FORNOVO 3 BAR', 'GRAF MOTOR'], compressor_families: ['FORNOVO', 'GRAF'] }),
+      station({ station_id: 's-2', station_name: 'شبرا', compressor_models: ['FORNOVO'], compressor_families: ['FORNOVO'] }),
+      station({ station_id: 's-3', station_name: 'طنطا', compressor_models: [], compressor_families: [] }),
+    ], error: null, count: 3 }
     const user = userEvent.setup()
     wrap(<StationsView />)
     await screen.findByText('الماظة')
-    expect(calls.list.some((c) => c.includes('compressor_models'))).toBe(false)
+    // The table still shows the recorded models; only the filter groups them.
+    expect(screen.getByText('FORNOVO 3 BAR, GRAF MOTOR')).toBeDefined()
+    expect(calls.list.some((c) => c.includes('compressor_families'))).toBe(false)
     await user.click(screen.getByRole('button', { name: /compressor/i }))
     const pop = await screen.findByRole('dialog', { name: 'Compressor filter' })
-    // "safe" and " SAFE " are one choice on two Stations; an archived compressor and a blank model offer nothing.
-    expect(within(pop).getAllByRole('checkbox').map((c) => c.closest('label')!.textContent)).toEqual(['KWANGSHIN (1)', 'SAFE (2)'])
-    await user.click(within(pop).getByRole('checkbox', { name: 'SAFE (2)' }))
-    await waitFor(() => expect(calls.list).toContain('v_station_summary.filter:compressor_models.ov.{"SAFE"}'))
+    expect(within(pop).getAllByRole('checkbox').map((c) => c.closest('label')!.textContent)).toEqual(['FORNOVO (2)', 'GRAF (1)'])
+    await user.click(within(pop).getByRole('checkbox', { name: 'FORNOVO (2)' }))
+    await waitFor(() => expect(calls.list).toContain('v_station_summary.filter:compressor_families.ov.{"FORNOVO"}'))
   })
 })
 

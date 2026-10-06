@@ -30,7 +30,7 @@ import { applyMulti, applyMultiArray } from '@/components/data/multiFilter'
 const STATION_COLUMNS =
   'station_id, station_name, normalized_name, region_id, region_code, region_name, region_sort_order, ' +
   'bay_status, bay_status_raw, notes, needs_review, review_reason, units, assets, overdue, ' +
-  'approaching_due, unresolved_mapping, compressor_models'
+  'approaching_due, unresolved_mapping, compressor_models, compressor_families'
 
 const UNIT_COLUMNS =
   'unit_id, unit_name, normalized_name, station_id, station_name, region_id, region_code, region_name, ' +
@@ -58,6 +58,8 @@ export interface StationSummary {
   unresolved_mapping: number
   /** Distinct models of the Station's compressors, upper-cased (case is the only fold); empty when none is recorded. */
   compressor_models: string[]
+  /** Their families for the filter (owner ruling 2026-10-06: FORNOVO*, GRAF*, CUBO/CUBOGAS, GALILEO/GALLILEO). */
+  compressor_families: string[]
 }
 
 export interface UnitSummary {
@@ -120,7 +122,7 @@ export interface StationQuery {
   regionId: string | null
   /** 'attention' keeps only stations with something overdue or unresolved. */
   attention: 'all' | 'overdue' | 'unresolved'
-  /** Compressor type, multi-choice ('' all, 'A|B' only these, '!A|B' all except); values are upper-cased models. */
+  /** Compressor family, multi-choice ('' all, 'A|B' only these, '!A|B' all except); values from `compressor_families`. */
   compressor: string
   sort: StationSort
   direction: 'asc' | 'desc'
@@ -234,7 +236,7 @@ export function useStations(query: StationQuery, options: UseStationsOptions = {
         b = applyMulti(b, 'region_id', q.regionId)
         if (q.attention === 'overdue') b = b.gt('overdue', 0)
         if (q.attention === 'unresolved') b = b.gt('unresolved_mapping', 0)
-        b = applyMultiArray(b, 'compressor_models', q.compressor)
+        b = applyMultiArray(b, 'compressor_families', q.compressor)
         if (term) {
           // Match the raw name OR the folded one, so `الماظه` finds `الماظة`
           // and `shobra` finds `Shobra`. PostgREST needs the wildcards inline.
@@ -395,8 +397,9 @@ export function useRangeLabel(page: number, pageSize: number, rows: number, tota
 }
 
 /**
- * The compressor types a Station filter can offer: every recorded model the caller can read (RLS), trimmed and
- * upper-cased like `v_station_summary.compressor_models`, with how many Stations carry it.
+ * The compressor families the Stations filter offers, with how many Stations carry each — read from
+ * `v_station_summary.compressor_families` (owner ruling 2026-10-06), under the caller's RLS, so the options and the
+ * filter can never disagree.
  */
 export function useCompressorModels(): { value: string; label: string }[] {
   const supabase = useSupabaseClient()
@@ -405,18 +408,15 @@ export function useCompressorModels(): { value: string; label: string }[] {
     let cancelled = false
     void (async () => {
       if (!supabase) return
-      const { data, error } = await supabase.from('compressors').select('model, station_id, archived_at')
+      const { data, error } = await supabase.from('v_station_summary').select('compressor_families')
       if (cancelled || error) return
-      const stations = new Map<string, Set<string>>()
-      for (const r of (data ?? []) as { model: string | null; station_id: string | null; archived_at: string | null }[]) {
-        const key = r.model?.trim().toUpperCase()
-        if (!key || r.archived_at) continue
-        if (!stations.has(key)) stations.set(key, new Set())
-        if (r.station_id) stations.get(key)!.add(r.station_id)
+      const stations = new Map<string, number>()
+      for (const r of (data ?? []) as { compressor_families?: string[] | null }[]) {
+        for (const f of r.compressor_families ?? []) stations.set(f, (stations.get(f) ?? 0) + 1)
       }
       setOptions([...stations.entries()]
         .sort((a, b) => a[0].localeCompare(b[0]))
-        .map(([value, ids]) => ({ value, label: `${value} (${ids.size})` })))
+        .map(([value, n]) => ({ value, label: `${value} (${n})` })))
     })()
     return () => { cancelled = true }
   }, [supabase])

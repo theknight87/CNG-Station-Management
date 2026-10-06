@@ -37,4 +37,16 @@ SELECT pg_temp.ck('SCM-4 the view still runs as the caller (security_invoker res
   (SELECT reloptions::text LIKE '%security_invoker=true%' FROM pg_class WHERE relname = 'v_station_summary')
   AND NOT has_table_privilege('anon', 'v_station_summary', 'SELECT'));
 
+SELECT pg_temp.ck('SCM-5 owner ruling 2026-10-06: one family per FORNOVO*, GRAF*, CUBO/CUBOGAS, GALILEO/GALLILEO; anything else upper-cased; blank is NULL',
+  (SELECT array_agg(coalesce(cng_compressor_family(x), '-') ORDER BY o) FROM unnest(
+     ARRAY['Fornovo 3 BAR','FORNOVO 30 BAR','cubogas','Cubo','Graf Elec. Motor','GRAF ENGINE','Gallileo','galileo',' kwangshin ','', NULL])
+     WITH ORDINALITY u(x, o))
+  = ARRAY['FORNOVO','FORNOVO','CUBO','CUBO','GRAF','GRAF','GALILEO','GALILEO','KWANGSHIN','-','-']);
+UPDATE compressors SET model = 'Graf Elec. Motor' WHERE unit_id = '7e200000-0000-0000-0000-000000000003' AND archived_at IS NULL;
+SELECT pg_temp.ck('SCM-6 the filter reads families, the table keeps the recorded model; compressors.model itself is untouched',
+  (SELECT compressor_families = ARRAY['GRAF'] AND compressor_models = ARRAY['GRAF ELEC. MOTOR']
+     FROM v_station_summary WHERE station_id = '7e100000-0000-0000-0000-000000000002')
+  AND EXISTS (SELECT 1 FROM compressors WHERE model = 'Graf Elec. Motor')
+  AND (SELECT compressor_families FROM v_station_summary WHERE station_id = '7e100000-0000-0000-0000-000000000003') = '{}'::text[]);
+
 ROLLBACK;
