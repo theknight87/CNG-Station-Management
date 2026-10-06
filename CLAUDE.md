@@ -193,11 +193,11 @@ position, its Log entry closed, the issue cancelled as `transferred`, never dele
 valve (`srv_issues.transferred_from_issue_id`), same replacement rules as `cng_srv_issue`, the store record following it with
 its original issue date. The issue sheet keeps the one warehouse exit (to A) and writes "محول إلى <B>" in red in its
 return-date column; the move itself is on no sheet. Refused like the undo once the replaced valve is back in the warehouse.
-Admin only, SECURITY DEFINER, audited (`srv_issue_transfer`). Migration `20261006090000`; suite `srv_issue_transfer`.
+Admin only, SECURITY DEFINER, audited (`srv_issue_transfer`). Migration `20261006090000` (deployed, recorded `20261006131413`; function body md5 identical); suite `srv_issue_transfer`.
 **Stations by compressor type (owner 2026-10-06).** `v_station_summary.compressor_models` (appended; distinct models of the
 Station's live compressors, trimmed and upper-cased — case is the only fold, different words stay apart; `{}` when none) drives a
 multi-choice *Compressor* filter on the Stations page (`applyMultiArray`: only these = overlaps, all except = not overlaps, a
-Station with none recorded kept) and a Compressor column. Migration `20261006100000`; suite `station_compressor_models`.
+Station with none recorded kept) and a Compressor column. Migration `20261006100000` (deployed, recorded `20261006131224`; view md5 identical); suite `station_compressor_models`.
 **No table footnotes (owner 2026-10-03).** The explanatory paragraph under every table ("Mapping is not changed from this screen…",
 "…not columns this schema carries", etc.) is gone from all pages, and `RegistryTable` / `EquipmentSection` no longer take a `footnote`.
 

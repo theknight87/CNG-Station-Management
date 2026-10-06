@@ -62,7 +62,6 @@ BEGIN
   IF u.id = e.unit_id THEN RAISE EXCEPTION 'the valve is already at this Unit; choose another Station or Unit' USING ERRCODE = '22023'; END IF;
   SELECT * INTO s FROM stations WHERE id = u.station_id;
 
-  -- At A: the replaced valve goes back to its position (as in cng_srv_issue_undo).
   IF e.replaced_installed_valve_id IS NOT NULL THEN
     SELECT * INTO o FROM installed_relief_valves WHERE id = e.replaced_installed_valve_id FOR UPDATE;
     IF EXISTS (SELECT 1 FROM srv_field_log WHERE issue_id = e.id AND reason = 'replaced_on_issue'
@@ -82,7 +81,6 @@ BEGIN
   UPDATE installed_relief_valves SET archived_at = now(), archived_by = v_actor WHERE id = a.id AND archived_at IS NULL;
   UPDATE srv_issues SET cancelled_at = now(), cancelled_by = v_actor, cancel_action = 'transferred' WHERE id = e.id;
 
-  -- At B: the same rules as cng_srv_issue for the valve it replaces.
   IF p_replace_installed_valve_id IS NOT NULL THEN
     SELECT * INTO p FROM installed_relief_valves WHERE id = p_replace_installed_valve_id AND archived_at IS NULL FOR UPDATE;
     IF p.id IS NULL THEN RAISE EXCEPTION 'the valve to replace was not found or was already removed' USING ERRCODE = 'PT409'; END IF;
@@ -90,7 +88,7 @@ BEGIN
       RAISE EXCEPTION 'the valve to replace is not at this Unit''s Station with the same set pressure' USING ERRCODE = '22023';
     END IF;
     IF p.unit_id IS NULL AND p.mapping_status = 'resolved' THEN
-      v_station_level := true;   -- ruling 6y: Station-level storage stays at Station level
+      v_station_level := true;
       v_status := 'resolved';
     ELSIF num_nonnulls(p.compressor_id, p.storage_vessel_id, p.dispenser_id) = 1 AND p.unit_id = u.id THEN
       v_status := 'resolved';
@@ -119,7 +117,6 @@ BEGIN
     w.next_calibration_raw, w.next_calibration_date, w.next_calibration_precision,
     coalesce(v_notes, a.notes), w.warehouse_code);
 
-  -- The store record follows the valve; it left the warehouse once, so its issue date is unchanged.
   UPDATE warehouse_relief_valves SET target_region_id = u.region_id, target_station_id = u.station_id, target_unit_id = NULL
    WHERE id = w.id;
 
