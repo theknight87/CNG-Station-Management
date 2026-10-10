@@ -9,6 +9,7 @@ import { hasAssetFilters } from '@/components/data/assetFilters'
 import { useMakers } from '@/components/data/useMakers'
 import { Search, X } from 'lucide-react'
 
+import { useSrvDeepLink } from '@/features/relief-valves/srvDeepLink'
 import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
 import { NullValue } from '@/components/data/NullValue'
 import { DataToolbar, ToolbarActions } from '@/components/layout/PageContainer'
@@ -104,7 +105,9 @@ function columns(): RegistryColumn<DetectorRegistryRow>[] {
 }
 
 export function GasDetectorsView() {
-  const [query, setQuery] = useState<DetectorQuery>(DEFAULT_DETECTOR_QUERY)
+  // A link from the global search (?q=&open=) starts the list on that item with its details open.
+  const link = useSrvDeepLink()
+  const [query, setQuery] = useState<DetectorQuery>(() => ({ ...DEFAULT_DETECTOR_QUERY, search: link.q }))
   const supabase = useSupabaseClient()
   const { state, reload } = useGasDetectors(query)
   const makers = useMakers('v_gas_detector_management')
@@ -273,6 +276,7 @@ export function GasDetectorsView() {
         </DataToolbar>
 
         <RegistryTable
+          openKey={link.open}
 
           record={(r) => (r.detector_id ? { table: 'gas_detectors', id: r.detector_id } : null)}
           label="Gas Detectors"

@@ -204,6 +204,19 @@ one choice per family — `cng_compressor_family(model)`: FORNOVO* → FORNOVO, 
 GALILEO, anything else upper-cased — via `v_station_summary.compressor_families` (appended), options counted from the same view;
 the recorded models are unchanged and the Compressor column still lists them. Migration `20261006120000` (deployed, recorded
 `20261006143254`; view and function md5 identical); production: 10 families.
+**Every section gets what the relief valves have (owner 2026-10-10).** Phones: actions never fold away — `DataToolbar`
+always shows `trailing`, and `ToolbarActions` (`data-toolbar-actions`) inside the filter row is exempt from the phone collapse;
+Excel/CSV/Add are wrapped in it on every registry. Hoses and Gas Detectors (Vessels stay a plain record, owner's choice) gain:
+*Move to another station* on Issued and Emergency rows (`cng_equipment_issue_transfer`, as `cng_srv_issue_transfer`:
+undo at A, cancelled as `transferred`, new issue of the same store item at B, `equipment_issues.transferred_from_issue_id`);
+the warehouse *Issue sheet* (`equipment_issue_sheets`, `equipment_issues.sheet_id`, `cng_equipment_issue_sheet_assign(kind,
+region, month)`, `v_equipment_issue_sheet` — a moved item reads as issued straight to its final Station; workbook
+`features/export/equipmentIssueSheet.ts`, layout mirrors the SRV sheet as no template was sent); one search over every tab
+(`EquipmentGlobalSearch`, `?q=&open=` deep links); and several serials at once with where each already is
+(`cng_equipment_serial_whereabouts(kind, serials)`, security invoker; `cng_equipment_stock_add` now refuses a serial recorded
+anywhere — 23505, was PT409 for the store only — or typed twice — 22023, was silently dropped). Migrations
+`20261010090000..110000` (deployed, recorded `20261010111100`, `…111133`, `…111208`; bodies md5 identical); suites
+`equipment_issue_transfer`, `equipment_issue_sheets`, `equipment_serial_whereabouts`.
 **No table footnotes (owner 2026-10-03).** The explanatory paragraph under every table ("Mapping is not changed from this screen…",
 "…not columns this schema carries", etc.) is gone from all pages, and `RegistryTable` / `EquipmentSection` no longer take a `footnote`.
 

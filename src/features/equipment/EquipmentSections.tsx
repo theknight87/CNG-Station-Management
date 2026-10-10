@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
-import { ClipboardList, FlaskConical, Gauge, Plus, Siren, Undo2, Warehouse } from 'lucide-react'
-import { Outlet } from 'react-router-dom'
+import { ClipboardList, FileSpreadsheet, FlaskConical, Gauge, MapPinned, Plus, Siren, Undo2, Warehouse } from 'lucide-react'
+import { Outlet, useLocation } from 'react-router-dom'
 
 import { SearchBox } from '@/components/data/FilterControls'
 import { MultiSelectFilter } from '@/components/data/MultiSelectFilter'
@@ -17,8 +17,13 @@ import { CountStrip, FormMessage, ListStates, SelectableTable, type SelectableCo
 import { RowAction, RowActions } from '@/features/relief-valves/SrvAdminActions'
 import { AvailabilityChip } from '@/features/relief-valves/SrvPieces'
 import { useConfirmedAction, useIsAdmin } from '@/features/relief-valves/useSrvWorkflow'
+import { useOpenLinked, useSrvDeepLink } from '@/features/relief-valves/srvDeepLink'
 import { DueBadge } from '@/features/units/assetDisplay'
-import { AddStockDialog, CertifyDialog, IssueDialog, ItemHistory, UndoIssueDialog, type UndoTarget } from './EquipmentDialogs'
+import {
+  AddStockDialog, CertifyDialog, IssueDialog, ItemHistory, TransferIssueDialog, UndoIssueDialog, type TransferTarget, type UndoTarget,
+} from './EquipmentDialogs'
+import { EquipmentGlobalSearch } from './EquipmentGlobalSearch'
+import { EquipmentIssueSheetDialog } from './EquipmentIssueSheetDialog'
 import { KINDS, STORE_STATES, type EquipmentKind } from './equipmentKinds'
 import {
   EQUIPMENT_LIMIT, useEquipmentCounts, useEquipmentList, useNonce,
@@ -32,6 +37,7 @@ import {
  */
 export function EquipmentWorkspace({ kind }: { kind: EquipmentKind }) {
   const spec = KINDS[kind]
+  const { search } = useLocation()
   const tabs: SectionTab[] = [
     { to: `${spec.base}/installed`, icon: Gauge, label: `Installed ${spec.many}`, hint: 'At the stations' },
     { to: `${spec.base}/warehouse`, icon: Warehouse, label: 'Warehouse', hint: `In the store: ${Object.values(spec.stateLabel).join(', ').toLowerCase()}` },
@@ -42,8 +48,10 @@ export function EquipmentWorkspace({ kind }: { kind: EquipmentKind }) {
   return (
     <PageContainer>
       <PageHeader title={spec.title} description={spec.description} />
+      <EquipmentGlobalSearch kind={kind} />
       <SectionTabs label={`${spec.title} sections`} tabs={tabs} />
-      <Outlet />
+      {/* A search link (?q=&open=) remounts the tab, which reads it when it starts. */}
+      <Outlet key={search} />
     </PageContainer>
   )
 }
@@ -82,7 +90,8 @@ export function EquipmentWarehouseSection({ kind }: { kind: EquipmentKind }) {
   const spec = KINDS[kind]
   const isAdmin = useIsAdmin()
   const [nonce, reload] = useNonce()
-  const [search, setSearch] = useState('')
+  const link = useSrvDeepLink()
+  const [search, setSearch] = useState(link.q)
   const [status, setStatus] = useState('')
   const [due, setDue] = useState('all')
   const state = useEquipmentList<StockRow>('stock', kind, { search, status, due }, nonce)
@@ -94,6 +103,7 @@ export function EquipmentWarehouseSection({ kind }: { kind: EquipmentKind }) {
   const done = () => { setSelected(new Set()); reload() }
   const { act, busy, error, done: message } = useConfirmedAction(done)
   const rows = state.status === 'ready' ? state.data.rows : []
+  useOpenLinked(rows, setOpen)
   const underCal = rows.filter((r) => selected.has(r.id) && r.availability_status === 'available_in_store_uc').map((r) => r.id)
 
   const columns: SelectableColumn<StockRow>[] = [
@@ -188,7 +198,8 @@ export function EquipmentLogSection({ kind }: { kind: EquipmentKind }) {
   const spec = KINDS[kind]
   const isAdmin = useIsAdmin()
   const [nonce, reload] = useNonce()
-  const [search, setSearch] = useState('')
+  const link = useSrvDeepLink()
+  const [search, setSearch] = useState(link.q)
   const [status, setStatus] = useState('at_station')
   const showIssues = status === 'issued'
   const state = useEquipmentList<LogRow>('log', kind, { search, status: showIssues ? 'at_station' : status }, nonce)
@@ -197,6 +208,8 @@ export function EquipmentLogSection({ kind }: { kind: EquipmentKind }) {
   const issueCounts = useEquipmentCounts('issues', kind, ISSUE_STATUSES, search, nonce)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [undo, setUndo] = useState<UndoTarget | null>(null)
+  const [move, setMove] = useState<TransferTarget | null>(null)
+  const [issueSheet, setIssueSheet] = useState(false)
   const [undone, setUndone] = useState<string | null>(null)
   const { act, busy, error, done } = useConfirmedAction(() => { setSelected(new Set()); reload() })
   const rows = state.status === 'ready' ? state.data.rows : []
@@ -244,6 +257,8 @@ export function EquipmentLogSection({ kind }: { kind: EquipmentKind }) {
         <RowActions>
           <RowAction label="Undo this issue" icon={Undo2}
                      onClick={() => setUndo({ issueId: r.id, issued: r.issued_serial, replaced: r.replaced_serial })} />
+          <RowAction label="Move to another station" icon={MapPinned}
+                     onClick={() => setMove({ issueId: r.id, issued: r.issued_serial, station: r.unit_name ?? r.station_name, replaced: r.replaced_serial })} />
         </RowActions>
       ) : null) }] : []),
   ]
@@ -266,9 +281,18 @@ export function EquipmentLogSection({ kind }: { kind: EquipmentKind }) {
             </Button>
           </ToolbarActions>
         ) : null}
+        {isAdmin && showIssues ? (
+          <ToolbarActions>
+            <Button size="sm" className="h-7" variant="outline" onClick={() => setIssueSheet(true)}>
+              <FileSpreadsheet className="mr-1 h-3.5 w-3.5" aria-hidden="true" />Issue sheet
+            </Button>
+          </ToolbarActions>
+        ) : null}
       </Toolbar>
       <FormMessage error={error} done={undone ?? done} />
       <UndoIssueDialog kind={kind} target={undo} onClose={() => setUndo(null)} onDone={(m) => { setUndone(m); reload() }} />
+      {move ? <TransferIssueDialog kind={kind} target={move} onClose={() => setMove(null)} onDone={(m) => { setUndone(m); reload() }} /> : null}
+      <EquipmentIssueSheetDialog kind={kind} open={issueSheet} regionFilter="" onClose={() => setIssueSheet(false)} onDone={(m) => { setUndone(m); reload() }} />
       {showIssues ? (
         <ListStates state={issueState} label={`${spec.one} issues`} reload={reload} empty={issues.length === 0}>
           <SelectableTable label={`${spec.title} issues`} rows={issues} columns={issueColumns} selected={new Set()} onSelected={() => {}}
@@ -294,7 +318,8 @@ export function EquipmentJobsSection({ kind }: { kind: EquipmentKind }) {
   const spec = KINDS[kind]
   const isAdmin = useIsAdmin()
   const [nonce, reload] = useNonce()
-  const [search, setSearch] = useState('')
+  const link = useSrvDeepLink()
+  const [search, setSearch] = useState(link.q)
   const [status, setStatus] = useState('sent|returned_awaiting_certificate')
   const state = useEquipmentList<JobRow>('jobs', kind, { search, status }, nonce)
   const counts = useEquipmentCounts('jobs', kind, JOB_STATUSES, search, nonce)
@@ -353,9 +378,11 @@ export function EquipmentJobsSection({ kind }: { kind: EquipmentKind }) {
 export function EquipmentEmergencySection({ kind }: { kind: EquipmentKind }) {
   const spec = KINDS[kind]
   const isAdmin = useIsAdmin()
-  const [search, setSearch] = useState('')
+  const link = useSrvDeepLink()
+  const [search, setSearch] = useState(link.q)
   const [nonce, reload] = useNonce()
   const [undo, setUndo] = useState<UndoTarget | null>(null)
+  const [move, setMove] = useState<TransferTarget | null>(null)
   const [undone, setUndone] = useState<string | null>(null)
   const state = useEquipmentList<EmergencyRow>('emergency', kind, { search, status: '' }, nonce)
   const rows = state.status === 'ready' ? state.data.rows : []
@@ -374,6 +401,8 @@ export function EquipmentEmergencySection({ kind }: { kind: EquipmentKind }) {
         <RowActions>
           <RowAction label="Undo this issue" icon={Undo2}
                      onClick={() => setUndo({ issueId: r.id, issued: r.issued_serial, replaced: r.replaced_serial })} />
+          <RowAction label="Move to another station" icon={MapPinned}
+                     onClick={() => setMove({ issueId: r.id, issued: r.issued_serial, station: r.unit_name ?? r.station_name, replaced: r.replaced_serial })} />
         </RowActions>
       ) : null) }] : []),
   ]
@@ -384,6 +413,7 @@ export function EquipmentEmergencySection({ kind }: { kind: EquipmentKind }) {
       </Toolbar>
       <FormMessage error={null} done={undone} />
       <UndoIssueDialog kind={kind} target={undo} onClose={() => setUndo(null)} onDone={(m) => { setUndone(m); reload() }} />
+      {move ? <TransferIssueDialog kind={kind} target={move} onClose={() => setMove(null)} onDone={(m) => { setUndone(m); reload() }} /> : null}
       <ListStates state={state} label={`${spec.one} emergency issues`} reload={reload} empty={rows.length === 0}>
         <SelectableTable label={`${spec.title} emergency issues`} rows={rows} columns={columns} selected={new Set()} onSelected={() => {}}
                          selection={false} selectable={() => false} />

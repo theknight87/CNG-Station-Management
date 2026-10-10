@@ -5,6 +5,8 @@ import { LoadingState } from '@/components/states/AppStates'
 import { Button } from '@/components/ui/button'
 import { useStations, useUnits } from '@/features/admin/useMappingOptions'
 import { FormMessage } from '@/features/relief-valves/SrvWorkflowPieces'
+import { SerialWhereaboutsNote } from '@/features/relief-valves/SerialWhereaboutsNote'
+import { serialKey, useSerialWhereabouts } from '@/features/relief-valves/serialWhereabouts'
 import { useWorkflowAction } from '@/features/relief-valves/useSrvWorkflow'
 import { cn } from '@/lib/utils'
 import { KINDS, STORE_STATES, type EquipmentKind, type StoreState } from './equipmentKinds'
@@ -21,8 +23,10 @@ function numberOrNull(v: string): number | null | undefined {
 }
 
 /**
- * Admin: add items to the warehouse — one per serial (one per line), or a quantity when they have no serial yet.
- * cng_equipment_stock_add derives the actor, audits, and refuses a serial already in the store. A next date is
+ * Admin: add items to the warehouse — one per serial (one per line or comma-separated), or a quantity when they have no
+ * serial yet. Each serial shows where it already is as it is typed (owner request 2026-10-10, as for relief valves);
+ * cng_equipment_stock_add derives the actor, audits, and refuses the whole batch when a serial is already recorded
+ * anywhere (23505) or typed twice (22023) — the note here is a preview, the database is the guard. A next date is
  * recorded only when given; nothing is computed from an interval.
  */
 export function AddStockDialog({ kind, onClose, onAdded }: { kind: EquipmentKind; onClose: () => void; onAdded: () => void }) {
@@ -45,6 +49,11 @@ export function AddStockDialog({ kind, onClose, onAdded }: { kind: EquipmentKind
 
   const serialList = serials.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean)
   const count = serialList.length || Number(quantity) || 0
+  const where = useSerialWhereabouts(serialList, kind)
+  const seen = new Map<string, number>()
+  for (const s of serialList) seen.set(serialKey(s), (seen.get(serialKey(s)) ?? 0) + 1)
+  const twice = [...new Set(serialList.filter((s) => (seen.get(serialKey(s)) ?? 0) > 1).map(serialKey))]
+  const blocked = where.blocked.length > 0 || twice.length > 0
 
   async function save() {
     setError(null)
@@ -74,10 +83,27 @@ export function AddStockDialog({ kind, onClose, onAdded }: { kind: EquipmentKind
         <label className={fieldLabel}>Warehouse code
           <input className={input} value={code} onChange={(e) => setCode(e.target.value)} />
         </label>
-        <label className={cn(fieldLabel, 'sm:col-span-2')}>Serial numbers (one per line)
+        <label className={cn(fieldLabel, 'sm:col-span-2')}>Serial numbers (one per line, or separated by commas)
           <textarea className="min-h-20 rounded border bg-background px-2 py-1 text-sm text-foreground font-technical" value={serials}
                     onChange={(e) => setSerials(e.target.value)} />
         </label>
+        {serialList.length > 0 && (where.found.size > 0 || twice.length > 0) ? (
+          <ul aria-label="Where these serials already are" className="flex flex-col gap-0.5 sm:col-span-2">
+            {[...new Set(serialList.map(serialKey))].map((k) => {
+              const places = where.found.get(k)
+              const typedTwice = twice.includes(k)
+              if (!places?.length && !typedTwice) return null
+              const shown = serialList.find((s) => serialKey(s) === k)
+              return (
+                <li key={k} className="flex flex-col">
+                  <span className="font-technical text-xs" dir="ltr">{shown}</span>
+                  {typedTwice ? <p className="text-xs text-destructive" role="alert">Typed more than once</p> : null}
+                  <SerialWhereaboutsNote places={places} />
+                </li>
+              )
+            })}
+          </ul>
+        ) : null}
         <label className={fieldLabel}>…or quantity with no serial yet
           <input className={input} inputMode="numeric" value={quantity} disabled={serialList.length > 0}
                  onChange={(e) => setQuantity(e.target.value.replace(/\D/g, ''))} />
@@ -105,7 +131,7 @@ export function AddStockDialog({ kind, onClose, onAdded }: { kind: EquipmentKind
       </div>
       <FormMessage error={error} />
       <div className="mt-2 flex gap-2">
-        <Button size="sm" disabled={busy || count < 1} onClick={() => void save()}>
+        <Button size="sm" disabled={busy || count < 1 || blocked} onClick={() => void save()}>
           {busy ? 'Adding…' : `Add ${count || ''} ${count === 1 ? spec.one : spec.many}`.replace('  ', ' ')}
         </Button>
         <Button size="sm" variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
@@ -115,19 +141,73 @@ export function AddStockDialog({ kind, onClose, onAdded }: { kind: EquipmentKind
 }
 
 /**
+ * Station, Unit (if known) and the installed item of this kind the issued one replaces — shared by Issue and Move.
+ */
+function DestinationFields({ kind, stationId, unitId, replace, onStation, onUnit, onReplace }: {
+  kind: EquipmentKind
+  stationId: string | null
+  unitId: string | null
+  replace: string
+  onStation: (v: string | null) => void
+  onUnit: (v: string | null) => void
+  onReplace: (v: string) => void
+}) {
+  const spec = KINDS[kind]
+  const stations = useStations()
+  const units = useUnits(stationId)
+  const candidates = useReplacementCandidates(kind, stationId, unitId)
+  return (
+    <>
+      <div className="flex flex-wrap gap-2">
+        <label className={fieldLabel}>Station
+          <select className={cn(input, 'min-w-48')} dir="auto" value={stationId ?? ''} onChange={(e) => onStation(e.target.value || null)}>
+            <option value="">Choose a Station…</option>
+            {stations.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+          </select>
+        </label>
+        <label className={fieldLabel}>Unit (if known)
+          <select className={cn(input, 'min-w-40')} dir="auto" value={unitId ?? ''} disabled={!stationId} onChange={(e) => onUnit(e.target.value || null)}>
+            <option value="">Not known</option>
+            {units.map((u) => <option key={u.id} value={u.id}>{u.label}</option>)}
+          </select>
+        </label>
+      </div>
+      <p className="text-xs text-muted-foreground">The Region is the Station&apos;s Region. A Unit left unknown stays unknown — unless the replaced {spec.one} had one.</p>
+      {stationId ? (
+        <fieldset className="flex flex-col gap-1">
+          <legend className="text-xs text-muted-foreground">The {spec.one} it replaces (installed at this Station)</legend>
+          {candidates.status === 'loading' ? <LoadingState label="Loading installed items" /> : null}
+          {candidates.status === 'error' ? <p className="text-sm text-destructive">{candidates.message}</p> : null}
+          <label className="flex items-center gap-2 text-sm">
+            <input type="radio" name={`${kind}-replace`} checked={replace === ''} onChange={() => onReplace('')} />
+            Do not replace (add it only)
+          </label>
+          {candidates.status === 'ready' ? candidates.data.map((c) => (
+            <label key={c.id} className="flex flex-wrap items-center gap-2 text-sm">
+              <input type="radio" name={`${kind}-replace`} checked={replace === c.id} onChange={() => onReplace(c.id)} />
+              <span className="font-technical">{c.serial_number ?? 'no serial'}</span>
+              {c.manufacturer || c.model ? <span>{[c.manufacturer, c.model].filter(Boolean).join(' ')}</span> : null}
+              {c.description ? <span dir="auto">{c.description}</span> : null}
+              {c.unit_name ? <span dir="auto" className="text-xs text-muted-foreground">{c.unit_name}</span> : null}
+            </label>
+          )) : null}
+        </fieldset>
+      ) : null}
+    </>
+  )
+}
+
+/**
  * Issue (صرف) a store item to a Station, and its Unit when known. The items of this kind already at that Station are
  * offered as the one it replaces; replacing is optional, and the replaced item goes to the Log, still at the station.
  */
 export function IssueDialog({ kind, row, onClose, onDone }: { kind: EquipmentKind; row: StockRow; onClose: () => void; onDone: () => void }) {
   const spec = KINDS[kind]
-  const stations = useStations()
   const [stationId, setStationId] = useState<string | null>(null)
-  const units = useUnits(stationId)
   const [unitId, setUnitId] = useState<string | null>(null)
   const [replace, setReplace] = useState('')
   const [emergency, setEmergency] = useState(false)
   const [notes, setNotes] = useState('')
-  const candidates = useReplacementCandidates(kind, stationId, unitId)
   const { run, busy } = useWorkflowAction()
   const [error, setError] = useState<string | null>(null)
 
@@ -144,43 +224,9 @@ export function IssueDialog({ kind, row, onClose, onDone }: { kind: EquipmentKin
   return (
     <RecordDetailsDialog open title={`Issue ${spec.one} ${row.serial_number ?? ''}`.trim()} description="From the warehouse to a Station" onClose={onClose}>
       <div className="flex flex-col gap-2">
-        <div className="flex flex-wrap gap-2">
-          <label className={fieldLabel}>Station
-            <select className={cn(input, 'min-w-48')} dir="auto" value={stationId ?? ''}
-                    onChange={(e) => { setStationId(e.target.value || null); setUnitId(null); setReplace('') }}>
-              <option value="">Choose a Station…</option>
-              {stations.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-            </select>
-          </label>
-          <label className={fieldLabel}>Unit (if known)
-            <select className={cn(input, 'min-w-40')} dir="auto" value={unitId ?? ''} disabled={!stationId}
-                    onChange={(e) => { setUnitId(e.target.value || null); setReplace('') }}>
-              <option value="">Not known</option>
-              {units.map((u) => <option key={u.id} value={u.id}>{u.label}</option>)}
-            </select>
-          </label>
-        </div>
-        <p className="text-xs text-muted-foreground">The Region is the Station&apos;s Region. A Unit left unknown stays unknown — unless the replaced {spec.one} had one.</p>
-        {stationId ? (
-          <fieldset className="flex flex-col gap-1">
-            <legend className="text-xs text-muted-foreground">The {spec.one} it replaces (installed at this Station)</legend>
-            {candidates.status === 'loading' ? <LoadingState label="Loading installed items" /> : null}
-            {candidates.status === 'error' ? <p className="text-sm text-destructive">{candidates.message}</p> : null}
-            <label className="flex items-center gap-2 text-sm">
-              <input type="radio" name="replace" checked={replace === ''} onChange={() => setReplace('')} />
-              Do not replace (add it only)
-            </label>
-            {candidates.status === 'ready' ? candidates.data.map((c) => (
-              <label key={c.id} className="flex flex-wrap items-center gap-2 text-sm">
-                <input type="radio" name="replace" checked={replace === c.id} onChange={() => setReplace(c.id)} />
-                <span className="font-technical">{c.serial_number ?? 'no serial'}</span>
-                {c.manufacturer || c.model ? <span>{[c.manufacturer, c.model].filter(Boolean).join(' ')}</span> : null}
-                {c.description ? <span dir="auto">{c.description}</span> : null}
-                {c.unit_name ? <span dir="auto" className="text-xs text-muted-foreground">{c.unit_name}</span> : null}
-              </label>
-            )) : null}
-          </fieldset>
-        ) : null}
+        <DestinationFields kind={kind} stationId={stationId} unitId={unitId} replace={replace}
+                           onStation={(v) => { setStationId(v); setUnitId(null); setReplace('') }}
+                           onUnit={(v) => { setUnitId(v); setReplace('') }} onReplace={setReplace} />
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={emergency} onChange={(e) => setEmergency(e.target.checked)} />Emergency
         </label>
@@ -300,6 +346,65 @@ export function UndoIssueDialog({ kind, target, onClose, onDone }: {
       <div className="mt-2 flex justify-end gap-2">
         <Button size="sm" variant="outline" onClick={onClose}>Cancel</Button>
         <Button size="sm" disabled={busy} onClick={() => void confirm()}>{busy ? 'Undoing…' : 'Undo issue'}</Button>
+      </div>
+    </RecordDetailsDialog>
+  )
+}
+
+export interface TransferTarget { issueId: string; issued: string | null; station: string; replaced: string | null }
+
+/**
+ * Admin: an issued item that was not fitted (the one it was to replace is still valid) goes straight on to another
+ * Station (owner request 2026-10-10, as the relief valves have it). cng_equipment_issue_transfer does, in one step,
+ * exactly the undo at the first Station (the replaced item back in its position, the issue cancelled as transferred)
+ * and a new issue of the same item at the second; derives the actor and audits. The issue sheet reads it as issued
+ * straight to where it ended up.
+ */
+export function TransferIssueDialog({ kind, target, onClose, onDone }: {
+  kind: EquipmentKind
+  target: TransferTarget | null
+  onClose: () => void
+  onDone: (message: string) => void
+}) {
+  const spec = KINDS[kind]
+  const [stationId, setStationId] = useState<string | null>(null)
+  const [unitId, setUnitId] = useState<string | null>(null)
+  const [replace, setReplace] = useState('')
+  const [emergency, setEmergency] = useState(false)
+  const [notes, setNotes] = useState('')
+  const { run, busy } = useWorkflowAction()
+  const [error, setError] = useState<string | null>(null)
+  async function submit() {
+    if (!target) return
+    setError(null)
+    const err = await run('cng_equipment_issue_transfer', {
+      p_issue_id: target.issueId, p_station_id: stationId, p_unit_id: unitId,
+      p_replace_id: replace || null, p_emergency: emergency, p_notes: notes.trim() || null,
+    })
+    if (err) { setError(err); return }
+    const back = target.replaced ? `serial ${target.replaced} is back in its position at ${target.station}; ` : ''
+    onDone(`Moved: ${back}the ${spec.one} is now issued to the new Station.`)
+    onClose()
+  }
+  return (
+    <RecordDetailsDialog open={target !== null} title={`Move ${spec.one} ${target?.issued ?? ''} to another station`.replace('  ', ' ')}
+                         description={target?.replaced
+                           ? `At ${target.station}, serial ${target.replaced} goes back to its position.`
+                           : `It leaves ${target?.station ?? 'the station'}.`}
+                         onClose={onClose}>
+      <div className="flex flex-col gap-2">
+        <DestinationFields kind={kind} stationId={stationId} unitId={unitId} replace={replace}
+                           onStation={(v) => { setStationId(v); setUnitId(null); setReplace('') }}
+                           onUnit={(v) => { setUnitId(v); setReplace('') }} onReplace={setReplace} />
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={emergency} onChange={(e) => setEmergency(e.target.checked)} />Emergency
+        </label>
+        <label className={fieldLabel}>Notes<input className={input} dir="auto" value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
+        <FormMessage error={error} />
+        <div className="flex gap-2">
+          <Button size="sm" disabled={!stationId || busy} onClick={() => void submit()}>{busy ? 'Moving…' : 'Confirm move'}</Button>
+          <Button size="sm" variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+        </div>
       </div>
     </RecordDetailsDialog>
   )

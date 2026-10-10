@@ -71,8 +71,9 @@ SELECT pg_temp.ck('EQ-5 the admin adds a calibrated hose and two un-serialled ne
   AND (SELECT count(*) FROM equipment_stock WHERE created_by = '8e000000-0000-0000-0000-00000000000a') = 3
   AND (SELECT count(*) FROM equipment_stock WHERE kind = 'gas_detector' AND serial_status = 'not_yet_assigned' AND serial_number IS NULL) = 2);
 SELECT pg_temp.act('a4', 'eq_admin', $q$SELECT cng_equipment_stock_add('hose','available_new',ARRAY['TEQ-H-NEW'],NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL)$q$);
+-- 23505 since 20261010110000 (a serial recorded anywhere is refused, as for relief valves); PT409 before.
 SELECT pg_temp.ck('EQ-6 a serial already in the store is refused; a detector cannot carry hose pressures',
-  (SELECT res FROM outcome WHERE k = 'a4') = 'PT409'
+  (SELECT res FROM outcome WHERE k = 'a4') = '23505'
   AND (SELECT working_pressure_value IS NULL FROM equipment_stock WHERE kind = 'gas_detector' LIMIT 1));
 SELECT pg_temp.ck('EQ-7 no next date is invented: a new item added without one has none',
   (SELECT bool_and(next_date IS NULL AND next_precision = 'unknown') FROM equipment_stock WHERE kind = 'gas_detector'));

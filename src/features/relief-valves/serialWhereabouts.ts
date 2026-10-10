@@ -14,7 +14,8 @@ export interface Whereabout { serial: string; kind: string; blocking: boolean; p
 export const serialKey = (s: string) => s.trim().toLowerCase()
 
 /** Records found per serial (key: trimmed, lower case); `ready` is false while the typed list has not been checked. */
-export function useSerialWhereabouts(serials: string[]) {
+/** `equipmentKind` reads a hose's or gas detector's places instead (cng_equipment_serial_whereabouts, owner 2026-10-10). */
+export function useSerialWhereabouts(serials: string[], equipmentKind?: 'hose' | 'gas_detector') {
   const supabase = useSupabaseClient()
   const wanted = [...new Set(serials.map((s) => s.trim()).filter(Boolean))].sort()
   const key = wanted.join('\n')
@@ -24,7 +25,10 @@ export function useSerialWhereabouts(serials: string[]) {
     if (!supabase || !key) return
     let cancelled = false
     const timer = setTimeout(() => {
-      void supabase.rpc('cng_srv_serial_whereabouts', { p_serials: key.split('\n') }).then(({ data, error }) => {
+      const call = equipmentKind
+        ? supabase.rpc('cng_equipment_serial_whereabouts', { p_kind: equipmentKind, p_serials: key.split('\n') })
+        : supabase.rpc('cng_srv_serial_whereabouts', { p_serials: key.split('\n') })
+      void call.then(({ data, error }) => {
         if (cancelled || error) return
         const found = new Map<string, Whereabout[]>()
         for (const w of (data ?? []) as Whereabout[]) {
@@ -35,7 +39,7 @@ export function useSerialWhereabouts(serials: string[]) {
       })
     }, 350)
     return () => { cancelled = true; clearTimeout(timer) }
-  }, [supabase, key])
+  }, [supabase, key, equipmentKind])
 
   const found = result?.key === key ? result.found : new Map<string, Whereabout[]>()
   const blocked = wanted.filter((s) => (found.get(serialKey(s)) ?? []).some((w) => w.blocking))

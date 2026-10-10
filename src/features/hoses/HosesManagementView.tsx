@@ -8,6 +8,7 @@ import { AssetFilterBar } from '@/components/data/AssetFilterBar'
 import { hasAssetFilters } from '@/components/data/assetFilters'
 import { Search, X } from 'lucide-react'
 
+import { useSrvDeepLink } from '@/features/relief-valves/srvDeepLink'
 import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
 import { NullValue } from '@/components/data/NullValue'
 import { DataToolbar, ToolbarActions } from '@/components/layout/PageContainer'
@@ -99,7 +100,9 @@ function columns(): RegistryColumn<HoseRegistryRow>[] {
 }
 
 export function HosesManagementView() {
-  const [query, setQuery] = useState<HoseQuery>(DEFAULT_HOSE_QUERY)
+  // A link from the global search (?q=&open=) starts the list on that item with its details open.
+  const link = useSrvDeepLink()
+  const [query, setQuery] = useState<HoseQuery>(() => ({ ...DEFAULT_HOSE_QUERY, search: link.q }))
   const supabase = useSupabaseClient()
   const { state, reload } = useHoses(query)
   const regions = useRegions()
@@ -253,6 +256,7 @@ export function HosesManagementView() {
         </DataToolbar>
 
         <RegistryTable
+          openKey={link.open}
 
           record={(r) => ({ table: 'hoses', id: r.id })}
           label="Hoses"
