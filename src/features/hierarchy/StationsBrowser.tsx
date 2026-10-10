@@ -18,7 +18,7 @@ import {
   TableScroll,
 } from '@/components/data/DataTable'
 import { ValueOrNull } from '@/components/data/NullValue'
-import { DataToolbar } from '@/components/layout/PageContainer'
+import { DataToolbar, ToolbarActions } from '@/components/layout/PageContainer'
 import { EmptyState, ErrorState, LoadingState, NoResultsState, NotImplemented } from '@/components/states/AppStates'
 import { Button } from '@/components/ui/button'
 import { AttentionBadge, Count } from '@/features/hierarchy/HierarchyPieces'
@@ -180,7 +180,7 @@ export function StationsBrowser({
             Clear
           </Button>
         ) : null}
-        <span className="ml-auto"><AddStationButton regionId={lockedRegionId} onCreated={reload} /></span>
+        <ToolbarActions><AddStationButton regionId={lockedRegionId} onCreated={reload} /></ToolbarActions>
       </DataToolbar>
 
       {state.status === 'loading' ? <LoadingState label="Loading Stations" /> : null}

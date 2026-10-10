@@ -11,7 +11,7 @@ import { Search, X } from 'lucide-react'
 
 import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
 import { NullValue } from '@/components/data/NullValue'
-import { DataToolbar } from '@/components/layout/PageContainer'
+import { DataToolbar, ToolbarActions } from '@/components/layout/PageContainer'
 import { Button } from '@/components/ui/button'
 import { Fact } from '@/features/hierarchy/HierarchyPieces'
 import { DEFAULT_STATION_QUERY, useRegions, useStations } from '@/features/hierarchy/useHierarchy'
@@ -267,9 +267,9 @@ export function GasDetectorsView() {
               Clear
             </Button>
           ) : null}
-          <span className="ml-auto">
+          <ToolbarActions>
             <ExportButtons name="gas-detectors" load={queryLoader(supabase, 'Gas detectors', GAS_DETECTOR_COLUMNS, (c) => detectorRequest(c, query))} />
-          </span>
+          </ToolbarActions>
         </DataToolbar>
 
         <RegistryTable

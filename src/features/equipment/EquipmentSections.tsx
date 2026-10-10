@@ -8,7 +8,7 @@ import { DUE_ALIASES, DUE_OPTIONS } from '@/components/data/multiFilter'
 import { NullValue } from '@/components/data/NullValue'
 import { RecordDetailsDialog } from '@/components/data/RecordDetailsDialog'
 import { Identifier } from '@/components/data/TechnicalText'
-import { DataToolbar, PageContainer, PageHeader } from '@/components/layout/PageContainer'
+import { DataToolbar, ToolbarActions, PageContainer, PageHeader } from '@/components/layout/PageContainer'
 import { SectionTabs, type SectionTab } from '@/components/layout/SectionTabs'
 import { Button } from '@/components/ui/button'
 import { Fact, FactGrid } from '@/features/hierarchy/HierarchyPieces'
@@ -124,14 +124,14 @@ export function EquipmentWarehouseSection({ kind }: { kind: EquipmentKind }) {
                            options={STORE_STATES.map((s) => ({ value: s, label: spec.stateLabel[s] }))} />
         <MultiSelectFilter id={`${kind}-stock-due`} label="Due" value={due} empty="all" aliases={DUE_ALIASES} onChange={setDue} options={DUE_OPTIONS} />
         {isAdmin ? (
-          <span className="ml-auto flex flex-wrap gap-2">
+          <ToolbarActions>
             <Button size="sm" className="h-7" variant="outline" disabled={underCal.length === 0 || busy}
                     onClick={() => void act(`${spec.jobVerb}: ${underCal.length} ${spec.many}?`, 'cng_equipment_calibration_send',
                       { p_stock_ids: underCal }, `${underCal.length} sent to the 3rd party.`)}>
               {spec.jobVerb}{underCal.length ? ` (${underCal.length})` : ''}
             </Button>
             <Button size="sm" className="h-7" onClick={() => setAdding(true)}><Plus className="mr-1 h-3.5 w-3.5" aria-hidden="true" />Add {spec.many}</Button>
-          </span>
+          </ToolbarActions>
         ) : null}
       </Toolbar>
       <FormMessage error={error} done={message} />
@@ -258,13 +258,13 @@ export function EquipmentLogSection({ kind }: { kind: EquipmentKind }) {
       <Toolbar label={`Search the ${spec.one} Log`}>
         <SearchBox id={`${kind}-log-search`} label={`Search the ${spec.one} Log`} value={search} onChange={setSearch} placeholder="Serial, Station, Unit…" />
         {isAdmin && !showIssues ? (
-          <span className="ml-auto">
+          <ToolbarActions>
             <Button size="sm" className="h-7" disabled={picked.length === 0 || busy}
                     onClick={() => void act(`Receive ${picked.length} ${spec.many} back at the warehouse?`, 'cng_equipment_log_receive',
                       { p_log_ids: picked }, `${picked.length} received; now in the store as ${spec.stateLabel.available_in_store_uc.toLowerCase()}.`)}>
               Receive at warehouse{picked.length ? ` (${picked.length})` : ''}
             </Button>
-          </span>
+          </ToolbarActions>
         ) : null}
       </Toolbar>
       <FormMessage error={error} done={undone ?? done} />
@@ -326,7 +326,7 @@ export function EquipmentJobsSection({ kind }: { kind: EquipmentKind }) {
         <MultiSelectFilter id={`${kind}-jobs-status`} label="Status" value={status} onChange={setStatus}
                            options={JOB_STATUSES.map((s) => ({ value: s, label: JOB_LABEL[s] }))} />
         {isAdmin ? (
-          <span className="ml-auto flex flex-wrap gap-2">
+          <ToolbarActions>
             <Button size="sm" className="h-7" variant="outline" disabled={sent.length === 0 || busy}
                     onClick={() => void act(`Mark ${sent.length} ${spec.many} returned from the 3rd party?`, 'cng_equipment_calibration_returned',
                       { p_job_ids: sent }, `${sent.length} marked returned; certificate awaited.`)}>
@@ -335,7 +335,7 @@ export function EquipmentJobsSection({ kind }: { kind: EquipmentKind }) {
             <Button size="sm" className="h-7" disabled={open.length === 0 || busy} onClick={() => setCertifying(true)}>
               Certificate received{open.length ? ` (${open.length})` : ''}
             </Button>
-          </span>
+          </ToolbarActions>
         ) : null}
       </Toolbar>
       <FormMessage error={error} done={done} />

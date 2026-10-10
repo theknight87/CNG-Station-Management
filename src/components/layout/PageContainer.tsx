@@ -130,7 +130,8 @@ export function DataToolbar({
           // Every control except the first (search) and the toggle itself.
           // Written out in full: Tailwind only generates classes it finds as literals.
           collapsible && 'max-md:[&>*:not(:first-child):not([data-filter-toggle])]:order-2',
-          collapsed && 'max-md:[&>*:not(:first-child):not([data-filter-toggle])]:hidden',
+          // Actions (Excel / CSV, Add …) stay on screen on a phone: only the FILTERS fold away (owner report 2026-10-10).
+          collapsed && 'max-md:[&>*:not(:first-child):not([data-filter-toggle]):not([data-toolbar-actions])]:hidden',
         )}
       >
         {children}
@@ -152,9 +153,20 @@ export function DataToolbar({
         ) : null}
       </div>
       {trailing ? (
-        <div className={cn('flex shrink-0 items-center gap-2', collapsed && 'max-md:hidden')}>{trailing}</div>
+        <div className="flex shrink-0 items-center gap-2">{trailing}</div>
       ) : null}
     </div>
   )
 }
 
+/**
+ * The action buttons of a DataToolbar (Excel / CSV, Add, Issue sheet …), pushed to the right. On a phone the
+ * toolbar folds its filters behind a toggle; actions are never folded (owner report 2026-10-10: export missing on mobile).
+ */
+export function ToolbarActions({ children, className }: { children?: ReactNode; className?: string }) {
+  return (
+    <span data-toolbar-actions="" className={cn('ml-auto flex flex-wrap items-center gap-2', className)}>
+      {children}
+    </span>
+  )
+}

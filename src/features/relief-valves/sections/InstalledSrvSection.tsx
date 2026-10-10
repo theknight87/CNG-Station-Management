@@ -8,7 +8,7 @@ import { useSupabaseClient } from '@/lib/supabase/client'
 import { Search, X } from 'lucide-react'
 
 import { NullValue } from '@/components/data/NullValue'
-import { DataToolbar } from '@/components/layout/PageContainer'
+import { DataToolbar, ToolbarActions } from '@/components/layout/PageContainer'
 import { Button } from '@/components/ui/button'
 import { useRegions } from '@/features/hierarchy/useHierarchy'
 import { DueBadge, PrecisionDate, PressureRange, Serial } from '@/features/units/assetDisplay'
@@ -203,11 +203,11 @@ export function InstalledSrvSection() {
             Clear
           </Button>
         ) : null}
-        <span className="ml-auto">
+        <ToolbarActions>
           {/* Excel is the owner's station sheet "Stations Safety Relief Valves Data" (2026-10-03); CSV stays the plain table. */}
           <ExportButtons name="installed-srvs" load={queryLoader(supabase, 'Installed SRVs', INSTALLED_SRV_COLUMNS, (c) => installedRequest(c, query))}
             excel={async (sheets) => ({ blob: await buildInstalledWorkbook(sheets[0].rows as InstalledSrvRow[]), fileName: installedWorkbookName() })} />
-        </span>
+        </ToolbarActions>
       </DataToolbar>
 
       <RegistryTable

@@ -11,7 +11,7 @@ import { Search, X } from 'lucide-react'
 
 import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
 import { NullValue } from '@/components/data/NullValue'
-import { DataToolbar } from '@/components/layout/PageContainer'
+import { DataToolbar, ToolbarActions } from '@/components/layout/PageContainer'
 import { Button } from '@/components/ui/button'
 import { Fact } from '@/features/hierarchy/HierarchyPieces'
 import { useRegions } from '@/features/hierarchy/useHierarchy'
@@ -228,10 +228,10 @@ export function VesselRegistrySection({ assetType }: { assetType: VesselAssetTyp
             Clear
           </Button>
         ) : null}
-        <span className="ml-auto">
+        <ToolbarActions>
           <ExportButtons name={assetType === 'storage_vessel' ? 'storage-vessels' : 'recovery-tanks'}
                          load={queryLoader(supabase, label.plural, VESSEL_COLUMNS, (c) => vesselRequest(c, assetType, query))} />
-        </span>
+        </ToolbarActions>
       </DataToolbar>
 
       <RegistryTable

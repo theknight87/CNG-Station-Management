@@ -11,7 +11,7 @@ import { Plus, Search, Trash2, Truck, Wrench, X } from 'lucide-react'
 import { Identifier } from '@/components/data/TechnicalText'
 import { RecordDetailsDialog } from '@/components/data/RecordDetailsDialog'
 import { NullValue } from '@/components/data/NullValue'
-import { DataToolbar } from '@/components/layout/PageContainer'
+import { DataToolbar, ToolbarActions } from '@/components/layout/PageContainer'
 import { Button } from '@/components/ui/button'
 import { Fact } from '@/features/hierarchy/HierarchyPieces'
 import { DueBadge, PrecisionDate, PressureRange, Serial, Text } from '@/features/units/assetDisplay'
@@ -339,11 +339,11 @@ export function WarehouseSrvSection() {
             Clear
           </Button>
         ) : null}
-        <span className="ml-auto flex flex-wrap items-center gap-2">
+        <ToolbarActions>
           <ExportButtons name="warehouse-srvs" load={queryLoader(supabase, 'Warehouse SRVs', WAREHOUSE_SRV_COLUMNS, (c) => warehouseRequest(c, query))}
             excel={async (sheets) => ({ blob: await buildWarehouseWorkbook(sheets[0].rows as WarehouseSrvRow[]), fileName: warehouseWorkbookName() })} />
           <AddWarehouseSrvsButton onAdded={reload} />
-        </span>
+        </ToolbarActions>
       </DataToolbar>
       {isAdmin && picked.length > 0 ? (
         <WarehouseBulkActions picked={picked} onClear={() => setSelected(new Set())} onDone={reloadClear} />

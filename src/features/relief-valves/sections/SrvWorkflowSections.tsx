@@ -6,7 +6,7 @@ import { useOpenLinked, useSrvDeepLink } from '@/features/relief-valves/srvDeepL
 import { InfoTip } from '@/components/ui/InfoTip'
 import { filterControl, filterLabel } from '@/components/data/filterStyles'
 import type { DateOption } from '@/components/data/dateRange'
-import { DataToolbar } from '@/components/layout/PageContainer'
+import { DataToolbar, ToolbarActions } from '@/components/layout/PageContainer'
 import { RecordDetailsDialog } from '@/components/data/RecordDetailsDialog'
 import { ExportButtons } from '@/features/export/ExportButtons'
 import { CALIBRATION_COLUMNS, EMERGENCY_COLUMNS, ISSUE_LOG_COLUMNS, ISSUE_STATUS, SRV_LOG_COLUMNS } from '@/features/export/exportColumns'
@@ -85,7 +85,7 @@ function WorkflowToolbar({ id, label, placeholder, filters, onFilters, showRegio
           <X className="mr-1 h-3.5 w-3.5" aria-hidden="true" />Clear
         </Button>
       ) : null}
-      <span className="ml-auto flex flex-wrap items-center gap-2">{children}</span>
+      <ToolbarActions>{children}</ToolbarActions>
     </DataToolbar>
   )
 }

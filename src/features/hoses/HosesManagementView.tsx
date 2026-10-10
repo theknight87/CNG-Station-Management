@@ -10,7 +10,7 @@ import { Search, X } from 'lucide-react'
 
 import { RegistryTable, type RegistryColumn } from '@/components/data/RegistryTable'
 import { NullValue } from '@/components/data/NullValue'
-import { DataToolbar } from '@/components/layout/PageContainer'
+import { DataToolbar, ToolbarActions } from '@/components/layout/PageContainer'
 import { Button } from '@/components/ui/button'
 import { Fact } from '@/features/hierarchy/HierarchyPieces'
 import { DEFAULT_STATION_QUERY, useRegions, useStations } from '@/features/hierarchy/useHierarchy'
@@ -247,9 +247,9 @@ export function HosesManagementView() {
               Clear
             </Button>
           ) : null}
-          <span className="ml-auto">
+          <ToolbarActions>
             <ExportButtons name="hoses" load={queryLoader(supabase, 'Hoses', HOSE_COLUMNS, (c) => hoseRequest(c, query))} />
-          </span>
+          </ToolbarActions>
         </DataToolbar>
 
         <RegistryTable

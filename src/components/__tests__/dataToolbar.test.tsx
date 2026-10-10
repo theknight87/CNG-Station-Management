@@ -3,10 +3,11 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 
-import { DataToolbar } from '@/components/layout/PageContainer'
+import { DataToolbar, ToolbarActions } from '@/components/layout/PageContainer'
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
 
-const HIDE_REST = 'max-md:[&>*:not(:first-child):not([data-filter-toggle])]:hidden'
+// Owner report 2026-10-10: on a phone only the FILTERS fold away; actions (Excel / CSV, Add) never do.
+const HIDE_REST = 'max-md:[&>*:not(:first-child):not([data-filter-toggle]):not([data-toolbar-actions])]:hidden'
 
 function toolbar(filtersActive?: boolean) {
   return render(
@@ -32,7 +33,8 @@ describe('DataToolbar phone layout', () => {
     expect(panel.contains(screen.getByLabelText('Region'))).toBe(true)
     expect(toggle.getAttribute('aria-expanded')).toBe('false')
     expect(panel.className).toContain(HIDE_REST)
-    expect(screen.getByRole('button', { name: 'CSV' }).parentElement!.className).toContain('max-md:hidden')
+    // The trailing actions are never hidden, open or closed.
+    expect(screen.getByRole('button', { name: 'CSV' }).parentElement!.className).not.toContain('max-md:hidden')
 
     await userEvent.click(toggle)
     expect(toggle.getAttribute('aria-expanded')).toBe('true')
@@ -51,6 +53,19 @@ describe('DataToolbar phone layout', () => {
   it('TBAR-4 a closed panel still tells the user the table is narrowed', () => {
     toolbar(true)
     expect(screen.getByRole('button', { name: /filters/i }).textContent).toContain('applied')
+  })
+
+  it('TBAR-6 actions inside the filter row (ToolbarActions) are exempt from folding on a phone', () => {
+    render(
+      <DataToolbar label="Search and filter SRVs" filtersActive={false}>
+        <input aria-label="Search" />
+        <select aria-label="Due"><option>All</option></select>
+        <ToolbarActions><button type="button">Excel</button></ToolbarActions>
+      </DataToolbar>,
+    )
+    const actions = screen.getByRole('button', { name: 'Excel' }).parentElement!
+    expect(actions.hasAttribute('data-toolbar-actions')).toBe(true)
+    expect(actions.parentElement!.className).toContain(HIDE_REST)
   })
 
   it('TBAR-5 no "applied" marker is shown when nothing is filtered', () => {
